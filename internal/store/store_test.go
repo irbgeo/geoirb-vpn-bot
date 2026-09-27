@@ -152,6 +152,64 @@ func TestUserList(t *testing.T) {
 	require.Equal(t, int64(2), page[0].ID, "newest first: 3, 2, 1")
 }
 
+func TestUserListPlainUsersFirstThenUnlimitedThenAdmins(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for i, role := range []service.Role{
+		service.RoleAdmin,     // id 1, oldest
+		service.RoleUnlimited, // id 2
+		service.RoleUser,      // id 3
+		"",                    // id 4: no role counts as a plain user
+		service.RoleUnlimited, // id 5, newest
+	} {
+		_, err := s.Users.Register(
+			ctx,
+			&service.User{
+				ID:        int64(i + 1),
+				Role:      role,
+				CreatedAt: ts("2026-09-27T10:00:00Z").Add(time.Duration(i) * time.Hour),
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	page, total, err := s.Users.List(
+		ctx,
+		service.Page{
+			Limit: 10,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), total)
+	var ids []int64
+	for _, u := range page {
+		ids = append(ids, u.ID)
+	}
+	require.Equal(
+		t,
+		[]int64{
+			4,
+			3,
+			5,
+			2,
+			1,
+		},
+		ids,
+		"plain users, then unlimited, then admins; newest first inside a role",
+	)
+
+	second, _, err := s.Users.List(
+		ctx,
+		service.Page{
+			Skip:  2,
+			Limit: 2,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), second[0].ID, "paging follows the same order")
+	require.Equal(t, int64(2), second[1].ID)
+}
+
 func testPeer() *service.Peer {
 	return &service.Peer{
 		PublicKey:  "PUB=",

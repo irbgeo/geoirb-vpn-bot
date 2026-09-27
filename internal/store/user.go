@@ -91,7 +91,7 @@ func (r *UserRepo) List(ctx context.Context, p service.Page) ([]*service.User, i
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: count users: %w", err)
 	}
-	cur, err := r.coll.Find(ctx, matchAll(), pageNewestFirst(p))
+	cur, err := r.coll.Aggregate(ctx, usersByRolePage(p))
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list users: %w", err)
 	}

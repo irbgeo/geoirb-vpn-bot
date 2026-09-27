@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -203,13 +204,23 @@ func TestCreateKeyUserStartsTrial(t *testing.T) {
 	register(t, e, RoleUser)
 	ctx := context.Background()
 
-	p, err := e.svc.CreateKey(ctx, 42)
+	p, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	require.Equal(t, now.AddDate(0, 0, 7), p.ExpiresAt, "7-day trial")
 	require.Equal(t, "tg:bob", p.Name)
 	require.True(t, e.users().m[42].TrialUsed)
 
-	_, err = e.svc.CreateKey(ctx, 42)
+	_, err = e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.ErrorIs(t, err, ErrHasKey, "one key per user")
 }
 
@@ -217,11 +228,21 @@ func TestCreateKeyUserTrialOnlyOnce(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	ctx := context.Background()
-	p, err := e.svc.CreateKey(ctx, 42)
+	p, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	require.NoError(t, e.svc.Delete(ctx, p.PublicKey))
 
-	_, err = e.svc.CreateKey(ctx, 42)
+	_, err = e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.ErrorIs(t, err, ErrTrialUsed, "no second trial after the key is gone")
 }
 
@@ -231,12 +252,22 @@ func TestCreateKeyUnlimitedUpToThreeForeverKeys(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 1; i <= MaxUnlimitedKeys; i++ {
-		p, err := e.svc.CreateKey(ctx, 42)
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
 		require.NoError(t, err)
 		require.True(t, p.ExpiresAt.IsZero(), "never expires")
 		require.Equal(t, fmt.Sprintf("tg:bob #%d", i), p.Name)
 	}
-	_, err := e.svc.CreateKey(ctx, 42)
+	_, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.ErrorIs(t, err, ErrKeyLimit)
 	require.False(t, e.users().m[42].TrialUsed, "no trial involved")
 }
@@ -247,7 +278,12 @@ func TestCreateKeyAdminHasNoLimit(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 1; i <= MaxUnlimitedKeys+2; i++ {
-		p, err := e.svc.CreateKey(ctx, 42)
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
 		require.NoError(t, err)
 		require.True(t, p.ExpiresAt.IsZero(), "never expires")
 		require.Equal(t, fmt.Sprintf("tg:bob #%d", i), p.Name)
@@ -260,18 +296,33 @@ func TestCreateKeyLimitCountsDisabledKeys(t *testing.T) {
 	register(t, e, RoleUnlimited)
 	ctx := context.Background()
 	for i := 0; i < MaxUnlimitedKeys; i++ {
-		p, err := e.svc.CreateKey(ctx, 42)
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
 		require.NoError(t, err)
 		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
 	}
 
-	_, err := e.svc.CreateKey(ctx, 42)
+	_, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.ErrorIs(t, err, ErrKeyLimit, "a disabled key still holds its slot and IP")
 }
 
 func TestCreateKeyUnknownUser(t *testing.T) {
 	e := newEnv()
-	_, err := e.svc.CreateKey(context.Background(), 42)
+	_, err := e.svc.CreateKey(
+		context.Background(),
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -283,7 +334,12 @@ func TestCheckCreateKeyGivesCreateKeysVerdictWithoutIssuing(t *testing.T) {
 	require.NoError(t, e.svc.CheckCreateKey(ctx, 42), "a new user may get the trial key")
 	require.Empty(t, e.peers.m, "nothing issued by a check")
 
-	_, err := e.svc.CreateKey(ctx, 42)
+	_, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 42), ErrHasKey)
 	require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 7), ErrNotFound)
@@ -294,9 +350,19 @@ func TestKeysCountFollowsIssueAndDelete(t *testing.T) {
 	register(t, e, RoleUnlimited)
 	ctx := context.Background()
 
-	a, err := e.svc.CreateKey(ctx, 42)
+	a, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
-	_, err = e.svc.CreateKey(ctx, 42)
+	_, err = e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	require.Equal(t, 2, e.users().m[42].KeysCount)
 
@@ -308,7 +374,12 @@ func TestReconcileFixesKeysCounts(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUnlimited)
 	ctx := context.Background()
-	_, err := e.svc.CreateKey(ctx, 42)
+	_, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	u := e.users().m[42]
 	u.KeysCount = 7 // drifted (e.g. a failed update)
@@ -317,4 +388,75 @@ func TestReconcileFixesKeysCounts(t *testing.T) {
 	_, err = e.svc.Reconcile(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, e.users().m[42].KeysCount)
+}
+
+func TestCreateKeyUsesTheGivenName(t *testing.T) {
+	for _, r := range []Role{
+		RoleUser,
+		RoleUnlimited,
+	} {
+		e := newEnv()
+		register(t, e, r)
+
+		p, err := e.svc.CreateKey(
+			context.Background(),
+			CreateKeyInput{
+				UserID: 42,
+				Name:   "  iPhone   Маши  ",
+			},
+		)
+		require.NoError(t, err, string(r))
+		require.Equal(t, "iPhone Маши", p.Name, "trimmed, inner spaces squeezed")
+		require.Equal(t, "iPhone Маши", e.vpn.table[p.PublicKey], "the same name in the Amnezia app")
+	}
+}
+
+func TestCreateKeyWithoutNameKeepsTheOldScheme(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleUnlimited)
+
+	p, err := e.svc.CreateKey(
+		context.Background(),
+		CreateKeyInput{
+			UserID: 42,
+			Name:   "   ",
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "tg:bob #1", p.Name)
+}
+
+func TestCreateKeyRejectsBadNames(t *testing.T) {
+	for _, name := range []string{
+		strings.Repeat("я", MaxKeyNameLen+1),
+		"two\nlines",
+		"tab\tinside",
+	} {
+		e := newEnv()
+		register(t, e, RoleUnlimited)
+
+		_, err := e.svc.CreateKey(
+			context.Background(),
+			CreateKeyInput{
+				UserID: 42,
+				Name:   name,
+			},
+		)
+		require.ErrorIs(t, err, ErrBadKeyName, name)
+		require.Empty(t, e.peers.m, "nothing issued")
+	}
+}
+
+func TestCreateKeyNameAtTheLimitIsFine(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleUnlimited)
+
+	_, err := e.svc.CreateKey(
+		context.Background(),
+		CreateKeyInput{
+			UserID: 42,
+			Name:   strings.Repeat("я", MaxKeyNameLen),
+		},
+	)
+	require.NoError(t, err)
 }

@@ -106,7 +106,12 @@ func TestMaintainMakesKeysOfUnlimitedUsersForever(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	ctx := context.Background()
-	trial, err := e.svc.CreateKey(ctx, 42) // a 7-day trial key
+	trial, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	) // a 7-day trial key
 	require.NoError(t, err)
 	stored := e.peers.m[trial.PublicKey]
 	stored.ExpiresAt = now.Add(-time.Hour) // the trial ran out...
@@ -137,7 +142,12 @@ func TestMaintainLeavesPlainUsersKeysAlone(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	ctx := context.Background()
-	p, err := e.svc.CreateKey(ctx, 42)
+	p, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 
 	m, err := e.svc.Maintain(ctx)

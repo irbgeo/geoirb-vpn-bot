@@ -47,7 +47,8 @@ DB_SECRET_KEY=a2V5
 ENDPOINT_HOST=35.217.30.38
 TARIFFS=30:150,90:400
 MONGO_URI=mongodb://geoirb_vpn_bot:p%40ss%2Fw0rd@127.0.0.1:27017/geoirb_vpn?authSource=geoirb_vpn
-BACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup" \
+BACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup
+MAINTENANCE_FLAG=/var/lib/geoirb-vpn-bot/maintenance" \
   "$out"
 
 ENV_FILE="$TMP/.env" DB_SECRETS="$TMP/nope.yaml" "$DIR/server-env.sh" >/dev/null 2>&1

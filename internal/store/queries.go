@@ -131,10 +131,58 @@ func newestFirst() *options.FindOptions {
 	)
 }
 
-func pageNewestFirst(p service.Page) *options.FindOptions {
-	return newestFirst().
-		SetSkip(p.Skip).
-		SetLimit(p.Limit)
+// usersByRolePage is one page of users: plain users (and those with no
+// role) first, then unlimited, then admins; newest first inside a role.
+func usersByRolePage(p service.Page) mongo.Pipeline {
+	return mongo.Pipeline{
+		{
+			{Key: "$addFields", Value: bson.D{
+				{Key: "_role_rank", Value: roleRank()},
+			}},
+		},
+		{
+			{Key: "$sort", Value: bson.D{
+				{Key: "_role_rank", Value: 1},
+				{Key: "created_at", Value: -1},
+				{Key: "_id", Value: 1},
+			}},
+		},
+		{
+			{Key: "$skip", Value: p.Skip},
+		},
+		{
+			{Key: "$limit", Value: p.Limit},
+		},
+	}
+}
+
+// roleRank: unlimited 1, admin 2, anything else (user, no role) 0.
+func roleRank() bson.M {
+	return bson.M{
+		"$switch": bson.M{
+			"branches": bson.A{
+				bson.M{
+					"case": bson.M{
+						"$eq": bson.A{
+							"$role",
+							string(service.RoleUnlimited),
+						},
+					},
+					"then": 1,
+				},
+				bson.M{
+					"case": bson.M{
+						"$eq": bson.A{
+							"$role",
+							string(service.RoleAdmin),
+						},
+					},
+					"then": 2,
+				},
+			},
+			"default": 0,
+		},
+	}
 }
 
 // --- indexes ---

@@ -149,7 +149,12 @@ func TestPayWithoutKeyIssuesOne(t *testing.T) {
 func TestPayExtendsExistingKey(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
-	trial, err := e.svc.CreateKey(context.Background(), 42)
+	trial, err := e.svc.CreateKey(
+		context.Background(),
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 
 	res := pay(t, e, "c1")
@@ -163,7 +168,12 @@ func TestPayChosenKey(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	ctx := context.Background()
-	first, err := e.svc.CreateKey(ctx, 42)
+	first, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	second, err := e.svc.Issue(
 		ctx,

@@ -22,6 +22,19 @@ type User struct {
 	CreatedAt time.Time
 }
 
+// CreateKeyInput is a user's request for their own key. Name is what the
+// user called it ("iPhone"); "" = the old "tg:<user> #N" / "tg:<user>".
+type CreateKeyInput struct {
+	UserID int64
+	Name   string
+}
+
+// trialInput is the first key of a plain user.
+type trialInput struct {
+	User *User
+	Name string
+}
+
 // KeysDelta changes a user's KeysCount (+1 issued, -1 deleted).
 type KeysDelta struct {
 	UserID int64

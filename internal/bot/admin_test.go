@@ -3,6 +3,8 @@ package bot
 import (
 	"context"
 	"fmt"
+	tgbot "github.com/irbgeo/go-tgbot"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -547,6 +549,7 @@ func TestAdminUpdateConfigs(t *testing.T) {
 	ask := s.sent[0]
 	require.Contains(t, ask.Text, "2 пользователям")
 	require.Contains(t, ask.Text, "ENDPOINT_HOST")
+	require.Contains(t, ask.Text, configsNoticeText, "the admin sees exactly what users get")
 	require.Equal(t, "a:cfgsok", ask.Keyboard.InlineKeyboard[0][0].CallbackData)
 	require.Equal(t, "a:cancel", ask.Keyboard.InlineKeyboard[0][1].CallbackData)
 
@@ -583,39 +586,102 @@ func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
 	require.Contains(t, s.sent[0].Text, "уже идёт")
 }
 
-func TestAdminMaintenanceNoticesUseTheBroadcastPreview(t *testing.T) {
-	for _, tc := range []struct {
-		button string
-		want   string
-	}{
-		{
-			button: "a:mnt",
-			want:   "технические работы",
-		},
-		{
-			button: "a:mntend",
-			want:   "работы закончены",
-		},
-	} {
-		svc := adminService()
-		svc.recipients = []int64{
-			7,
-		}
-		r, s := newRouter(svc)
-		r.pause = 0
-		ctx := context.Background()
-
-		require.NoError(t, r.Handle(ctx, press(tc.button)))
-		preview := s.sent[0]
-		require.Contains(t, preview.Text, "1 пользователям")
-		require.Contains(t, strings.ToLower(preview.Text), tc.want)
-		require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData, "the usual confirm")
-
-		require.NoError(t, r.Handle(ctx, press("a:bcok")))
-		r.Wait()
-		require.Equal(t, int64(7), s.sent[2].ChatID)
-		require.Contains(t, strings.ToLower(s.sent[2].Text), tc.want)
+func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
 	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	menuButton := func() tgbot.InlineKeyboardButton {
+		require.NoError(t, r.Handle(ctx, startUpdate("/menu")))
+		for _, row := range s.sent[len(s.sent)-1].Keyboard.InlineKeyboard {
+			for _, b := range row {
+				if b.CallbackData == "a:mnt" {
+					return b
+				}
+			}
+		}
+		t.Fatal("no maintenance button in the menu")
+		return tgbot.InlineKeyboardButton{}
+	}
+
+	require.Equal(t, "🛠 Техработы", menuButton().Text)
+
+	// start: the usual preview, then send
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+	preview := s.sent[len(s.sent)-1]
+	require.Contains(t, preview.Text, "1 пользователям")
+	require.Contains(t, strings.ToLower(preview.Text), "технические работы")
+	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.False(t, r.maintenance(), "nothing changes before send (/menu here would drop the preview)")
+
+	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	r.Wait()
+	require.Contains(t, strings.ToLower(sentTo(s, 7)[0].Text), "технические работы")
+	require.Equal(t, "✅ Закончить техработы", menuButton().Text)
+
+	// end: same button, the "over" text
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+	require.Contains(t, strings.ToLower(s.sent[len(s.sent)-1].Text), "работы закончены")
+	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	r.Wait()
+	require.Contains(t, strings.ToLower(sentTo(s, 7)[1].Text), "работы закончены")
+	require.Equal(t, "🛠 Техработы", menuButton().Text)
+}
+
+func TestMaintenanceCancelKeepsTheState(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	r.Wait()
+	require.False(t, r.maintenance())
+	require.Empty(t, sentTo(s, 7))
+}
+
+func TestMaintenanceStateSurvivesARestart(t *testing.T) {
+	flag := filepath.Join(t.TempDir(), "maintenance")
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	s := &fakeSender{
+		fail: map[int64]bool{},
+	}
+	deps := &Deps{
+		Service:         svc,
+		Sender:          s,
+		Bypass:          &fakeBypass{},
+		MaintenanceFlag: flag,
+	}
+	r := New(deps)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	r.Wait()
+	require.FileExists(t, flag)
+
+	require.True(t, New(deps).maintenance(), "a new process reads the flag file")
+}
+
+// sentTo returns the messages sent to one chat.
+func sentTo(s *fakeSender, chatID int64) []OutMessage {
+	var out []OutMessage
+	for _, m := range s.sent {
+		if m.ChatID == chatID {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func TestCardKeyButtonsNameTheKey(t *testing.T) {

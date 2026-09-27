@@ -14,11 +14,26 @@ func TestAccessJoinsKeysWithLiveStats(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUnlimited)
 	ctx := context.Background()
-	online, err := e.svc.CreateKey(ctx, 42)
+	online, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
-	idle, err := e.svc.CreateKey(ctx, 42)
+	idle, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
-	disabled, err := e.svc.CreateKey(ctx, 42)
+	disabled, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	require.NoError(t, e.svc.Disable(ctx, disabled.PublicKey))
 	e.vpn.stats = []amnezia.PeerStat{
@@ -55,7 +70,12 @@ func TestAccessSortedByIP(t *testing.T) {
 	register(t, e, RoleUnlimited)
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		_, err := e.svc.CreateKey(ctx, 42)
+		_, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
 		require.NoError(t, err)
 	}
 
@@ -70,7 +90,12 @@ func TestUserConfigOnlyForOwner(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	ctx := context.Background()
-	p, err := e.svc.CreateKey(ctx, 42)
+	p, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 
 	kc, err := e.svc.UserConfig(
@@ -98,7 +123,12 @@ func TestConfigOfImportedKeyWithoutPrivateKey(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	ctx := context.Background()
-	p, err := e.svc.CreateKey(ctx, 42)
+	p, err := e.svc.CreateKey(
+		ctx,
+		CreateKeyInput{
+			UserID: 42,
+		},
+	)
 	require.NoError(t, err)
 	stored := e.peers.m[p.PublicKey]
 	stored.PrivateKey = "" // imported from the Amnezia app: the device keeps it

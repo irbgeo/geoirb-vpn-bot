@@ -160,12 +160,13 @@ type keyNotice struct {
 	NoOffer bool // no "extend" button (the key never expires)
 }
 
-// pendingKind is what an admin's next text message will be.
+// pendingKind is what a chat's next text message will be.
 type pendingKind int
 
 const (
-	pendingBroadcast pendingKind = iota + 1 // text of a broadcast
-	readyBroadcast                          // text given, waiting for "send"
+	pendingBroadcast pendingKind = iota + 1 // admin: text of a broadcast
+	readyBroadcast                          // admin: text given, waiting for "send"
+	pendingKeyName                          // user: the name of the key to create
 )
 
 // pendingTTL: a prompt older than this is dropped, so a later text is not
@@ -178,7 +179,17 @@ type pendingInput struct {
 	Kind   pendingKind
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
+	Maint  maintChange
 }
+
+// maintChange: what sending a ready broadcast does to the maintenance state.
+type maintChange int
+
+const (
+	maintKeep  maintChange = iota // a plain broadcast
+	maintStart                    // "maintenance started" text
+	maintEnd                      // "maintenance is over" text
+)
 
 // broadcastView is a broadcast preview.
 type broadcastView struct {
@@ -218,6 +229,15 @@ type Deps struct {
 	SupportContact string     // e.g. "@geoirb"
 	BackupStamp    string     // file touched by each good backup; "" = no check
 	Load           ServerLoad // nil = no server load alerts
+	// MaintenanceFlag: a file that exists while maintenance is on, so the
+	// state survives a restart. "" = kept in memory only.
+	MaintenanceFlag string
+}
+
+// menuView is what the main menu keyboard needs.
+type menuView struct {
+	Role        service.Role
+	Maintenance bool // admins see "end maintenance" instead of "maintenance"
 }
 
 // command is a /command a user sent (or a button standing in for one).
@@ -233,6 +253,14 @@ type supportView struct {
 }
 
 // keyDelivery is a new key to send to a chat.
+// keyRequest is a user's own key to create in a chat; Name "" = the
+// old naming.
+type keyRequest struct {
+	ChatID int64
+	UserID int64
+	Name   string
+}
+
 type keyDelivery struct {
 	ChatID int64
 	Peer   *service.Peer

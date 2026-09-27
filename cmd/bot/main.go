@@ -87,11 +87,12 @@ func run() error {
 	}
 	router := bot.New(
 		&bot.Deps{
-			Service:        svc,
-			Sender:         bot.NewTelegramSender(client),
-			SupportContact: cfg.SupportContact,
-			BackupStamp:    cfg.BackupStamp,
-			Load:           serverLoad(),
+			Service:         svc,
+			Sender:          bot.NewTelegramSender(client),
+			SupportContact:  cfg.SupportContact,
+			BackupStamp:     cfg.BackupStamp,
+			MaintenanceFlag: cfg.MaintenanceFlag,
+			Load:            serverLoad(),
 			Bypass: bypass.New(
 				&bypass.Input{
 					URLs: cfg.BypassURLs,

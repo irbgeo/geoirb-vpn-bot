@@ -24,9 +24,11 @@ password="$(awk -v srv="$SERVER:" -v db="    $DB:" -v user="      $DB_USER:" '
 [[ -n "$password" ]] || { echo "error: no $SERVER.mongo.$DB.$DB_USER password in $DB_SECRETS" >&2; exit 1; }
 
 grep -vE '^[[:space:]]*(#|$)' "$ENV_FILE" |
-  grep -vE '^(TELEGRAM_TEST_ENV|DOCKER_BIN|MONGO_URI|MONGO_DB|MONGO_USERNAME|MONGO_PASSWORD|BACKUP_STAMP)='
+  grep -vE '^(TELEGRAM_TEST_ENV|DOCKER_BIN|MONGO_URI|MONGO_DB|MONGO_USERNAME|MONGO_PASSWORD|BACKUP_STAMP|MAINTENANCE_FLAG)='
 # The password goes to python through stdin, never argv (ps).
 encoded="$(printf '%s' "$password" | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=""))')"
 echo "MONGO_URI=mongodb://$DB_USER:$encoded@127.0.0.1:27017/$DB?authSource=$DB"
 # deploy/backup.sh touches it after every good backup; the bot alerts when it gets old.
 echo "BACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup"
+# exists while the admin's "maintenance" is on (the bot's state directory)
+echo "MAINTENANCE_FLAG=/var/lib/geoirb-vpn-bot/maintenance"

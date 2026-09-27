@@ -145,7 +145,8 @@ func greeting(u *service.User) string {
 
 // mainKeyboard is the /start and /menu menu: plain users can buy, admins also get
 // the admin buttons.
-func mainKeyboard(role service.Role) *tgbot.InlineKeyboardMarkup {
+func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
+	role := v.Role
 	rows := [][]tgbot.InlineKeyboardButton{
 		tgbot.Row(tgbot.Button("🔑 Получить ключ", cbCreateKey)),
 		tgbot.Row(tgbot.Button("📋 Мой доступ", cbMyAccess)),
@@ -165,10 +166,7 @@ func mainKeyboard(role service.Role) *tgbot.InlineKeyboardMarkup {
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
 			tgbot.Row(tgbot.Button("🔄 Обновить конфиги", cbAdminCfgs)),
-			tgbot.Row(
-				tgbot.Button("🛠 Техработы", cbAdminMnt),
-				tgbot.Button("✅ Работы закончены", cbAdminMntOK),
-			),
+			tgbot.Row(tgbot.Button(maintButtonText(v.Maintenance), cbAdminMnt)),
 		)
 	}
 	return tgbot.InlineKeyboard(rows...)
@@ -389,9 +387,33 @@ func configsAskText(recipients int) string {
 		"🔄 Попросить %d пользователям (всем, у кого есть включённый ключ) обновить конфиг? "+
 			"Файлы не рассылаются: каждый получит их сам в «📋 Мой доступ».\n\n"+
 			"Конфиг собирается из текущих настроек сервера и ENDPOINT_HOST. "+
-			"Если сменился IP и в ENDPOINT_HOST указан IP, сначала поменяйте его в .env и сделайте make deploy.",
+			"Если сменился IP и в ENDPOINT_HOST указан IP, сначала поменяйте его в .env и сделайте make deploy.\n\n"+
+			"Пользователи получат (с кнопкой «📋 Мой доступ»):\n\n%s",
 		recipients,
+		configsNoticeText,
 	)
+}
+
+var (
+	askKeyNameText = "✍️ Как назвать ключ? Напишите, например, «iPhone» или «Ноутбук» — " +
+		"так будет проще отличать ключи. Или нажмите «Пропустить»."
+	badKeyNameText = fmt.Sprintf(
+		"Имя не подходит: нужна одна строка до %d символов. Напишите другое или нажмите «Пропустить».",
+		service.MaxKeyNameLen,
+	)
+)
+
+func skipKeyNameKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("⏭ Пропустить", cbKeyNoName)),
+	)
+}
+
+func maintButtonText(on bool) string {
+	if on {
+		return "✅ Закончить техработы"
+	}
+	return "🛠 Техработы"
 }
 
 func myAccessKeyboard() *tgbot.InlineKeyboardMarkup {

@@ -6,10 +6,17 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // MaxUnlimitedKeys is how many keys a RoleUnlimited user may create.
 const MaxUnlimitedKeys = 3
+
+// MaxKeyNameLen is the longest key name a user may give, in letters: it
+// shows on buttons and in the Amnezia app.
+const MaxKeyNameLen = 32
 
 var (
 	// ErrKeyLimit: an unlimited user already has MaxUnlimitedKeys keys.
@@ -19,6 +26,9 @@ var (
 	// ErrTrialUsed: a plain user without a key already had the trial; they
 	// need to pay.
 	ErrTrialUsed = errors.New("service: trial already used")
+	// ErrBadKeyName: the name is too long or has line breaks / control
+	// characters.
+	ErrBadKeyName = errors.New("service: bad key name")
 )
 
 // Register creates the user on first /start (as RoleUser) or refreshes the
@@ -66,7 +76,12 @@ func (s *Service) Admins(ctx context.Context) ([]*User, error) {
 //
 // Counting and issuing run under one lock, so two quick taps can't create
 // an extra key.
-func (s *Service) CreateKey(ctx context.Context, userID int64) (*Peer, error) {
+func (s *Service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, error) {
+	userID := in.UserID
+	name, err := cleanKeyName(in.Name)
+	if err != nil {
+		return nil, err
+	}
 	u, err := s.User(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -88,15 +103,24 @@ func (s *Service) CreateKey(ctx context.Context, userID int64) (*Peer, error) {
 		return nil, err
 	}
 	if u.Role == RoleUnlimited || u.Role == RoleAdmin {
+		if name == "" {
+			name = fmt.Sprintf("tg:%s #%d", displayName(u), len(have)+1)
+		}
 		return s.issue(
 			ctx,
 			IssueInput{
 				UserID: userID,
-				Name:   fmt.Sprintf("tg:%s #%d", displayName(u), len(have)+1),
+				Name:   name,
 			},
 		)
 	}
-	return s.startTrial(ctx, u)
+	return s.startTrial(
+		ctx,
+		trialInput{
+			User: u,
+			Name: name,
+		},
+	)
 }
 
 // CheckCreateKey says whether CreateKey would give the user a key now
@@ -142,7 +166,8 @@ func canCreate(q keyQuota) error {
 
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the
 // trial as used. The caller holds s.mu.
-func (s *Service) startTrial(ctx context.Context, u *User) (*Peer, error) {
+func (s *Service) startTrial(ctx context.Context, in trialInput) (*Peer, error) {
+	u := in.User
 	if u.TrialUsed {
 		return nil, ErrTrialUsed
 	}
@@ -150,6 +175,7 @@ func (s *Service) startTrial(ctx context.Context, u *User) (*Peer, error) {
 		ctx,
 		IssueInput{
 			UserID: u.ID,
+			Name:   in.Name,
 			Days:   s.cfg.TrialDays,
 		},
 	)
@@ -161,6 +187,20 @@ func (s *Service) startTrial(ctx context.Context, u *User) (*Peer, error) {
 		log.Printf("service: mark trial used for %d: %v", u.ID, err)
 	}
 	return p, nil
+}
+
+// cleanKeyName trims the name and squeezes inner spaces; "" stays "" (the
+// old naming). A name over MaxKeyNameLen letters or with control
+// characters (line breaks, tabs) is ErrBadKeyName.
+func cleanKeyName(name string) (string, error) {
+	if strings.IndexFunc(name, func(r rune) bool { return r != ' ' && unicode.IsControl(r) }) >= 0 {
+		return "", ErrBadKeyName
+	}
+	name = strings.Join(strings.Fields(name), " ")
+	if utf8.RuneCountInString(name) > MaxKeyNameLen {
+		return "", ErrBadKeyName
+	}
+	return name, nil
 }
 
 // displayName is the username, or the Telegram ID when there is none.

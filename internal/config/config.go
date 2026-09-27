@@ -36,6 +36,9 @@ type Config struct {
 	// BackupStamp: a file the server backup touches after every good run
 	// (deploy sets it); admins are told when it gets old. Empty = no check.
 	BackupStamp string `envconfig:"BACKUP_STAMP"`
+	// MaintenanceFlag: a file that exists while the admin's "maintenance"
+	// is on (deploy sets it), so a restart keeps the state. Empty = memory.
+	MaintenanceFlag string `envconfig:"MAINTENANCE_FLAG"`
 	// TrialDays: a plain user's first key is a free trial of this length.
 	TrialDays int `envconfig:"TRIAL_DAYS" default:"7"`
 	// AWGContainer: empty = find amnezia-awg2 / amnezia-awg via docker ps.

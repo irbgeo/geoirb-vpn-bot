@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -91,30 +92,31 @@ func (f *fakeSender) Send(_ context.Context, m OutMessage) error {
 }
 
 type fakeService struct {
-	registered []service.RegisterInput
-	role       service.Role
-	admins     []*service.User
-	report     *service.ReconcileReport
-	reportErr  error
-	created    *service.Peer
-	createErr  error
-	access     []service.KeyInfo
-	askedKey   service.UserKey
-	users      []*service.User
-	calls      []string
-	issued     []service.IssueInput
-	invoiceIn  service.PurchaseInput
-	invoiceErr error
-	checkErr   error
-	payRes     *service.PayResult
-	payErr     error
-	refunded   []string
-	payments   []*service.Payment
-	unfinished []*service.Payment
-	stats      *service.Stats
-	recipients []int64
-	configErr  error
-	enableErr  error
+	createdWith []service.CreateKeyInput
+	registered  []service.RegisterInput
+	role        service.Role
+	admins      []*service.User
+	report      *service.ReconcileReport
+	reportErr   error
+	created     *service.Peer
+	createErr   error
+	access      []service.KeyInfo
+	askedKey    service.UserKey
+	users       []*service.User
+	calls       []string
+	issued      []service.IssueInput
+	invoiceIn   service.PurchaseInput
+	invoiceErr  error
+	checkErr    error
+	payRes      *service.PayResult
+	payErr      error
+	refunded    []string
+	payments    []*service.Payment
+	unfinished  []*service.Payment
+	stats       *service.Stats
+	recipients  []int64
+	configErr   error
+	enableErr   error
 }
 
 func (f *fakeService) Stats(context.Context) (*service.Stats, error) {
@@ -252,7 +254,11 @@ func (f *fakeService) UserConfig(_ context.Context, k service.UserKey) (*service
 	return nil, service.ErrNotFound
 }
 
-func (f *fakeService) CreateKey(context.Context, int64) (*service.Peer, error) {
+func (f *fakeService) CreateKey(_ context.Context, in service.CreateKeyInput) (*service.Peer, error) {
+	f.createdWith = append(f.createdWith, in)
+	if strings.Contains(in.Name, "\n") {
+		return nil, service.ErrBadKeyName
+	}
 	return f.created, f.createErr
 }
 
@@ -455,7 +461,7 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 		},
 	)
 
-	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
+	require.NoError(t, r.Handle(context.Background(), press("key:noname")))
 
 	require.Len(t, s.files, 2, "config and QR; the lists come in step 3")
 	conf, qr := s.files[0], s.files[1]
@@ -468,6 +474,102 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 	require.Contains(t, s.sent[0].Text, "QR")
 	require.Contains(t, s.sent[0].Text, "Подключиться")
 	require.Equal(t, "bypass", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData, "next step")
+}
+
+func TestCreateKeyAsksForANameFirst(t *testing.T) {
+	svc := &fakeService{
+		created: &service.Peer{
+			PublicKey: "PUB=",
+			Name:      "iPhone",
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("key:issue")))
+	require.Empty(t, svc.createdWith, "no key yet")
+	require.Empty(t, s.files)
+	ask := s.sent[0]
+	require.Contains(t, ask.Text, "Как назвать ключ")
+	require.Equal(t, "key:noname", ask.Keyboard.InlineKeyboard[0][0].CallbackData, "skip = the old name")
+
+	require.NoError(t, r.Handle(ctx, startUpdate("iPhone")))
+	require.Equal(
+		t,
+		[]service.CreateKeyInput{
+			{
+				UserID: 42,
+				Name:   "iPhone",
+			},
+		},
+		svc.createdWith,
+	)
+	require.Len(t, s.files, 2, "the key and its QR")
+
+	require.NoError(t, r.Handle(ctx, startUpdate("iPad")))
+	require.Len(t, svc.createdWith, 1, "a later text is not another key")
+}
+
+func TestCreateKeySkipNameKeepsTheOldScheme(t *testing.T) {
+	svc := &fakeService{
+		created: &service.Peer{
+			PublicKey: "PUB=",
+			Name:      "tg:bob #1",
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("key:issue")))
+	require.NoError(t, r.Handle(ctx, press("key:noname")))
+	require.Equal(
+		t,
+		[]service.CreateKeyInput{
+			{
+				UserID: 42,
+			},
+		},
+		svc.createdWith,
+	)
+	require.Len(t, s.files, 2)
+
+	require.NoError(t, r.Handle(ctx, startUpdate("iPad")))
+	require.Len(t, svc.createdWith, 1, "skipping ends the question")
+}
+
+func TestCreateKeyBadNameAsksAgain(t *testing.T) {
+	svc := &fakeService{
+		created: &service.Peer{
+			PublicKey: "PUB=",
+			Name:      "Mac",
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("key:issue")))
+	require.NoError(t, r.Handle(ctx, startUpdate("two\nlines")))
+	require.Empty(t, s.files)
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "до 32")
+	require.Equal(t, "key:noname", s.sent[len(s.sent)-1].Keyboard.InlineKeyboard[0][0].CallbackData)
+
+	require.NoError(t, r.Handle(ctx, startUpdate("Mac")))
+	require.Len(t, s.files, 2, "still waiting for a name after the bad one")
+}
+
+func TestCreateKeyNameIgnoresMessagesWithoutText(t *testing.T) {
+	svc := &fakeService{
+		created: &service.Peer{
+			PublicKey: "PUB=",
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("key:issue")))
+	require.NoError(t, r.Handle(ctx, startUpdate(""))) // a sticker or a photo
+	require.Empty(t, svc.createdWith, "only the skip button means no name")
+	require.Equal(t, "key:noname", s.sent[len(s.sent)-1].Keyboard.InlineKeyboard[0][0].CallbackData)
 }
 
 func TestCreateKeyStepThreeTunnelingThenFiles(t *testing.T) {
@@ -504,7 +606,7 @@ func TestCreateKeyForeverCaption(t *testing.T) {
 		},
 	)
 
-	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
+	require.NoError(t, r.Handle(context.Background(), press("key:noname")))
 	require.Contains(t, s.files[0].Caption, "бессрочный")
 }
 

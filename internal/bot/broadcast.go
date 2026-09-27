@@ -2,7 +2,9 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"log"
+	"os"
 	"time"
 )
 
@@ -41,44 +43,39 @@ func (r *Router) dropPending(chatID int64) {
 	r.mu.Unlock()
 }
 
-// adminMaintenance previews a ready broadcast: maintenance started or
-// over. Sending it is the usual broadcast confirm.
+// adminMaintenance is one toggle button: it previews "maintenance
+// started", or "maintenance is over" while it is on. The state flips only
+// when the admin presses "send" (the usual broadcast confirm).
 func (r *Router) adminMaintenance(ctx context.Context, a adminAction) error {
-	text := maintenanceText
-	if a.Name == actMaintEnd {
-		text = maintenanceEndText
+	p := pendingInput{
+		ChatID: a.ChatID,
+		Text:   maintenanceText,
+		Maint:  maintStart,
 	}
-	return r.adminBroadcastPreview(
-		ctx,
-		OutMessage{
-			ChatID: a.ChatID,
-			Text:   text,
-		},
-	)
+	if r.maintenance() {
+		p.Text, p.Maint = maintenanceEndText, maintEnd
+	}
+	return r.adminBroadcastPreview(ctx, p)
 }
 
 // adminBroadcastPreview shows the text and how many users get it, and
-// waits for "send" or "cancel". m is the admin chat and the text.
-func (r *Router) adminBroadcastPreview(ctx context.Context, m OutMessage) error {
+// waits for "send" or "cancel". p is the admin chat, the text and what
+// sending does to the maintenance state.
+func (r *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
 	ids, err := r.svc.BroadcastRecipients(ctx)
 	if err != nil {
 		return err
 	}
-	r.setPending(
-		pendingInput{
-			ChatID: m.ChatID,
-			Kind:   readyBroadcast,
-			Text:   m.Text,
-		},
-	)
+	p.Kind = readyBroadcast
+	r.setPending(p)
 	preview := broadcastView{
 		Recipients: len(ids),
-		Text:       m.Text,
+		Text:       p.Text,
 	}
 	return r.send.Send(
 		ctx,
 		OutMessage{
-			ChatID:   m.ChatID,
+			ChatID:   p.ChatID,
 			Text:     broadcastPreviewText(preview),
 			Keyboard: broadcastKeyboard(),
 		},
@@ -101,6 +98,12 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 	ids, err := r.svc.BroadcastRecipients(ctx)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
+	}
+	if p.Maint != maintKeep {
+		// flip before sending: the admin's next /menu shows the new button
+		if err := r.setMaintenance(p.Maint == maintStart); err != nil {
+			log.Printf("bot: maintenance flag: %v", err)
+		}
 	}
 	err = r.send.Send(
 		ctx,
@@ -129,6 +132,35 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 		)
 	})
 	return err
+}
+
+// maintenance says whether maintenance is on: the flag file exists, or,
+// without a file, the in-memory state.
+func (r *Router) maintenance() bool {
+	if r.maintFlag == "" {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.maintOn
+	}
+	_, err := os.Stat(r.maintFlag)
+	return err == nil
+}
+
+// setMaintenance turns maintenance on or off.
+func (r *Router) setMaintenance(on bool) error {
+	if r.maintFlag == "" {
+		r.mu.Lock()
+		r.maintOn = on
+		r.mu.Unlock()
+		return nil
+	}
+	if !on {
+		if err := os.Remove(r.maintFlag); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	return os.WriteFile(r.maintFlag, nil, 0o644)
 }
 
 // runBroadcast runs job.Deliver for each recipient with a pause, then

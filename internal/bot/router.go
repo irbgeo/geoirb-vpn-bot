@@ -21,7 +21,7 @@ type Service interface {
 	Register(ctx context.Context, in service.RegisterInput) (*service.User, error)
 	Admins(ctx context.Context) ([]*service.User, error)
 	Reconcile(ctx context.Context) (*service.ReconcileReport, error)
-	CreateKey(ctx context.Context, userID int64) (*service.Peer, error)
+	CreateKey(ctx context.Context, in service.CreateKeyInput) (*service.Peer, error)
 	CheckCreateKey(ctx context.Context, userID int64) error
 	ClientConfig(ctx context.Context, publicKey string) (string, error)
 	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
@@ -63,7 +63,8 @@ type Bypass interface {
 // Callback data of inline buttons (Telegram allows up to 64 bytes).
 const (
 	cbCreateKey = "key:create" // step 1: which app to install
-	cbIssueKey  = "key:issue"  // step 2: the key and how to add it
+	cbIssueKey  = "key:issue"  // step 2: ask for the key's name
+	cbKeyNoName = "key:noname" // skip the name: the key and how to add it
 	cbMyAccess  = "my"
 	cbBypass    = "bypass"
 	cbSupport   = "support"
@@ -94,6 +95,10 @@ type Router struct {
 	backupStamp   string
 	backupAlerted bool
 	load          ServerLoad
+	// maintFlag / maintOn: the maintenance state, in a file (survives a
+	// restart) or, without one, in memory.
+	maintFlag string
+	maintOn   bool
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
 	// refunding: charge IDs an admin refund is running for, so a double
@@ -122,6 +127,7 @@ func New(
 		support:     d.SupportContact,
 		backupStamp: d.BackupStamp,
 		load:        d.Load,
+		maintFlag:   d.MaintenanceFlag,
 		pending:     map[int64]pendingInput{},
 		pause:       50 * time.Millisecond,
 		refunding:   map[string]bool{},
@@ -162,6 +168,9 @@ func (r *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 				),
 			},
 		)
+	}
+	if r.pendingKind(upd.Message.Chat.ID) == pendingKeyName {
+		return r.keyNamed(ctx, upd.Message)
 	}
 	return r.adminText(ctx, upd.Message)
 }
@@ -248,9 +257,14 @@ func (r *Router) start(ctx context.Context, m *tgbot.Message) error {
 	return r.send.Send(
 		ctx,
 		OutMessage{
-			ChatID:   m.Chat.ID,
-			Text:     greeting(u),
-			Keyboard: mainKeyboard(u.Role),
+			ChatID: m.Chat.ID,
+			Text:   greeting(u),
+			Keyboard: mainKeyboard(
+				menuView{
+					Role:        u.Role,
+					Maintenance: u.Role == service.RoleAdmin && r.maintenance(),
+				},
+			),
 		},
 	)
 }
@@ -263,7 +277,16 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	case cq.Data == cbCreateKey:
 		return r.keyStepApps(ctx, cq)
 	case cq.Data == cbIssueKey:
-		return r.createKey(ctx, cq)
+		return r.askKeyName(ctx, cq)
+	case cq.Data == cbKeyNoName:
+		r.dropPending(cq.ChatID())
+		return r.issueKey(
+			ctx,
+			keyRequest{
+				ChatID: cq.ChatID(),
+				UserID: cq.SenderID(),
+			},
+		)
 	case cq.Data == cbMyAccess:
 		return r.myAccess(ctx, cq)
 	case cq.Data == cbBypass:
@@ -297,14 +320,96 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 
 // createKey creates the user's key (a plain user's first key starts the
 // trial) and sends the config file and QR code.
-func (r *Router) createKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	p, err := r.svc.CreateKey(ctx, cq.SenderID())
+func (r *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	r.setPending(
+		pendingInput{
+			ChatID: cq.ChatID(),
+			Kind:   pendingKeyName,
+		},
+	)
+	return r.send.Send(
+		ctx,
+		OutMessage{
+			ChatID:   cq.ChatID(),
+			Text:     askKeyNameText,
+			Keyboard: skipKeyNameKeyboard(),
+		},
+	)
+}
+
+// pendingKind is what the chat's next text is for, 0 when nothing (or a
+// prompt older than pendingTTL) is waiting.
+func (r *Router) pendingKind(chatID int64) pendingKind {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.pending[chatID]
+	if !ok || time.Since(p.At) > pendingTTL {
+		return 0
+	}
+	return p.Kind
+}
+
+// keyNamed creates the key with the name the user sent. A bad name asks
+// again and keeps waiting; anything else ends the question.
+func (r *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
+	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
+		return r.send.Send(
+			ctx,
+			OutMessage{
+				ChatID:   m.Chat.ID,
+				Text:     askKeyNameText,
+				Keyboard: skipKeyNameKeyboard(),
+			},
+		)
+	}
+	r.dropPending(m.Chat.ID) // before issuing: a second text is not a second key
+	err := r.issueKey(
+		ctx,
+		keyRequest{
+			ChatID: m.Chat.ID,
+			UserID: m.From.ID,
+			Name:   m.Text,
+		},
+	)
+	if !errors.Is(err, service.ErrBadKeyName) {
+		return err
+	}
+	r.setPending(
+		pendingInput{
+			ChatID: m.Chat.ID,
+			Kind:   pendingKeyName,
+		},
+	)
+	return r.send.Send(
+		ctx,
+		OutMessage{
+			ChatID:   m.Chat.ID,
+			Text:     badKeyNameText,
+			Keyboard: skipKeyNameKeyboard(),
+		},
+	)
+}
+
+// issueKey creates the user's key and sends it with the import steps.
+// ErrBadKeyName is returned as is (the caller asks again); other known
+// errors are explained to the user.
+func (r *Router) issueKey(ctx context.Context, k keyRequest) error {
+	p, err := r.svc.CreateKey(
+		ctx,
+		service.CreateKeyInput{
+			UserID: k.UserID,
+			Name:   k.Name,
+		},
+	)
+	if errors.Is(err, service.ErrBadKeyName) {
+		return err
+	}
 	if err != nil {
 		text, known := createKeyErrorText(err)
 		return r.replyError(
 			ctx,
 			userError{
-				ChatID: cq.ChatID(),
+				ChatID: k.ChatID,
 				Err:    err,
 				Text:   text,
 				Known:  known,
@@ -314,7 +419,7 @@ func (r *Router) createKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	return r.deliverKey(
 		ctx,
 		keyDelivery{
-			ChatID: cq.ChatID(),
+			ChatID: k.ChatID,
 			Peer:   p,
 		},
 	)
