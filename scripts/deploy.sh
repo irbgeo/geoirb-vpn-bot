@@ -24,7 +24,8 @@ echo "▶ Building linux/amd64 binary"
 echo "▶ Building the server config"
 (umask 077 && "$ROOT/scripts/server-env.sh" >"$TMP/pkg/env")
 cp "$ROOT"/deploy/backup.sh "$ROOT"/deploy/geoirb-vpn-bot.service \
-  "$ROOT"/deploy/geoirb-vpn-bot-backup.service "$ROOT"/deploy/geoirb-vpn-bot-backup.timer "$TMP/pkg/"
+  "$ROOT"/deploy/geoirb-vpn-bot-backup.service "$ROOT"/deploy/geoirb-vpn-bot-backup.timer \
+  "$ROOT"/deploy/99-geoirb-vpn.conf "$ROOT"/deploy/nf_conntrack-*.conf "$ROOT"/deploy/geoirb-vpn-mss.service "$TMP/pkg/"
 
 # The bot token and the key that encrypts client keys come from the local
 # .env. A different one would take over another bot or make every stored
@@ -54,8 +55,17 @@ install -m 750 \$S/backup.sh /opt/geoirb-vpn-bot/backup.sh
 install -d -m 750 -o root -g vpnbot /etc/geoirb-vpn-bot
 install -m 640 -o root -g vpnbot \$S/env \$E
 install -m 644 \$S/geoirb-vpn-bot.service \$S/geoirb-vpn-bot-backup.service \$S/geoirb-vpn-bot-backup.timer /etc/systemd/system/
+# VPN host tuning (conntrack size, TCP MSS clamp); no VPN restart needed
+install -m 644 \$S/99-geoirb-vpn.conf /etc/sysctl.d/
+install -m 644 \$S/nf_conntrack-modules.conf /etc/modules-load.d/nf_conntrack.conf
+install -m 644 \$S/nf_conntrack-modprobe.conf /etc/modprobe.d/nf_conntrack.conf
+install -m 644 \$S/geoirb-vpn-mss.service /etc/systemd/system/
+modprobe nf_conntrack
+echo 16384 >/sys/module/nf_conntrack/parameters/hashsize
+sysctl -q -p /etc/sysctl.d/99-geoirb-vpn.conf
 rm -rf \$S
 systemctl daemon-reload
+systemctl enable --quiet --now geoirb-vpn-mss.service
 systemctl enable --quiet geoirb-vpn-bot.service
 systemctl enable --quiet --now geoirb-vpn-bot-backup.timer
 systemctl restart geoirb-vpn-bot.service

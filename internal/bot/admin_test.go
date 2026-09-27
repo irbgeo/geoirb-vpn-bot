@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +68,7 @@ func TestAdminSeesAdminMenu(t *testing.T) {
 			"a:stats",
 			"a:bc",
 			"a:cfgs",
+			"a:mnt",
 		},
 	)
 }
@@ -576,4 +578,39 @@ func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
 	r.Wait()
 	require.Empty(t, s.files, "nothing sent while another run is going")
 	require.Contains(t, s.sent[0].Text, "уже идёт")
+}
+
+func TestAdminMaintenanceNoticesUseTheBroadcastPreview(t *testing.T) {
+	for _, tc := range []struct {
+		button string
+		want   string
+	}{
+		{
+			button: "a:mnt",
+			want:   "технические работы",
+		},
+		{
+			button: "a:mntend",
+			want:   "работы закончены",
+		},
+	} {
+		svc := adminService()
+		svc.recipients = []int64{
+			7,
+		}
+		r, s := newRouter(svc)
+		r.pause = 0
+		ctx := context.Background()
+
+		require.NoError(t, r.Handle(ctx, press(tc.button)))
+		preview := s.sent[0]
+		require.Contains(t, preview.Text, "1 пользователям")
+		require.Contains(t, strings.ToLower(preview.Text), tc.want)
+		require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData, "the usual confirm")
+
+		require.NoError(t, r.Handle(ctx, press("a:bcok")))
+		r.Wait()
+		require.Equal(t, int64(7), s.sent[2].ChatID)
+		require.Contains(t, strings.ToLower(s.sent[2].Text), tc.want)
+	}
 }

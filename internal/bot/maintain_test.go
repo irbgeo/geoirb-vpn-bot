@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 )
 
 func maintenance() *service.Maintenance {
@@ -174,4 +176,80 @@ func TestBackupCheckOffWithoutAPath(t *testing.T) {
 
 	r.DeliverMaintenance(context.Background(), maintenance())
 	require.Empty(t, s.sent)
+}
+
+type fakeLoad struct {
+	alerts []sysload.Alert
+	err    error
+}
+
+func (f *fakeLoad) Check() ([]sysload.Alert, error) {
+	return f.alerts, f.err
+}
+
+func TestServerLoadAlertsGoToAdmins(t *testing.T) {
+	r, s := newRouter(&fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	})
+	r.load = &fakeLoad{
+		alerts: []sysload.Alert{
+			{
+				Metric:  sysload.Conntrack,
+				Percent: 85,
+				Limit:   80,
+			},
+			{
+				Metric:    sysload.CPU,
+				Percent:   40,
+				Limit:     85,
+				Recovered: true,
+			},
+		},
+		err: errors.New("no disk"), // logged; the alerts still go out
+	}
+
+	r.CheckServerLoad(context.Background())
+
+	require.Len(t, s.sent, 2)
+	require.Equal(t, int64(1), s.sent[0].ChatID)
+	require.Contains(t, s.sent[0].Text, "⚠️")
+	require.Contains(t, s.sent[0].Text, "таблица соединений")
+	require.Contains(t, s.sent[0].Text, "85%")
+	require.Contains(t, s.sent[0].Text, "80%")
+	require.Contains(t, s.sent[1].Text, "✅")
+	require.Contains(t, s.sent[1].Text, "процессор")
+}
+
+func TestNoLoadMonitorNoLoadAlerts(t *testing.T) {
+	r, s := newRouter(&fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	})
+	r.CheckServerLoad(context.Background())
+	require.Empty(t, s.sent)
+}
+
+func TestLoadAlertTextForEveryMetric(t *testing.T) {
+	for _, m := range []sysload.Metric{
+		sysload.Conntrack,
+		sysload.Memory,
+		sysload.Disk,
+		sysload.CPU,
+	} {
+		text := loadAlertText(
+			sysload.Alert{
+				Metric:  m,
+				Percent: 95,
+				Limit:   90,
+			},
+		)
+		require.NotContains(t, text, string(m), "a Russian name, not the code name")
+	}
 }

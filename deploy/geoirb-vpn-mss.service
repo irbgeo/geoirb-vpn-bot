@@ -1,0 +1,19 @@
+# Clamps the TCP MSS of forwarded connections to 1340 (inner packets
+# <= 1380 bytes). The VPN's inner MTU is 1420, and with AmneziaWG overhead
+# a full packet is ~1492 bytes, more than the 1460 of the GCP network, so
+# it was fragmented. Covers TCP only; the full fix is MTU = 1380 on the
+# server and in client configs (see README, moving to a new server).
+# Only lowers the MSS (1341+), so other forwarded traffic is untouched.
+[Unit]
+Description=Clamp TCP MSS for VPN traffic
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'R="FORWARD -p tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1341:65535 -j TCPMSS --set-mss 1340"; iptables -t mangle -C $$R 2>/dev/null || iptables -t mangle -A $$R'
+ExecStop=/bin/sh -c 'iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -m tcpmss --mss 1341:65535 -j TCPMSS --set-mss 1340 || true'
+
+[Install]
+WantedBy=multi-user.target

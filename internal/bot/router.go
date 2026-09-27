@@ -13,6 +13,7 @@ import (
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 )
 
 // Service is what the bot needs from the business logic.
@@ -46,6 +47,12 @@ type Service interface {
 	UnfinishedPayments(ctx context.Context) ([]*service.Payment, error)
 	Stats(ctx context.Context) (*service.Stats, error)
 	BroadcastRecipients(ctx context.Context) ([]int64, error)
+}
+
+// ServerLoad says which server limits were just passed or are back to
+// normal (sysload.Monitor).
+type ServerLoad interface {
+	Check() ([]sysload.Alert, error)
 }
 
 // Bypass provides the split-tunneling lists sent with every key.
@@ -86,6 +93,7 @@ type Router struct {
 	// subnetAlerted for "no fresh backup".
 	backupStamp   string
 	backupAlerted bool
+	load          ServerLoad
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
 	// refunding: charge IDs an admin refund is running for, so a double
@@ -113,6 +121,7 @@ func New(
 		bypass:      d.Bypass,
 		support:     d.SupportContact,
 		backupStamp: d.BackupStamp,
+		load:        d.Load,
 		pending:     map[int64]pendingInput{},
 		pause:       50 * time.Millisecond,
 		refunding:   map[string]bool{},

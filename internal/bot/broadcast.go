@@ -41,6 +41,22 @@ func (r *Router) dropPending(chatID int64) {
 	r.mu.Unlock()
 }
 
+// adminMaintenance previews a ready broadcast: maintenance started or
+// over. Sending it is the usual broadcast confirm.
+func (r *Router) adminMaintenance(ctx context.Context, a adminAction) error {
+	text := maintenanceText
+	if a.Name == actMaintEnd {
+		text = maintenanceEndText
+	}
+	return r.adminBroadcastPreview(
+		ctx,
+		OutMessage{
+			ChatID: a.ChatID,
+			Text:   text,
+		},
+	)
+}
+
 // adminBroadcastPreview shows the text and how many users get it, and
 // waits for "send" or "cancel". m is the admin chat and the text.
 func (r *Router) adminBroadcastPreview(ctx context.Context, m OutMessage) error {

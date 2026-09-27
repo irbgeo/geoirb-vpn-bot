@@ -53,6 +53,22 @@ func (r *Router) DeliverMaintenance(ctx context.Context, m *service.Maintenance)
 	r.backupAlert(ctx)
 }
 
+// CheckServerLoad tells admins when a server limit (connection table,
+// memory, disk, CPU) is passed or back to normal. It runs on its own
+// timer, not with maintenance: a server out of memory can fail that one.
+func (r *Router) CheckServerLoad(ctx context.Context) {
+	if r.load == nil {
+		return
+	}
+	alerts, err := r.load.Check()
+	if err != nil {
+		log.Printf("bot: server load: %v", err)
+	}
+	for _, a := range alerts {
+		r.NotifyAdmins(ctx, loadAlertText(a))
+	}
+}
+
 // sendKeyNotice sends n to the key's owner. A failed send (e.g. the user
 // blocked the bot) and a key without an owner are logged.
 func (r *Router) sendKeyNotice(ctx context.Context, n keyNotice) {

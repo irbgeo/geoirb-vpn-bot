@@ -215,8 +215,9 @@ type Deps struct {
 	Service        Service
 	Sender         Sender
 	Bypass         Bypass
-	SupportContact string // e.g. "@geoirb"
-	BackupStamp    string // file touched by each good backup; "" = no check
+	SupportContact string     // e.g. "@geoirb"
+	BackupStamp    string     // file touched by each good backup; "" = no check
+	Load           ServerLoad // nil = no server load alerts
 }
 
 // command is a /command a user sent (or a button standing in for one).

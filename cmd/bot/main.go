@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os/signal"
+	"runtime"
 	"slices"
 	"syscall"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/store"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/worker"
 )
@@ -89,6 +91,7 @@ func run() error {
 			Sender:         bot.NewTelegramSender(client),
 			SupportContact: cfg.SupportContact,
 			BackupStamp:    cfg.BackupStamp,
+			Load:           serverLoad(),
 			Bypass: bypass.New(
 				&bypass.Input{
 					URLs: cfg.BypassURLs,
@@ -115,6 +118,7 @@ func run() error {
 		w.Run(ctx)
 		close(workerDone)
 	}()
+	go watchServerLoad(ctx, router)
 
 	// Dispatcher: chats are handled in parallel (one slow docker exec must
 	// not stall everyone), updates of one chat in order.
@@ -135,6 +139,34 @@ func run() error {
 	router.Close() // a running broadcast stops and sends its report
 	<-workerDone   // let a running maintenance pass finish
 	return err
+}
+
+// serverLoad watches this machine's limits; nil (no alerts) off Linux,
+// e.g. when running the bot on a laptop.
+func serverLoad() bot.ServerLoad {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	return sysload.New(
+		&sysload.Input{
+			ProcRoot: "/proc",
+			DiskPath: "/",
+		},
+	)
+}
+
+// watchServerLoad checks the server limits every minute until ctx is done.
+func watchServerLoad(ctx context.Context, r *bot.Router) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.CheckServerLoad(ctx)
+		}
+	}
 }
 
 // openVPN finds the Amnezia container (unless AWG_CONTAINER is set) and

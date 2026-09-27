@@ -10,6 +10,7 @@ import (
 	tgbot "github.com/irbgeo/go-tgbot"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 )
 
 // This file owns every user-facing text (Russian).
@@ -164,6 +165,10 @@ func mainKeyboard(role service.Role) *tgbot.InlineKeyboardMarkup {
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
 			tgbot.Row(tgbot.Button("🔄 Обновить конфиги", cbAdminCfgs)),
+			tgbot.Row(
+				tgbot.Button("🛠 Техработы", cbAdminMnt),
+				tgbot.Button("✅ Работы закончены", cbAdminMntOK),
+			),
 		)
 	}
 	return tgbot.InlineKeyboard(rows...)
@@ -306,6 +311,35 @@ func subnetAlertText(m *service.Maintenance) string {
 	)
 }
 
+// loadMetricNames name the server limits for admins.
+func loadMetricNames() map[sysload.Metric]string {
+	return map[sysload.Metric]string{
+		sysload.Conntrack: "таблица соединений",
+		sysload.Memory:    "память",
+		sysload.Disk:      "диск",
+		sysload.CPU:       "процессор",
+	}
+}
+
+func loadAlertText(a sysload.Alert) string {
+	name := loadMetricNames()[a.Metric]
+	if a.Recovered {
+		return fmt.Sprintf("✅ Сервер: %s снова в норме — %d%%.", name, a.Percent)
+	}
+	text := fmt.Sprintf("⚠️ Сервер: %s — %d%% (предел %d%%).", name, a.Percent, a.Limit)
+	switch a.Metric {
+	case sysload.Conntrack:
+		text += " Когда таблица заполнится, у пользователей перестанут открываться сайты."
+	case sysload.CPU:
+		text += " Уже 5 минут подряд: VPN может тормозить, нужна машина мощнее."
+	case sysload.Memory:
+		text += " Может не хватить памяти для VPN, базы и бота."
+	case sysload.Disk:
+		text += " Могут перестать работать бэкапы и база."
+	}
+	return text
+}
+
 func extendKeyboard(p *service.Peer) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(tgbot.Button("💳 Продлить", cbBuyKey+p.PublicKey)),
@@ -331,6 +365,14 @@ func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
 		),
 	)
 }
+
+const (
+	maintenanceText = "🛠 На VPN-сервере идут технические работы. " +
+		"VPN может ненадолго отключаться или работать медленнее — это нормально, ничего делать не нужно. " +
+		"Напишем, когда закончим."
+	maintenanceEndText = "✅ Технические работы закончены, VPN работает как обычно. " +
+		"Если не подключается — выключите и включите VPN в приложении, а если не поможет — напишите в /support."
+)
 
 const (
 	configsStartedText = "🔄 Обновление конфигов началось. Пришлю отчёт, когда закончу."
