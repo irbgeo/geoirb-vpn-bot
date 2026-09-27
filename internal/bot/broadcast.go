@@ -98,16 +98,26 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 			r.life,
 			broadcastJob{
 				AdminChat:  a.ChatID,
-				Text:       p.Text,
 				Recipients: ids,
+				Deliver: func(ctx context.Context, id int64) error {
+					return r.send.Send(
+						ctx,
+						OutMessage{
+							ChatID: id,
+							Text:   p.Text,
+						},
+					)
+				},
+				Report: broadcastReportText,
 			},
 		)
 	})
 	return err
 }
 
-// runBroadcast sends the text one by one with a pause, then reports how
-// many got it. On shutdown (ctx done) it stops and reports what went out.
+// runBroadcast runs job.Deliver for each recipient with a pause, then
+// reports how many got it. On shutdown (ctx done) it stops and reports
+// what went out.
 func (r *Router) runBroadcast(ctx context.Context, job broadcastJob) {
 	res := broadcastResult{}
 send:
@@ -119,14 +129,7 @@ send:
 			case <-time.After(r.pause):
 			}
 		}
-		err := r.send.Send(
-			ctx,
-			OutMessage{
-				ChatID: id,
-				Text:   job.Text,
-			},
-		)
-		if err != nil {
+		if err := job.Deliver(ctx, id); err != nil {
 			log.Printf("bot: broadcast to %d: %v", id, err)
 			res.Failed++
 		} else {
@@ -137,7 +140,7 @@ send:
 		context.WithoutCancel(ctx),
 		OutMessage{
 			ChatID: job.AdminChat,
-			Text:   broadcastReportText(res),
+			Text:   job.Report(res),
 		},
 	)
 	if err != nil {

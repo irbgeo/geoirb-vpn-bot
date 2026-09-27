@@ -20,11 +20,14 @@ const (
 		"⭐ AmneziaVPN — рекомендуем: iPhone, iPad, Android, Windows, macOS, Linux. " +
 		"Только в нём можно настроить, чтобы российские сайты открывались без VPN.\n" +
 		"• AmneziaWG — проще, только VPN: iPhone, iPad, Android.\n" +
-		"• Роутер (Keenetic, OpenWrt) — нужна прошивка с поддержкой AmneziaWG 2.0, напишите в /support.\n\n" +
+		"• DefaultVPN — iPhone, iPad (iOS 16+), тоже от Amnezia.\n" +
+		"• WG Tunnel — Android, Windows, Linux (сайт wgtunnel.com).\n" +
+		"• Роутер Keenetic — AWG Manager (ставится через Entware); другой роутер — напишите в /support.\n\n" +
 		"Установите приложение и нажмите «Дальше»."
 	importText = "🔑 Шаг 2. Добавьте ключ в приложение\n\n" +
 		"AmneziaVPN: «+» (Добавить) → отсканируйте QR-код выше или выберите файл .conf → «Подключиться».\n" +
-		"AmneziaWG: «+» → «Сканировать QR-код» или «Импорт из файла» → включите переключатель.\n\n" +
+		"AmneziaWG: «+» → «Сканировать QR-код» или «Импорт из файла» → включите переключатель.\n" +
+		"Другие приложения: добавьте туннель из QR-кода или файла .conf.\n\n" +
 		"Проверка: откройте 2ip.ru — должен быть виден IP сервера, а не ваш.\n" +
 		"Файл и QR — это ваш личный ключ: не пересылайте их другим людям."
 )
@@ -160,6 +163,7 @@ func mainKeyboard(role service.Role) *tgbot.InlineKeyboardMarkup {
 			tgbot.Row(tgbot.Button("👥 Пользователи", cbAdminUsers+"0")),
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
+			tgbot.Row(tgbot.Button("🔄 Обновить конфиги", cbAdminCfgs)),
 		)
 	}
 	return tgbot.InlineKeyboard(rows...)
@@ -326,6 +330,35 @@ func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
 			tgbot.Button("Отмена", cbAdminCanc),
 		),
 	)
+}
+
+const (
+	configsStartedText = "🔄 Обновление конфигов началось. Пришлю отчёт, когда закончу."
+	configsBusyText    = "🔄 Обновление конфигов уже идёт — дождитесь отчёта."
+	configsNoticeText  = "🔄 Настройки VPN-сервера изменились. Обновите ключ: " +
+		"удалите старое подключение в приложении и добавьте новое из файла или QR-кода ниже."
+)
+
+func configsAskText(recipients int) string {
+	return fmt.Sprintf(
+		"🔄 Отправить новый конфиг %d пользователям (всем, у кого есть включённый ключ)?\n\n"+
+			"Конфиг собирается из текущих настроек сервера и ENDPOINT_HOST. "+
+			"Если сменился IP и в ENDPOINT_HOST указан IP, сначала поменяйте его в .env и сделайте make deploy.",
+		recipients,
+	)
+}
+
+func configsKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.Button("🔄 Отправить", cbAdminCfgOK),
+			tgbot.Button("Отмена", cbAdminCanc),
+		),
+	)
+}
+
+func configsReportText(r broadcastResult) string {
+	return fmt.Sprintf("🔄 Конфиги отправлены: получили %d, не доставлено %d (заблокировали бота, удалили чат или ошибка).", r.Sent, r.Failed)
 }
 
 func broadcastReportText(r broadcastResult) string {

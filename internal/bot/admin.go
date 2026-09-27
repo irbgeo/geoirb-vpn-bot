@@ -33,6 +33,8 @@ const (
 	actBroadcast   = "bc"     // asks for the broadcast text
 	actBroadcastOK = "bcok"   // sends the previewed broadcast
 	actCancel      = "cancel" // drops what the bot waits for (broadcast text)
+	actConfigs     = "cfgs"   // asks to send every user a fresh config
+	actConfigsOK   = "cfgsok" // confirmed: send them
 	actRefund      = "ref"    // + user ID + ":" + payRef: asks to confirm
 	actRefundOK    = "refok"  // confirmed: return the Stars
 )
@@ -53,6 +55,8 @@ const (
 	cbAdminBc    = cbAdmin + actBroadcast
 	cbAdminBcOK  = cbAdmin + actBroadcastOK
 	cbAdminCanc  = cbAdmin + actCancel
+	cbAdminCfgs  = cbAdmin + actConfigs
+	cbAdminCfgOK = cbAdmin + actConfigsOK
 	cbAdminRef   = cbAdmin + actRefund + ":"
 	cbAdminRefOK = cbAdmin + actRefundOK + ":"
 
@@ -106,6 +110,10 @@ func (r *Router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return r.adminBroadcast(ctx, a)
 	case actCancel:
 		return r.adminCancel(ctx, a)
+	case actConfigs:
+		return r.adminConfigsAsk(ctx, a)
+	case actConfigsOK:
+		return r.adminConfigs(ctx, a)
 	case actRefund:
 		return r.adminRefundAsk(ctx, a)
 	case actRefundOK:

@@ -66,6 +66,7 @@ func TestAdminSeesAdminMenu(t *testing.T) {
 			"a:users:0",
 			"a:stats",
 			"a:bc",
+			"a:cfgs",
 		},
 	)
 }
@@ -513,4 +514,66 @@ func TestAdminBroadcastOutlivesTheHandlerContext(t *testing.T) {
 	}
 	require.Equal(t, 3, delivered, "every recipient gets it")
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "доставлено 3")
+}
+
+func TestAdminUpdateConfigs(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+		8,
+	}
+	svc.access = append(
+		svc.access,
+		service.KeyInfo{
+			Peer: &service.Peer{
+				PublicKey: "NOPRIV=",
+				Enabled:   true,
+			},
+		},
+		service.KeyInfo{
+			Peer: &service.Peer{
+				PublicKey: "OFF=",
+			},
+		},
+	)
+	r, s := newRouter(svc)
+	r.pause = 0
+	s.fail[8] = true
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	ask := s.sent[0]
+	require.Contains(t, ask.Text, "2 пользователям")
+	require.Contains(t, ask.Text, "ENDPOINT_HOST")
+	require.Equal(t, "a:cfgsok", ask.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Equal(t, "a:cancel", ask.Keyboard.InlineKeyboard[0][1].CallbackData)
+
+	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
+	r.Wait()
+	require.Contains(t, s.sent[1].Text, "началось", "the admin is told at once")
+	require.Equal(t, int64(7), s.sent[2].ChatID)
+	require.Contains(t, s.sent[2].Text, "Обновите")
+	require.Len(t, s.files, 2, "only the enabled key with a private key: .conf + QR, and only to user 7")
+	require.Equal(t, int64(7), s.files[0].ChatID)
+	require.Equal(t, int64(7), s.files[1].ChatID)
+	report := s.sent[len(s.sent)-1]
+	require.Equal(t, int64(42), report.ChatID)
+	require.Contains(t, report.Text, "получили 1")
+	require.Contains(t, report.Text, "не доставлено 1")
+}
+
+func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+
+	r.configsRunning = true
+	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
+	r.Wait()
+	require.Empty(t, s.files, "nothing sent while another run is going")
+	require.Contains(t, s.sent[0].Text, "уже идёт")
 }

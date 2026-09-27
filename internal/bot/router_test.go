@@ -408,6 +408,9 @@ func TestCreateKeyStepOneAsksToInstallAnApp(t *testing.T) {
 	for _, app := range []string{
 		"AmneziaVPN",
 		"AmneziaWG",
+		"WG Tunnel",
+		"DefaultVPN",
+		"AWG Manager",
 	} {
 		require.Contains(t, s.sent[0].Text, app)
 	}

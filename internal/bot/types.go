@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"context"
 	"time"
 
 	"strconv"
@@ -185,11 +186,14 @@ type broadcastView struct {
 	Text       string
 }
 
-// broadcastJob is a confirmed broadcast to send in the background.
+// broadcastJob is confirmed work to do for many users in the background
+// (a broadcast, fresh configs): Deliver runs for each recipient, Report
+// words the result for the admin.
 type broadcastJob struct {
 	AdminChat  int64
-	Text       string
 	Recipients []int64
+	Deliver    func(ctx context.Context, userID int64) error
+	Report     func(broadcastResult) string
 }
 
 // broadcastResult counts delivered and failed broadcast messages.

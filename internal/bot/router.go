@@ -91,6 +91,9 @@ type Router struct {
 	// refunding: charge IDs an admin refund is running for, so a double
 	// press doesn't call Telegram twice.
 	refunding map[string]bool
+	// configsRunning: a "send everyone a fresh config" run is going; a
+	// second press waits for it to end.
+	configsRunning bool
 	// jobs: background work (broadcasts) that Close waits for. They run on
 	// life, not on an update's ctx: go-tgbot's Dispatcher cancels that one
 	// as soon as the handler returns.
