@@ -37,3 +37,9 @@ type cpuTimes struct {
 	Busy  uint64
 	Total uint64
 }
+
+// share is Part out of Whole, for percent.
+type share struct {
+	Part  uint64
+	Whole uint64
+}

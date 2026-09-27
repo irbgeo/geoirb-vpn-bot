@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -31,15 +32,20 @@ func (s *Service) Extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	return s.extend(ctx, in)
 }
 
-// Disable removes the key from the server; it stays in the DB (with its IP
-// reserved) so Enable or Extend can bring it back unchanged.
+// Disable is the admin's block: it removes the key from the server and
+// marks it Blocked, so buying can't turn it back on. The key stays in the
+// DB (with its IP reserved) so Enable or Extend can bring it back.
 func (s *Service) Disable(ctx context.Context, publicKey string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	p, err := s.ourPeer(ctx, publicKey)
-	if err != nil || !p.Enabled {
+	if err != nil {
 		return err
+	}
+	p.Blocked = true
+	if !p.Enabled { // already off (e.g. expired): only the block is new
+		return s.peers.Save(ctx, p)
 	}
 	return s.disablePeer(ctx, p)
 }
@@ -56,6 +62,7 @@ func (s *Service) Enable(ctx context.Context, publicKey string) error {
 	if !p.ExpiresAt.IsZero() && !p.ExpiresAt.After(s.now()) {
 		return ErrExpired // Maintain would disable it again within a minute
 	}
+	p.Blocked = false
 	return s.enableAndSave(ctx, p)
 }
 
@@ -150,9 +157,13 @@ func (s *Service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 		}
 		// A docker timeout can come after the command already ran in the
 		// container: take the peer off again, or it stays with no owner.
-		if rmErr := s.removePeer(rollback, p.PublicKey); rmErr != nil {
-			log.Printf("service: issue rollback on the server for %s: %v", p.IP, rmErr)
-		}
+		s.takeOff(
+			rollback,
+			takeOffInput{
+				Peer:  p,
+				Cause: err,
+			},
+		)
 		return nil, err
 	}
 	s.countKeys(
@@ -214,18 +225,32 @@ func serverPeer(p *Peer) amnezia.Peer {
 	}
 }
 
-// removePeer takes one peer off the server config (no clientsTable change)
-// if it is there; a peer that never got on costs no syncconf.
-func (s *Service) removePeer(ctx context.Context, publicKey string) error {
+// takeOff undoes a failed attempt to put a key on the server: it removes
+// the peer from the config and the key from the Amnezia app's list. A peer
+// missing from the file costs no syncconf, unless the failure left the
+// live interface ahead of the file (amnezia.ErrNotPersisted): then the
+// update re-syncs the live interface from the file. Errors are logged:
+// this runs on an error path already.
+func (s *Service) takeOff(ctx context.Context, in takeOffInput) {
+	p := in.Peer
+	if err := s.removePeer(ctx, in); err != nil {
+		log.Printf("service: roll back %s on the server: %v", p.IP, err)
+	}
+	if err := s.vpn.RemoveClient(ctx, p.PublicKey); err != nil {
+		log.Printf("service: roll back %s in clientsTable: %v", p.IP, err)
+	}
+}
+
+func (s *Service) removePeer(ctx context.Context, in takeOffInput) error {
 	c, err := s.vpn.ReadConf(ctx)
 	if err != nil {
 		return err
 	}
-	if c.FindPeer(publicKey) == nil {
+	if c.FindPeer(in.Peer.PublicKey) == nil && !errors.Is(in.Cause, amnezia.ErrNotPersisted) {
 		return nil
 	}
 	return s.vpn.Update(ctx, func(c *amnezia.ServerConf) error {
-		c.RemovePeer(publicKey)
+		c.RemovePeer(in.Peer.PublicKey)
 		return nil
 	})
 }
@@ -262,6 +287,7 @@ func (s *Service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	}
 	p.Reminded3d = false
 	p.Reminded1d = false
+	p.Blocked = false // only admins and paying users get here; checkBuyer stops a blocked buyer
 	if err := s.enableAndSave(ctx, p); err != nil {
 		return nil, err
 	}
@@ -281,13 +307,21 @@ func (s *Service) ourPeer(ctx context.Context, publicKey string) (*Peer, error) 
 }
 
 // enableAndSave puts a disabled key back on the server and saves p. If
-// the save fails, the peer is taken off again: the server must not run a
-// key the DB calls disabled (it would never be expired). The caller holds
-// s.mu.
+// either step fails, the peer is taken off again: the server must not run
+// a key the DB calls disabled (it would never be expired). A docker
+// timeout can come after the command already ran, so a failed add is
+// undone too. The caller holds s.mu.
 func (s *Service) enableAndSave(ctx context.Context, p *Peer) error {
 	wasEnabled := p.Enabled
 	if !wasEnabled {
 		if err := s.addToServer(ctx, p); err != nil {
+			s.undoEnable(
+				ctx,
+				takeOffInput{
+					Peer:  p,
+					Cause: err,
+				},
+			)
 			return err
 		}
 		p.Enabled = true
@@ -295,25 +329,42 @@ func (s *Service) enableAndSave(ctx context.Context, p *Peer) error {
 	if err := s.peers.Save(ctx, p); err != nil {
 		if !wasEnabled {
 			p.Enabled = false
-			if rmErr := s.removePeer(context.WithoutCancel(ctx), p.PublicKey); rmErr != nil {
-				log.Printf("service: roll back enabling %s: %v", p.IP, rmErr)
-			}
+			s.undoEnable(
+				ctx,
+				takeOffInput{
+					Peer:  p,
+					Cause: err,
+				},
+			)
 		}
 		return err
 	}
 	return nil
 }
 
+// undoEnable takes a key back off after a failed enable, even when ctx
+// is cancelled (the failure may be ctx itself). ErrIPTaken means nothing
+// was changed, so there is nothing to undo.
+func (s *Service) undoEnable(ctx context.Context, in takeOffInput) {
+	if errors.Is(in.Cause, ErrIPTaken) || errors.Is(in.Cause, ErrUnreadable) {
+		return
+	}
+	s.takeOff(context.WithoutCancel(ctx), in)
+}
+
 // addToServer adds the key's peer back, unless its IP was taken meanwhile
 // (e.g. by a peer created in the Amnezia app).
 func (s *Service) addToServer(ctx context.Context, p *Peer) error {
+	if p.Unreadable {
+		return ErrUnreadable // no PSK to put on the server
+	}
 	err := s.vpn.Update(ctx, func(c *amnezia.ServerConf) error {
 		for _, other := range c.Peers {
 			if other.PublicKey == p.PublicKey {
 				return nil
 			}
 			if slices.Contains(allowedIPs(other.AllowedIPs), p.IP+"/32") {
-				return fmt.Errorf("service: IP %s is taken on the server by another peer", p.IP)
+				return fmt.Errorf("%w: %s", ErrIPTaken, p.IP)
 			}
 		}
 		c.AddPeer(serverPeer(p))

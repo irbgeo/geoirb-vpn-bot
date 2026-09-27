@@ -102,12 +102,16 @@ Telegram-бот, который продаёт доступ к VPN на AmneziaW
    - собирает конфиг сервера (`scripts/server-env.sh`): берёт `.env`, **убирает**
      локальные настройки (`TELEGRAM_TEST_ENV`, `DOCKER_BIN`, `MONGO_*`) и добавляет
      `MONGO_URI` с паролем из `server-infra`;
-   - создаёт пользователя `vpnbot` (в группе `docker`), ставит бота как
-     systemd-сервис `geoirb-vpn-bot` и таймер бэкапа, перезапускает, показывает лог;
+   - на сервере запускает `deploy/install.sh`: создаёт пользователя `vpnbot` (в группе
+     `docker`), ставит бота как systemd-сервис `geoirb-vpn-bot` и таймер бэкапа,
+     **делает бэкап до перезапуска** (упал бэкап — старый бот продолжает работать),
+     потом ставит новый бинарник, перезапускает и показывает лог;
    - настраивает сервер для нагрузки (без перезапуска VPN): таблица соединений
      65536 (`deploy/99-geoirb-vpn.conf`, по умолчанию на 1 ГБ — 7680, это ~25
      активных пользователей) и ограничение TCP-пакетов до 1380 байт
      (`geoirb-vpn-mss.service`), чтобы пакеты VPN не резались в сети GCP (MTU 1460).
+     У контейнера Amnezia своя сетевая область: таймаут TCP-соединения (2 ч вместо
+     5 дней) в неё раз в 5 минут копирует `geoirb-vpn-conntrack.timer`.
 7. **Первый админ.** Напишите боту `/start`, затем в Mongo (база `geoirb_vpn`):
    ```js
    db.users.updateOne({_id: <ваш Telegram ID>}, {$set: {role: "admin"}})
@@ -179,7 +183,7 @@ systemctl restart geoirb-vpn-bot
 ## Разработка
 
 ```bash
-make test     # Go-тесты (store — нужен Mongo на localhost:27017) и тест server-env
+make test     # Go-тесты (store — нужен Mongo на localhost:27017) и тесты скриптов
 make lint
 ```
 

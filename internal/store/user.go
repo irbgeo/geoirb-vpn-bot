@@ -85,7 +85,8 @@ func (r *UserRepo) ByRole(ctx context.Context, role service.Role) ([]*service.Us
 	return usersToService(docs), nil
 }
 
-// List returns one page of users, newest first, and the total count.
+// List returns one page of users grouped by role (users, unlimited,
+// admins), newest first inside a role, and the total count.
 func (r *UserRepo) List(ctx context.Context, p service.Page) ([]*service.User, int64, error) {
 	total, err := r.coll.CountDocuments(ctx, matchAll())
 	if err != nil {

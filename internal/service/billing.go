@@ -104,10 +104,17 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 	if err != nil {
 		return nil, err
 	}
+	if err := s.pickKey(ctx, pu); err != nil {
+		return nil, err
+	}
 	if pay == nil {
+		// PeerKey is the key to extend ("" = a new key), known before the
+		// days are added: if the bot stops in the middle, admins see which
+		// key to check before refunding.
 		pay = &Payment{
 			ChargeID:  in.ChargeID,
 			UserID:    pu.UserID,
+			PeerKey:   pu.PublicKey,
 			Stars:     in.Stars,
 			Days:      pu.Days,
 			CreatedAt: s.now(),
@@ -122,13 +129,15 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		return nil, err
 	}
 	res.Days = pu.Days
-	pay.Applied = true
-	pay.PeerKey = res.Peer.PublicKey
-	if err := s.payments.Save(ctx, pay); err != nil {
+	mark := PaymentMark{
+		ChargeID: in.ChargeID,
+		PeerKey:  res.Peer.PublicKey,
+	}
+	if err := s.payments.MarkApplied(ctx, mark); err != nil {
 		// The days are given: no refund. One more try on a context that a
 		// shutdown can't cancel; if that fails too, the record stays
 		// unapplied and UnfinishedPayments shows it to the admins.
-		if err := s.payments.Save(context.WithoutCancel(ctx), pay); err != nil {
+		if err := s.payments.MarkApplied(context.WithoutCancel(ctx), mark); err != nil {
 			log.Printf("service: payment %s applied but not marked: %v", in.ChargeID, err)
 		}
 	}
@@ -160,12 +169,13 @@ func (s *Service) Payments(ctx context.Context, userID int64) ([]*Payment, error
 // MarkRefunded records that the Stars of a charge were returned. A charge
 // that never got a record (refused before saving) is fine.
 func (s *Service) MarkRefunded(ctx context.Context, chargeID string) error {
-	p, err := s.payments.Get(ctx, chargeID)
-	if err != nil || p == nil {
-		return err
-	}
-	p.RefundedAt = s.now()
-	return s.payments.Save(ctx, p)
+	return s.payments.MarkRefunded(
+		ctx,
+		PaymentMark{
+			ChargeID: chargeID,
+			At:       s.now(),
+		},
+	)
 }
 
 func (s *Service) tariff(days int) (Tariff, bool) {
@@ -207,6 +217,9 @@ func (s *Service) checkBuyer(ctx context.Context, in PurchaseInput) error {
 	}
 	if p.ExpiresAt.IsZero() {
 		return ErrNotForSale // the key never ends
+	}
+	if p.Blocked {
+		return ErrBlocked
 	}
 	return nil
 }
@@ -255,20 +268,27 @@ func (s *Service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 	return pu, nil
 }
 
+// pickKey fills in the key a purchase extends when the invoice named
+// none: the user's first key that can end, or "" for a new key.
+func (s *Service) pickKey(ctx context.Context, pu *PurchaseInput) error {
+	if pu.PublicKey != "" {
+		return nil
+	}
+	keys, err := s.peers.ByUser(ctx, pu.UserID)
+	if err != nil {
+		return err
+	}
+	if p := firstTimed(keys); p != nil {
+		pu.PublicKey = p.PublicKey
+	}
+	return nil
+}
+
 // applyPurchase adds the paid days: to the chosen key, else to the user's
 // first key, else to a new key. Buying ends any chance of a trial. The
 // caller holds s.mu.
 func (s *Service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayResult, error) {
-	key := pu.PublicKey
-	if key == "" {
-		keys, err := s.peers.ByUser(ctx, pu.UserID)
-		if err != nil {
-			return nil, err
-		}
-		if p := firstTimed(keys); p != nil {
-			key = p.PublicKey
-		}
-	}
+	key := pu.PublicKey // picked by pickKey; "" = a new key
 
 	res := &PayResult{}
 	var err error

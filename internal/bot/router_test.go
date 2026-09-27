@@ -92,31 +92,33 @@ func (f *fakeSender) Send(_ context.Context, m OutMessage) error {
 }
 
 type fakeService struct {
-	createdWith []service.CreateKeyInput
-	registered  []service.RegisterInput
-	role        service.Role
-	admins      []*service.User
-	report      *service.ReconcileReport
-	reportErr   error
-	created     *service.Peer
-	createErr   error
-	access      []service.KeyInfo
-	askedKey    service.UserKey
-	users       []*service.User
-	calls       []string
-	issued      []service.IssueInput
-	invoiceIn   service.PurchaseInput
-	invoiceErr  error
-	checkErr    error
-	payRes      *service.PayResult
-	payErr      error
-	refunded    []string
-	payments    []*service.Payment
-	unfinished  []*service.Payment
-	stats       *service.Stats
-	recipients  []int64
-	configErr   error
-	enableErr   error
+	recipientsErr error
+	refundMarkErr error
+	createdWith   []service.CreateKeyInput
+	registered    []service.RegisterInput
+	role          service.Role
+	admins        []*service.User
+	report        *service.ReconcileReport
+	reportErr     error
+	created       *service.Peer
+	createErr     error
+	access        []service.KeyInfo
+	askedKey      service.UserKey
+	users         []*service.User
+	calls         []string
+	issued        []service.IssueInput
+	invoiceIn     service.PurchaseInput
+	invoiceErr    error
+	checkErr      error
+	payRes        *service.PayResult
+	payErr        error
+	refunded      []string
+	payments      []*service.Payment
+	unfinished    []*service.Payment
+	stats         *service.Stats
+	recipients    []int64
+	configErr     error
+	enableErr     error
 }
 
 func (f *fakeService) Stats(context.Context) (*service.Stats, error) {
@@ -124,7 +126,7 @@ func (f *fakeService) Stats(context.Context) (*service.Stats, error) {
 }
 
 func (f *fakeService) BroadcastRecipients(context.Context) ([]int64, error) {
-	return f.recipients, nil
+	return f.recipients, f.recipientsErr
 }
 
 func (f *fakeService) UnfinishedPayments(context.Context) ([]*service.Payment, error) {
@@ -169,6 +171,9 @@ func (f *fakeService) Pay(context.Context, service.PaymentInput) (*service.PayRe
 }
 
 func (f *fakeService) MarkRefunded(_ context.Context, chargeID string) error {
+	if f.refundMarkErr != nil {
+		return f.refundMarkErr
+	}
 	f.refunded = append(f.refunded, chargeID)
 	for _, p := range f.payments {
 		if p.ChargeID == chargeID {
@@ -330,7 +335,8 @@ func startUpdate(text string) tgbot.Update {
 		Message: &tgbot.Message{
 			Text: text,
 			Chat: tgbot.Chat{
-				ID: 42,
+				ID:   42,
+				Type: "private",
 			},
 			From: &tgbot.User{
 				ID:       42,
@@ -414,7 +420,8 @@ func pressCreateKey() tgbot.Update {
 			},
 			Message: &tgbot.Message{
 				Chat: tgbot.Chat{
-					ID: 42,
+					ID:   42,
+					Type: "private",
 				},
 			},
 		},
@@ -614,7 +621,7 @@ func TestCreateKeyErrorsExplained(t *testing.T) {
 	for err, want := range map[error]string{
 		service.ErrHasKey:    "уже есть ключ",
 		service.ErrTrialUsed: "Пробный период уже использован",
-		service.ErrKeyLimit:  "3 ключа",
+		service.ErrKeyLimit:  "максимум — 3",
 	} {
 		r, s := newRouter(
 			&fakeService{

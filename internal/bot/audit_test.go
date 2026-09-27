@@ -88,7 +88,7 @@ func TestPendingBroadcastExpiresAndCanBeCancelled(t *testing.T) {
 		return n
 	}
 
-	r.setPending(
+	r.dialogs.set(
 		pendingInput{
 			ChatID: 42,
 			Kind:   pendingBroadcast,

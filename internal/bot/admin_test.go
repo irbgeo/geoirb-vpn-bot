@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	tgbot "github.com/irbgeo/go-tgbot"
 	"path/filepath"
@@ -485,7 +486,7 @@ func TestAdminRefundInProgressIsNotStartedTwice(t *testing.T) {
 	}
 	confirm := "a:refok:" + ask[len("a:ref:"):]
 	charge := "stxLongTelegramChargeID-0123456789-abcdefghijklmnopqrstuvwxyz"
-	r.refunding[charge] = true // another press is refunding it right now
+	require.True(t, r.refunds.start(charge)) // another press is refunding it right now
 
 	require.NoError(t, r.Handle(ctx, press(confirm)))
 	require.Empty(t, s.refunds, "no second refund call")
@@ -579,7 +580,7 @@ func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
 	r.pause = 0
 	ctx := context.Background()
 
-	r.configsRunning = true
+	require.True(t, r.jobs.reserve()) // another mass send is running
 	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
 	r.Wait()
 	require.Empty(t, s.files, "nothing sent while another run is going")
@@ -615,7 +616,7 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 	require.Contains(t, preview.Text, "1 пользователям")
 	require.Contains(t, strings.ToLower(preview.Text), "технические работы")
 	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
-	require.False(t, r.maintenance(), "nothing changes before send (/menu here would drop the preview)")
+	require.False(t, r.maint.on(), "nothing changes before send (/menu here would drop the preview)")
 
 	require.NoError(t, r.Handle(ctx, press("a:bcok")))
 	r.Wait()
@@ -643,7 +644,7 @@ func TestMaintenanceCancelKeepsTheState(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
 	require.NoError(t, r.Handle(ctx, press("a:bcok")))
 	r.Wait()
-	require.False(t, r.maintenance())
+	require.False(t, r.maint.on())
 	require.Empty(t, sentTo(s, 7))
 }
 
@@ -670,7 +671,7 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 	r.Wait()
 	require.FileExists(t, flag)
 
-	require.True(t, New(deps).maintenance(), "a new process reads the flag file")
+	require.True(t, New(deps).maint.on(), "a new process reads the flag file")
 }
 
 // sentTo returns the messages sent to one chat.
@@ -730,4 +731,42 @@ func TestConfigCaptionNamesTheKey(t *testing.T) {
 		),
 		"mac",
 	)
+}
+
+func TestAdminRefundTellsWhenTheRecordFailed(t *testing.T) {
+	svc := withPayments(adminService())
+	svc.refundMarkErr = errors.New("mongo down")
+	r, s := newRouter(svc)
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:user:7")))
+	var ask string
+	for _, b := range buttons(s.edits[0]) {
+		if strings.HasPrefix(b, "a:ref:") {
+			ask = b
+		}
+	}
+	require.NoError(t, r.Handle(ctx, press(ask)))
+	require.NoError(t, r.Handle(ctx, press(buttons(s.edits[1])[0])))
+
+	require.Len(t, s.refunds, 1)
+	var told bool
+	for _, m := range sentTo(s, 42) {
+		told = told || strings.Contains(m.Text, "не записан")
+	}
+	require.True(t, told, "the admin knows the Stars went back but the record did not change")
+}
+
+func TestUnfinishedPaymentNamesTheKeyToCheck(t *testing.T) {
+	text := unfinishedPaymentsText(
+		[]*service.Payment{
+			{
+				UserID:  7,
+				Stars:   150,
+				Days:    30,
+				PeerKey: "ABCDEFGHIJ=",
+			},
+		},
+	)
+	require.Contains(t, text, "ABCDEFGH")
+	require.Contains(t, text, "могли уже добавиться")
 }

@@ -270,7 +270,9 @@ func TestEnableFailsWhenIPTakenOnServer(t *testing.T) {
 	require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
 	e.vpn.conf += "\n[Peer]\nPublicKey = MANUAL2=\nAllowedIPs = 10.8.1.2/32\n"
 
-	require.ErrorContains(t, e.svc.Enable(ctx, p.PublicKey), "10.8.1.2 is taken")
+	err := e.svc.Enable(ctx, p.PublicKey)
+	require.ErrorIs(t, err, ErrIPTaken)
+	require.ErrorContains(t, err, "10.8.1.2")
 	require.False(t, e.peers.m[p.PublicKey].Enabled)
 }
 

@@ -2,7 +2,9 @@
 Description=geoirb VPN Telegram bot (sells and manages AmneziaWG keys)
 After=network-online.target docker.service
 Wants=network-online.target
-Requires=docker.service
+# Wants, not Requires: a docker stop + start must not leave the bot stopped
+# (Restart=always does not act on a stop caused by a dependency).
+Wants=docker.service
 
 [Service]
 User=vpnbot

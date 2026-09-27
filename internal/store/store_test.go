@@ -355,9 +355,29 @@ func TestPaymentRoundTripAndQueries(t *testing.T) {
 	_, err = s.Payments.Add(ctx, old)
 	require.NoError(t, err)
 
+	require.NoError(
+		t,
+		s.Payments.MarkApplied(
+			ctx,
+			service.PaymentMark{
+				ChargeID: p.ChargeID,
+				PeerKey:  "PUB=",
+			},
+		),
+	)
+	require.NoError(
+		t,
+		s.Payments.MarkRefunded(
+			ctx,
+			service.PaymentMark{
+				ChargeID: p.ChargeID,
+				At:       ts("2026-09-28T10:00:00Z"),
+			},
+		),
+	)
 	p.Applied = true
+	p.PeerKey = "PUB="
 	p.RefundedAt = ts("2026-09-28T10:00:00Z")
-	require.NoError(t, s.Payments.Save(ctx, p))
 	got, err = s.Payments.Get(ctx, "charge-1")
 	require.NoError(t, err)
 	require.Equal(t, p, got)
@@ -366,6 +386,26 @@ func TestPaymentRoundTripAndQueries(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, byUser, 2)
 	require.Equal(t, "charge-1", byUser[0].ChargeID, "newest first")
+
+	require.Error(
+		t,
+		s.Payments.MarkApplied(
+			ctx,
+			service.PaymentMark{
+				ChargeID: "missing",
+			},
+		),
+	)
+	require.NoError(
+		t,
+		s.Payments.MarkRefunded(
+			ctx,
+			service.PaymentMark{
+				ChargeID: "missing",
+			},
+		),
+		"refunding a charge with no record is fine",
+	)
 
 	since, err := s.Payments.Since(ctx, ts("2026-09-01T00:00:00Z"))
 	require.NoError(t, err)
@@ -423,7 +463,7 @@ func TestSetTrialUsed(t *testing.T) {
 	require.Equal(t, service.RoleUser, got.Role)
 }
 
-func TestPeerListsSkipUnreadableRowsButReserveTheirIPs(t *testing.T) {
+func TestPeerListsKeepUnreadableRowsWithoutSecrets(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	require.NoError(t, s.Peers.Save(ctx, testPeer()))
@@ -444,11 +484,51 @@ func TestPeerListsSkipUnreadableRowsButReserveTheirIPs(t *testing.T) {
 
 	ps, err := s.Peers.ByServer(ctx, "geoirb-vpn")
 	require.NoError(t, err, "one bad row must not stop the rest")
-	require.Len(t, ps, 1)
+	require.Len(t, ps, 2, "the bad row is kept, so it still expires")
+	var bad *service.Peer
+	for _, p := range ps {
+		if p.PublicKey == "BROKEN=" {
+			bad = p
+		}
+	}
+	require.NotNil(t, bad)
+	require.True(t, bad.Unreadable)
+	require.Empty(t, bad.PrivateKey)
+	require.Empty(t, bad.PSK)
+	require.Equal(t, "10.8.1.11", bad.IP)
+
+	bad.Enabled = false
+	require.NoError(t, s.Peers.Save(ctx, bad))
+	var raw bson.M
+	require.NoError(t, s.Peers.coll.FindOne(ctx, byID("BROKEN=")).Decode(&raw))
+	require.Equal(t, "v1:garbage", raw["psk"], "saving the metadata keeps the sealed secrets")
+	require.Equal(t, false, raw["enabled"])
 
 	ips, err := s.Peers.ServerIPs(ctx, "geoirb-vpn")
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"10.8.1.10", "10.8.1.11"}, ips, "its IP stays taken")
+}
+
+func TestConnectAcceptsOneBadRowAmongGoodOnes(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	broken := testPeer()
+	broken.PublicKey = "BROKEN="
+	broken.IP = "10.8.1.9"
+	require.NoError(t, s.Peers.Save(ctx, broken)) // first in natural order
+	_, err := s.Peers.coll.UpdateOne(
+		ctx,
+		byID("BROKEN="),
+		bson.M{
+			"$set": bson.M{
+				"psk": "v1:garbage",
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, s.Peers.Save(ctx, testPeer()))
+
+	require.NoError(t, s.Peers.checkKey(ctx), "the key opens the other rows")
 }
 
 func TestConnectRefusesAWrongSecretKey(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"unicode"
@@ -57,7 +56,8 @@ func (s *Service) User(ctx context.Context, id int64) (*User, error) {
 	return u, nil
 }
 
-// Users returns one page of users, newest first, and the total count.
+// Users returns one page of users grouped by role (users, unlimited,
+// admins), newest first inside a role, and the total count.
 func (s *Service) Users(ctx context.Context, p Page) ([]*User, int64, error) {
 	return s.users.List(ctx, p)
 }
@@ -182,10 +182,8 @@ func (s *Service) startTrial(ctx context.Context, in trialInput) (*Peer, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.users.SetTrialUsed(ctx, u.ID); err != nil {
-		// The key exists, so ErrHasKey still blocks a second trial key.
-		log.Printf("service: mark trial used for %d: %v", u.ID, err)
-	}
+	// Best effort: the key exists, so ErrHasKey still blocks a second trial.
+	s.markTrialUsed(ctx, u.ID)
 	return p, nil
 }
 

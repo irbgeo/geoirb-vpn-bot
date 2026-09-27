@@ -96,6 +96,46 @@ func countedExcept(ids []int64) bson.M {
 	}
 }
 
+func markApplied(peerKey string) bson.M {
+	return bson.M{
+		"$set": bson.M{
+			"applied":  true,
+			"peer_key": peerKey,
+		},
+	}
+}
+
+func markRefunded(t time.Time) bson.M {
+	return bson.M{
+		"$set": bson.M{
+			"refunded_at": t,
+		},
+	}
+}
+
+// setPeerMeta updates every field of a peer except its sealed secrets.
+func setPeerMeta(d *peer) bson.M {
+	return bson.M{
+		"$set": bson.M{
+			"server_id":   d.ServerID,
+			"user_id":     d.UserID,
+			"name":        d.Name,
+			"ip":          d.IP,
+			"enabled":     d.Enabled,
+			"expires_at":  d.ExpiresAt,
+			"reminded_3d": d.Reminded3d,
+			"reminded_1d": d.Reminded1d,
+			"blocked":     d.Blocked,
+			"created_at":  d.CreatedAt,
+		},
+	}
+}
+
+// sample limits a find to n documents.
+func sample(n int64) *options.FindOptions {
+	return options.Find().SetLimit(n)
+}
+
 func setTrialUsed() bson.M {
 	return bson.M{
 		"$set": bson.M{

@@ -166,7 +166,8 @@ func (f *fakePayments) Get(_ context.Context, id string) (*Payment, error) {
 	return &p, nil
 }
 
-func (f *fakePayments) Save(_ context.Context, p *Payment) error {
+// MarkApplied / MarkRefunded change only their own fields, like the store.
+func (f *fakePayments) MarkApplied(_ context.Context, m PaymentMark) error {
 	if f.saveErr != nil {
 		return f.saveErr
 	}
@@ -174,7 +175,26 @@ func (f *fakePayments) Save(_ context.Context, p *Payment) error {
 		f.saveFails--
 		return errBoom
 	}
-	f.m[p.ChargeID] = *p
+	p, ok := f.m[m.ChargeID]
+	if !ok {
+		return errors.New("no payment")
+	}
+	p.Applied = true
+	p.PeerKey = m.PeerKey
+	f.m[m.ChargeID] = p
+	return nil
+}
+
+func (f *fakePayments) MarkRefunded(_ context.Context, m PaymentMark) error {
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	p, ok := f.m[m.ChargeID]
+	if !ok {
+		return nil
+	}
+	p.RefundedAt = m.At
+	f.m[m.ChargeID] = p
 	return nil
 }
 

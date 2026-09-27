@@ -96,6 +96,19 @@ func TestTariffForUnlimitedExplains(t *testing.T) {
 	require.Contains(t, s.sent[0].Text, "платить не нужно")
 }
 
+func TestBlockedKeyPurchaseExplains(t *testing.T) {
+	r, s := newRouter(
+		&fakeService{
+			invoiceErr: service.ErrBlocked,
+		},
+	)
+
+	require.NoError(t, r.Handle(context.Background(), press("buy:30")))
+	require.Empty(t, s.invoices)
+	require.Contains(t, s.sent[0].Text, "отключил администратор")
+	require.Contains(t, preCheckoutErrorText(service.ErrBlocked), "отключил администратор")
+}
+
 func preCheckout() tgbot.Update {
 	return tgbot.Update{
 		PreCheckoutQuery: &tgbot.PreCheckoutQuery{
@@ -135,7 +148,10 @@ func TestPreCheckout(t *testing.T) {
 func paid() tgbot.Update {
 	return tgbot.Update{
 		Message: &tgbot.Message{
-			Chat: tgbot.Chat{ID: 42},
+			Chat: tgbot.Chat{
+				ID:   42,
+				Type: "private",
+			},
 			From: &tgbot.User{
 				ID:       42,
 				Username: "bob",
@@ -345,7 +361,7 @@ func TestReconcileReportsUnfinishedPayments(t *testing.T) {
 
 	r.Reconcile(context.Background())
 	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "не применены")
+	require.Contains(t, s.sent[0].Text, "не отмечены как применённые")
 	require.Contains(t, s.sent[0].Text, "id 42")
 	require.Contains(t, s.sent[0].Text, "150 ⭐")
 }

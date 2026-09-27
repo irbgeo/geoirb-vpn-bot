@@ -17,32 +17,6 @@ import (
 const recoverGap = 10
 
 // limits: CPU must be high for 5 checks (minutes) in a row, short peaks are
-// normal; the rest alert at once.
-func limits() []limit {
-	return []limit{
-		{
-			Metric:  Conntrack,
-			Percent: 80,
-			Checks:  1,
-		},
-		{
-			Metric:  Memory,
-			Percent: 90,
-			Checks:  1,
-		},
-		{
-			Metric:  Disk,
-			Percent: 90,
-			Checks:  1,
-		},
-		{
-			Metric:  CPU,
-			Percent: 85,
-			Checks:  5,
-		},
-	}
-}
-
 // Monitor keeps what it needs between checks: the last CPU counters and
 // which metrics are high. Not safe for concurrent use (one worker calls it).
 type Monitor struct {
@@ -129,6 +103,32 @@ func (m *Monitor) usage() (map[Metric]int, error) {
 	return u, errors.Join(errs...)
 }
 
+// normal; the rest alert at once.
+func limits() []limit {
+	return []limit{
+		{
+			Metric:  Conntrack,
+			Percent: 80,
+			Checks:  1,
+		},
+		{
+			Metric:  Memory,
+			Percent: 90,
+			Checks:  1,
+		},
+		{
+			Metric:  Disk,
+			Percent: 90,
+			Checks:  1,
+		},
+		{
+			Metric:  CPU,
+			Percent: 85,
+			Checks:  5,
+		},
+	}
+}
+
 func (m *Monitor) conntrack() (int, error) {
 	count, err := m.readInt("sys/net/netfilter/nf_conntrack_count")
 	if err != nil {
@@ -138,7 +138,10 @@ func (m *Monitor) conntrack() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return percent(count, limit), nil
+	return share{
+		Part:  count,
+		Whole: limit,
+	}.percent(), nil
 }
 
 func (m *Monitor) readInt(name string) (uint64, error) {
@@ -175,7 +178,10 @@ func (m *Monitor) memory() (int, error) {
 	if total == 0 {
 		return 0, errors.New("sysload: no MemTotal in meminfo")
 	}
-	return percent(total-min(avail, total), total), nil
+	return share{
+		Part:  total - min(avail, total),
+		Whole: total,
+	}.percent(), nil
 }
 
 // cpu is the busy share since the last call; ok is false on the first call.
@@ -189,7 +195,10 @@ func (m *Monitor) cpu() (p int, ok bool, err error) {
 	if prev == nil || now.Total <= prev.Total {
 		return 0, false, nil
 	}
-	return percent(now.Busy-prev.Busy, now.Total-prev.Total), true, nil
+	return share{
+		Part:  now.Busy - prev.Busy,
+		Whole: now.Total - prev.Total,
+	}.percent(), true, nil
 }
 
 // cpuTimes reads the first line of /proc/stat: "cpu user nice system idle
@@ -227,12 +236,16 @@ func diskUsed(path string) (int, error) {
 		return 0, fmt.Errorf("sysload: statfs %s: %w", path, err)
 	}
 	used := st.Blocks - st.Bfree
-	return percent(used, used+st.Bavail), nil
+	return share{
+		Part:  used,
+		Whole: used + st.Bavail,
+	}.percent(), nil
 }
 
-func percent(part, whole uint64) int {
-	if whole == 0 {
+// percent is Part as a share of Whole, 0 when Whole is 0.
+func (s share) percent() int {
+	if s.Whole == 0 {
 		return 0
 	}
-	return int(part * 100 / whole)
+	return int(s.Part * 100 / s.Whole)
 }

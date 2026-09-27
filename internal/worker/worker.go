@@ -8,14 +8,22 @@ import (
 	"time"
 )
 
-// runLimit bounds one pass: under the service's TimeoutStopSec (60 s).
-const runLimit = 45 * time.Second
+// maintainLimit and deliverLimit bound one pass. Each step gets its own
+// limit, so slow docker can't leave the notices a dead context (their
+// "sent" marks are already saved, so they would be lost). Together they
+// stay under the service's TimeoutStopSec (60 s).
+const (
+	maintainLimit = 25 * time.Second
+	deliverLimit  = 25 * time.Second
+)
 
 // Worker runs Job every Every and hands the result to Delivery.
 type Worker struct {
-	job      Job
-	delivery Delivery
-	every    time.Duration
+	job           Job
+	delivery      Delivery
+	every         time.Duration
+	maintainLimit time.Duration
+	deliverLimit  time.Duration
 }
 
 // New creates a Worker.
@@ -23,9 +31,11 @@ func New(
 	in *Input,
 ) *Worker {
 	return &Worker{
-		job:      in.Job,
-		delivery: in.Delivery,
-		every:    in.Every,
+		job:           in.Job,
+		delivery:      in.Delivery,
+		every:         in.Every,
+		maintainLimit: maintainLimit,
+		deliverLimit:  deliverLimit,
 	}
 }
 
@@ -46,15 +56,19 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-// once runs one pass. It is not cancelled with ctx (see Run), but it has a
-// time limit, so a hung docker can't hold it past systemd's stop timeout.
+// once runs one pass. It is not cancelled with ctx (see Run), but each
+// step has a time limit, so a hung docker can't hold it past systemd's
+// stop timeout.
 func (w *Worker) once(ctx context.Context) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), runLimit)
-	defer cancel()
-	m, err := w.job.Maintain(ctx)
+	base := context.WithoutCancel(ctx)
+	mctx, cancel := context.WithTimeout(base, w.maintainLimit)
+	m, err := w.job.Maintain(mctx)
+	cancel()
 	if err != nil {
 		log.Printf("worker: %v", err)
 		return
 	}
-	w.delivery.DeliverMaintenance(ctx, m)
+	dctx, cancel := context.WithTimeout(base, w.deliverLimit)
+	defer cancel()
+	w.delivery.DeliverMaintenance(dctx, m)
 }

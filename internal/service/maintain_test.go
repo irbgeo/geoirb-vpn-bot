@@ -118,8 +118,10 @@ func TestMaintainMakesKeysOfUnlimitedUsersForever(t *testing.T) {
 	stored.Reminded3d = true
 	stored.Reminded1d = true
 	e.peers.m[trial.PublicKey] = stored
-	require.NoError(t, e.svc.Disable(ctx, trial.PublicKey)) // ...and the key was disabled
-	e.setRole(t, 42, RoleUnlimited)                         // then the admin made them unlimited
+	_, err = e.svc.Maintain(ctx) // ...and expiry disabled the key
+	require.NoError(t, err)
+	require.False(t, e.peers.m[trial.PublicKey].Enabled)
+	e.setRole(t, 42, RoleUnlimited) // then the admin made them unlimited
 
 	m, err := e.svc.Maintain(ctx)
 	require.NoError(t, err)

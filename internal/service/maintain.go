@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 )
@@ -50,10 +51,17 @@ func (s *Service) maintainKeys(ctx context.Context) (*Maintenance, error) {
 keys:
 	for _, p := range ps {
 		if forever[p.UserID] && !p.ExpiresAt.IsZero() {
+			if p.Blocked { // the admin block stays: only the end date goes
+				dropEnd(p)
+				s.savePeer(ctx, p)
+				continue
+			}
 			if err := s.makeForever(ctx, p); err != nil {
-				// The server is likely down: stop, the next run retries.
 				log.Printf("service: make %s forever: %v", p.IP, err)
-				break keys
+				if errors.Is(err, ErrIPTaken) || errors.Is(err, ErrUnreadable) {
+					continue // only this key can't go back on: the rest go on
+				}
+				break keys // the server is likely down: the next run retries
 			}
 			m.MadeForever = append(m.MadeForever, p)
 			continue
@@ -110,10 +118,15 @@ func (s *Service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
 // makeForever drops a key's end date and reminders, and puts it back on
 // the server (same keys, same IP) if it was disabled. The caller holds s.mu.
 func (s *Service) makeForever(ctx context.Context, p *Peer) error {
+	dropEnd(p)
+	return s.enableAndSave(ctx, p)
+}
+
+// dropEnd makes a key never expire and clears its reminders.
+func dropEnd(p *Peer) {
 	p.ExpiresAt = time.Time{}
 	p.Reminded3d = false
 	p.Reminded1d = false
-	return s.enableAndSave(ctx, p)
 }
 
 // savePeer saves a reminder mark; false (logged) if it failed, so the

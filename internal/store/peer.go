@@ -12,6 +12,9 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
+// checkKeySample: how many peers checkKey tries.
+const checkKeySample = 20
+
 // PeerRepo stores issued VPN keys in MongoDB. The document _id is the
 // peer public key.
 type PeerRepo struct {
@@ -29,12 +32,19 @@ func (r *PeerRepo) Get(ctx context.Context, publicKey string) (*service.Peer, er
 	if err != nil {
 		return nil, fmt.Errorf("store: get peer: %w", err)
 	}
-	return r.decode(&d)
+	return r.decode(&d), nil
 }
 
 // Save inserts or replaces the peer. Fails if another peer on the same
-// server already holds the IP.
+// server already holds the IP. An Unreadable peer has no secrets to write:
+// only its other fields are updated, the stored sealed secrets are kept.
 func (r *PeerRepo) Save(ctx context.Context, p *service.Peer) error {
+	if p.Unreadable {
+		if _, err := r.coll.UpdateOne(ctx, byID(p.PublicKey), setPeerMeta(peerToStore(p))); err != nil {
+			return fmt.Errorf("store: save peer %s: %w", p.IP, err)
+		}
+		return nil
+	}
 	d, err := r.encode(p)
 	if err != nil {
 		return err
@@ -93,35 +103,34 @@ func (r *PeerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, er
 	}
 	out := make([]*service.Peer, 0, len(docs))
 	for i := range docs {
-		p, err := r.decode(&docs[i])
-		if err != nil {
-			// One unreadable row (edited by hand, restored with another
-			// key) must not stop expiry, reminders and new keys for the
-			// rest. Its IP stays taken through ServerIPs.
-			log.Printf("store: skip peer %s: %v", docs[i].IP, err)
-			continue
-		}
-		out = append(out, p)
+		out = append(out, r.decode(&docs[i]))
 	}
 	return out, nil
 }
 
-// checkKey opens the secrets of one stored peer, so a wrong DB_SECRET_KEY
-// (e.g. after a restore) stops the bot at startup instead of failing quietly
-// on every key.
+// checkKey opens the secrets of up to checkKeySample stored peers, so a
+// wrong DB_SECRET_KEY (e.g. after a restore) stops the bot at startup
+// instead of failing quietly on every key. One bad row among good ones is
+// fine (it is marked Unreadable at runtime); none opening means the key is
+// wrong.
 func (r *PeerRepo) checkKey(ctx context.Context) error {
-	var d peer
-	err := r.coll.FindOne(ctx, matchAll()).Decode(&d)
-	if errors.Is(err, mongo.ErrNoDocuments) {
+	cur, err := r.coll.Find(ctx, matchAll(), sample(checkKeySample))
+	if err != nil {
+		return fmt.Errorf("store: read peers to check the key: %w", err)
+	}
+	var docs []peer
+	if err := cur.All(ctx, &docs); err != nil {
+		return fmt.Errorf("store: read peers to check the key: %w", err)
+	}
+	if len(docs) == 0 {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("store: read a peer to check the key: %w", err)
+	for i := range docs {
+		if !r.decode(&docs[i]).Unreadable {
+			return nil
+		}
 	}
-	if _, err := r.decode(&d); err != nil {
-		return fmt.Errorf("store: DB_SECRET_KEY does not open the stored client keys: %w", err)
-	}
-	return nil
+	return fmt.Errorf("store: DB_SECRET_KEY does not open the stored client keys (none of %d checked)", len(docs))
 }
 
 // encode converts to a document with the secrets encrypted. The public key
@@ -148,25 +157,30 @@ func (r *PeerRepo) encode(p *service.Peer) (*peer, error) {
 	return d, nil
 }
 
-// decode converts a document back, decrypting the secrets.
-func (r *PeerRepo) decode(d *peer) (*service.Peer, error) {
+// decode converts a document back, decrypting the secrets. A secret
+// that does not open leaves the peer Unreadable with empty secrets
+// (logged): one bad row must not stop expiry, reminders and new keys for
+// the rest.
+func (r *PeerRepo) decode(d *peer) *service.Peer {
 	p := d.toService()
-	var err error
-	if p.PrivateKey, err = r.box.open(
+	priv, err1 := r.box.open(
 		sealInput{
 			Text: d.PrivateKey,
 			AAD:  d.PublicKey,
 		},
-	); err != nil {
-		return nil, fmt.Errorf("store: peer %s private key: %w", d.IP, err)
-	}
-	if p.PSK, err = r.box.open(
+	)
+	psk, err2 := r.box.open(
 		sealInput{
 			Text: d.PSK,
 			AAD:  d.PublicKey,
 		},
-	); err != nil {
-		return nil, fmt.Errorf("store: peer %s psk: %w", d.IP, err)
+	)
+	if err := errors.Join(err1, err2); err != nil {
+		log.Printf("store: peer %s secrets unreadable: %v", d.IP, err)
+		p.Unreadable = true
+		p.PrivateKey, p.PSK = "", "" // toService copied the sealed text
+		return p
 	}
-	return p, nil
+	p.PrivateKey, p.PSK = priv, psk
+	return p
 }

@@ -9,7 +9,6 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
@@ -186,18 +185,13 @@ func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
 }
 
 // adminText handles a text an admin sent after "📣 Рассылка": the
-// broadcast text. Any other text, or text from someone who is not an admin,
-// is ignored; so is a prompt older than pendingTTL. A message without text
-// (a photo, a sticker) gets "send text" and the bot keeps waiting; a new
-// text at the preview replaces it.
+// broadcast text. A new text at a preview replaces it and keeps what the
+// preview does to maintenance (own wording for the same switch). Any other
+// text, text from someone who is not an admin, or an old prompt
+// (pendingTTL) is ignored. A message without text (a photo, a sticker)
+// gets "send text" and the bot keeps waiting.
 func (r *Router) adminText(ctx context.Context, m *tgbot.Message) error {
-	r.mu.Lock()
-	p, waiting := r.pending[m.Chat.ID]
-	if waiting && time.Since(p.At) > pendingTTL {
-		delete(r.pending, m.Chat.ID)
-		waiting = false
-	}
-	r.mu.Unlock()
+	p, waiting := r.dialogs.peek(m.Chat.ID)
 	if !waiting {
 		return nil
 	}
@@ -220,13 +214,14 @@ func (r *Router) adminText(ctx context.Context, m *tgbot.Message) error {
 		pendingInput{
 			ChatID: m.Chat.ID,
 			Text:   text,
+			Maint:  p.Maint,
 		},
 	)
 }
 
 // adminCancel drops what the bot waits for from this admin.
 func (r *Router) adminCancel(ctx context.Context, a adminAction) error {
-	r.dropPending(a.ChatID)
+	r.dialogs.drop(a.ChatID)
 	return r.send.Send(
 		ctx,
 		OutMessage{
@@ -251,7 +246,8 @@ func (r *Router) adminStats(ctx context.Context, a adminAction) error {
 	)
 }
 
-// adminUsers shows one page of users, newest first.
+// adminUsers shows one page of users: plain users, then unlimited, then
+// admins; newest first inside a role.
 func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
 	page, _ := strconv.ParseInt(a.Arg, 10, 64)
 	page = max(page, 0)
@@ -321,11 +317,11 @@ func (r *Router) adminUser(ctx context.Context, a adminAction) error {
 func (r *Router) adminKeyAction(ctx context.Context, a adminAction) error {
 	var err error
 	switch a.Name {
-	case "dis":
+	case actDisable:
 		err = r.svc.Disable(ctx, a.Arg)
-	case "en":
+	case actEnable:
 		err = r.svc.Enable(ctx, a.Arg)
-	case "ext":
+	case actExtend:
 		_, err = r.svc.Extend(
 			ctx,
 			service.ExtendInput{
@@ -333,6 +329,8 @@ func (r *Router) adminKeyAction(ctx context.Context, a adminAction) error {
 				Days:      adminExtendDays,
 			},
 		)
+	default:
+		return fmt.Errorf("bot: unknown key action %q", a.Name)
 	}
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
@@ -429,10 +427,12 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 	if !p.RefundedAt.IsZero() {
 		return r.adminUser(ctx, a)
 	}
-	if !r.startRefund(p.ChargeID) {
+	if !r.refunds.start(p.ChargeID) {
 		return nil // a double press: the first one is refunding it
 	}
-	defer r.endRefund(p.ChargeID)
+	defer r.refunds.end(p.ChargeID)
+	// Once the Stars go back, recording it must finish even on shutdown.
+	ctx = context.WithoutCancel(ctx)
 	if err := r.send.Refund(
 		ctx,
 		RefundInput{
@@ -444,6 +444,15 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 	}
 	if err := r.svc.MarkRefunded(ctx, p.ChargeID); err != nil {
 		log.Printf("bot: stars returned but not recorded for %s: %v", p.ChargeID, err)
+		if err := r.send.Send(
+			ctx,
+			OutMessage{
+				ChatID: a.ChatID,
+				Text:   refundNotRecordedText(p),
+			},
+		); err != nil {
+			log.Printf("bot: %v", err)
+		}
 	}
 	if err := r.send.Send(
 		ctx,
@@ -455,23 +464,6 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 		log.Printf("bot: tell user %d about refund: %v", p.UserID, err)
 	}
 	return r.adminUser(ctx, a)
-}
-
-// startRefund marks a refund as running; false if one already is.
-func (r *Router) startRefund(chargeID string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.refunding[chargeID] {
-		return false
-	}
-	r.refunding[chargeID] = true
-	return true
-}
-
-func (r *Router) endRefund(chargeID string) {
-	r.mu.Lock()
-	delete(r.refunding, chargeID)
-	r.mu.Unlock()
 }
 
 // findPayment finds a user's payment by its short ref.

@@ -15,6 +15,17 @@ var ErrExpired = errors.New("service: key term ended, extend it")
 
 // ErrNoPrivateKey: the key was imported from the Amnezia app, so only the
 // device it was made on has its private key; the bot can't build a config.
+// ErrIPTaken: a disabled key can't go back on the server because its IP
+// is taken there by another peer (e.g. one made in the Amnezia app).
+var ErrIPTaken = errors.New("service: the key's IP is taken on the server by another peer")
+
+// ErrBlocked: an admin disabled this key; buying can't turn it back on.
+var ErrBlocked = errors.New("service: key disabled by an admin")
+
+// ErrUnreadable: the key's secrets can't be decrypted, so it can't go
+// back on the server (see Peer.Unreadable).
+var ErrUnreadable = errors.New("service: key secrets are unreadable")
+
 var ErrNoPrivateKey = errors.New("service: key has no private key (imported)")
 
 // Service is the bot's business logic. It knows nothing about Telegram.

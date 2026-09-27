@@ -40,7 +40,11 @@ type PeerRepository interface {
 type PaymentRepository interface {
 	Add(ctx context.Context, p *Payment) (bool, error)
 	Get(ctx context.Context, chargeID string) (*Payment, error)
-	Save(ctx context.Context, p *Payment) error
+	// MarkApplied / MarkRefunded change only their own fields, so an admin
+	// refund and a running Pay can't overwrite each other's mark.
+	// MarkRefunded of a charge with no record is not an error.
+	MarkApplied(ctx context.Context, m PaymentMark) error
+	MarkRefunded(ctx context.Context, m PaymentMark) error
 	ByUser(ctx context.Context, userID int64) ([]*Payment, error)
 	Since(ctx context.Context, t time.Time) ([]*Payment, error)
 }

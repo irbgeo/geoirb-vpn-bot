@@ -96,11 +96,7 @@ func (r *Router) subnetAlert(ctx context.Context, m *service.Maintenance) {
 		return // unknown this run: keep the alert state as it is
 	}
 	full := m.SubnetUsed*100 > m.SubnetTotal*subnetAlertPercent
-	r.mu.Lock()
-	send := full && !r.subnetAlerted
-	r.subnetAlerted = full
-	r.mu.Unlock()
-	if send {
+	if r.subnetAlerted.rise(full) {
 		r.NotifyAdmins(ctx, subnetAlertText(m))
 	}
 }
@@ -116,11 +112,7 @@ func (r *Router) backupAlert(ctx context.Context) {
 		last = st.ModTime()
 	}
 	old := time.Since(last) > backupMaxAge
-	r.mu.Lock()
-	send := old && !r.backupAlerted
-	r.backupAlerted = old
-	r.mu.Unlock()
-	if send {
+	if r.backupAlerted.rise(old) {
 		r.NotifyAdmins(ctx, backupAlertText(last))
 	}
 }

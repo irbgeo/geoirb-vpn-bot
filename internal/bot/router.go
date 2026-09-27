@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
@@ -75,64 +74,49 @@ const (
 	cbConfig    = "cfg:"  // + public key (44 chars)
 )
 
-// Router turns Telegram updates into service calls and replies.
+// Router turns Telegram updates into service calls and replies. Its own
+// state is kept in small types with their own locks (state.go).
 type Router struct {
 	svc     Service
 	send    Sender
 	bypass  Bypass
 	support string // support contact
+	load    ServerLoad
+	// backupStamp is touched by every good backup (see backupAlert).
+	backupStamp string
 
-	// pending: what an admin's next text message is (a key name, a
-	// broadcast text), by admin chat. In memory only: after a restart the
-	// admin presses the button again.
-	mu      sync.Mutex
-	pending map[int64]pendingInput
-	// subnetAlerted: the "subnet almost full" alert went out and usage is
-	// still high; cleared when it drops, so the next rise alerts again.
-	subnetAlerted bool
-	// backupStamp is touched by every good backup; backupAlerted works like
-	// subnetAlerted for "no fresh backup".
-	backupStamp   string
-	backupAlerted bool
-	load          ServerLoad
-	// maintFlag / maintOn: the maintenance state, in a file (survives a
-	// restart) or, without one, in memory.
-	maintFlag string
-	maintOn   bool
+	// dialogs: what each chat's next input is (a broadcast text, a key
+	// name). In memory only: after a restart the button is pressed again.
+	dialogs *dialogs
+	// jobs: the one background mass send; Close waits for it.
+	jobs  *jobs
+	maint *maintFlag
+	// subnetAlert / backupAlert: an alert went out and the condition still
+	// holds; it alerts again only after it cleared and came back.
+	subnetAlerted latch
+	backupAlerted latch
+	// refunds: charge IDs an admin refund is running for.
+	refunds *inFlight
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
-	// refunding: charge IDs an admin refund is running for, so a double
-	// press doesn't call Telegram twice.
-	refunding map[string]bool
-	// configsRunning: a "send everyone a fresh config" run is going; a
-	// second press waits for it to end.
-	configsRunning bool
-	// jobs: background work (broadcasts) that Close waits for. They run on
-	// life, not on an update's ctx: go-tgbot's Dispatcher cancels that one
-	// as soon as the handler returns.
-	jobs sync.WaitGroup
-	life context.Context
-	stop context.CancelFunc
 }
 
 // New creates a Router.
 func New(
 	d *Deps,
 ) *Router {
-	life, stop := context.WithCancel(context.Background())
 	return &Router{
 		svc:         d.Service,
 		send:        d.Sender,
 		bypass:      d.Bypass,
 		support:     d.SupportContact,
-		backupStamp: d.BackupStamp,
 		load:        d.Load,
-		maintFlag:   d.MaintenanceFlag,
-		pending:     map[int64]pendingInput{},
+		backupStamp: d.BackupStamp,
+		dialogs:     newDialogs(),
+		jobs:        newJobs(),
+		maint:       newMaintFlag(d.MaintenanceFlag),
+		refunds:     newInFlight(),
 		pause:       50 * time.Millisecond,
-		refunding:   map[string]bool{},
-		life:        life,
-		stop:        stop,
 	}
 }
 
@@ -145,9 +129,12 @@ func (r *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 		return r.paid(ctx, upd.Message)
 	}
 	if upd.CallbackQuery != nil {
+		if !private(upd.CallbackQuery.Message) {
+			return nil
+		}
 		return r.callback(ctx, upd.CallbackQuery)
 	}
-	if upd.Message == nil || upd.Message.From == nil {
+	if upd.Message == nil || upd.Message.From == nil || !private(upd.Message) {
 		return nil
 	}
 	if cmd, ok := upd.Command(); ok {
@@ -169,7 +156,7 @@ func (r *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 			},
 		)
 	}
-	if r.pendingKind(upd.Message.Chat.ID) == pendingKeyName {
+	if p, ok := r.dialogs.peek(upd.Message.Chat.ID); ok && p.Kind == pendingKeyName {
 		return r.keyNamed(ctx, upd.Message)
 	}
 	return r.adminText(ctx, upd.Message)
@@ -178,13 +165,12 @@ func (r *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 // Close stops background work (a running broadcast stops and sends its
 // report) and waits for it. Call it on shutdown, after the updates stopped.
 func (r *Router) Close() {
-	r.stop()
-	r.Wait()
+	r.jobs.close()
 }
 
 // Wait blocks until background work is done.
 func (r *Router) Wait() {
-	r.jobs.Wait()
+	r.jobs.wait()
 }
 
 // Reconcile runs at startup: payments left half-done by a stop, then the
@@ -243,7 +229,7 @@ func (r *Router) NotifyAdmins(ctx context.Context, text string) {
 // start registers the user (first /start adds them to the bot) and shows
 // the main button.
 func (r *Router) start(ctx context.Context, m *tgbot.Message) error {
-	r.dropPending(m.Chat.ID) // /start is a way out of any prompt
+	r.dialogs.drop(m.Chat.ID) // /start is a way out of any prompt
 	u, err := r.svc.Register(
 		ctx,
 		service.RegisterInput{
@@ -262,7 +248,7 @@ func (r *Router) start(ctx context.Context, m *tgbot.Message) error {
 			Keyboard: mainKeyboard(
 				menuView{
 					Role:        u.Role,
-					Maintenance: u.Role == service.RoleAdmin && r.maintenance(),
+					Maintenance: u.Role == service.RoleAdmin && r.maint.on(),
 				},
 			),
 		},
@@ -279,7 +265,7 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	case cq.Data == cbIssueKey:
 		return r.askKeyName(ctx, cq)
 	case cq.Data == cbKeyNoName:
-		r.dropPending(cq.ChatID())
+		r.dialogs.drop(cq.ChatID())
 		return r.issueKey(
 			ctx,
 			keyRequest{
@@ -318,12 +304,12 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	return nil
 }
 
-// createKey creates the user's key (a plain user's first key starts the
-// trial) and sends the config file and QR code.
+// askKeyName is step 2: it waits for the key's name, with a "skip" button.
 func (r *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	r.setPending(
+	r.dialogs.set(
 		pendingInput{
 			ChatID: cq.ChatID(),
+			UserID: cq.SenderID(),
 			Kind:   pendingKeyName,
 		},
 	)
@@ -337,21 +323,13 @@ func (r *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	)
 }
 
-// pendingKind is what the chat's next text is for, 0 when nothing (or a
-// prompt older than pendingTTL) is waiting.
-func (r *Router) pendingKind(chatID int64) pendingKind {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	p, ok := r.pending[chatID]
-	if !ok || time.Since(p.At) > pendingTTL {
-		return 0
-	}
-	return p.Kind
-}
-
 // keyNamed creates the key with the name the user sent. A bad name asks
-// again and keeps waiting; anything else ends the question.
+// again and keeps waiting; anything else ends the question. Only the user
+// who asked answers.
 func (r *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
+	if p, _ := r.dialogs.peek(m.Chat.ID); p.UserID != m.From.ID {
+		return nil
+	}
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
 		return r.send.Send(
 			ctx,
@@ -362,7 +340,7 @@ func (r *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	}
-	r.dropPending(m.Chat.ID) // before issuing: a second text is not a second key
+	r.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
 	err := r.issueKey(
 		ctx,
 		keyRequest{
@@ -374,9 +352,10 @@ func (r *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 	if !errors.Is(err, service.ErrBadKeyName) {
 		return err
 	}
-	r.setPending(
+	r.dialogs.set(
 		pendingInput{
 			ChatID: m.Chat.ID,
+			UserID: m.From.ID,
 			Kind:   pendingKeyName,
 		},
 	)
@@ -416,13 +395,33 @@ func (r *Router) issueKey(ctx context.Context, k keyRequest) error {
 			},
 		)
 	}
-	return r.deliverKey(
+	if err := r.deliverKey(
 		ctx,
 		keyDelivery{
 			ChatID: k.ChatID,
 			Peer:   p,
 		},
-	)
+	); err != nil {
+		// The key exists: say where it is, or a second press makes another.
+		if sendErr := r.send.Send(
+			ctx,
+			OutMessage{
+				ChatID:   k.ChatID,
+				Text:     keyDeliveryFailedText,
+				Keyboard: myAccessKeyboard(),
+			},
+		); sendErr != nil {
+			log.Printf("bot: %v", sendErr)
+		}
+		return err
+	}
+	return nil
+}
+
+// private reports whether m is in a private chat. Keys, configs and the
+// admin panel are never posted to groups, even if the bot is added to one.
+func private(m *tgbot.Message) bool {
+	return m != nil && m.Chat.Type == "private"
 }
 
 // commandText answers /terms, /support, /paysupport (Telegram requires the

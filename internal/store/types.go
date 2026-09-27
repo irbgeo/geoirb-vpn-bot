@@ -67,6 +67,7 @@ type peer struct {
 	ExpiresAt  *time.Time `bson:"expires_at"` // null = never expires
 	Reminded3d bool       `bson:"reminded_3d"`
 	Reminded1d bool       `bson:"reminded_1d"`
+	Blocked    bool       `bson:"blocked"`
 	CreatedAt  time.Time  `bson:"created_at"`
 }
 
@@ -83,6 +84,7 @@ func peerToStore(p *service.Peer) *peer {
 		ExpiresAt:  timePtr(p.ExpiresAt),
 		Reminded3d: p.Reminded3d,
 		Reminded1d: p.Reminded1d,
+		Blocked:    p.Blocked,
 		CreatedAt:  p.CreatedAt,
 	}
 }
@@ -100,6 +102,7 @@ func (d *peer) toService() *service.Peer {
 		ExpiresAt:  timeVal(d.ExpiresAt),
 		Reminded3d: d.Reminded3d,
 		Reminded1d: d.Reminded1d,
+		Blocked:    d.Blocked,
 		CreatedAt:  d.CreatedAt,
 	}
 }

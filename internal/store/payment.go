@@ -44,14 +44,23 @@ func (r *PaymentRepo) Get(ctx context.Context, chargeID string) (*service.Paymen
 	return d.toService(), nil
 }
 
-// Save replaces an existing payment (to mark it applied or refunded).
-func (r *PaymentRepo) Save(ctx context.Context, p *service.Payment) error {
-	res, err := r.coll.ReplaceOne(ctx, byID(p.ChargeID), paymentToStore(p))
+// MarkApplied marks a payment applied to m.PeerKey, touching nothing else.
+func (r *PaymentRepo) MarkApplied(ctx context.Context, m service.PaymentMark) error {
+	res, err := r.coll.UpdateOne(ctx, byID(m.ChargeID), markApplied(m.PeerKey))
 	if err != nil {
-		return fmt.Errorf("store: save payment: %w", err)
+		return fmt.Errorf("store: mark payment applied: %w", err)
 	}
 	if res.MatchedCount == 0 {
-		return fmt.Errorf("store: save payment: charge %s not found", p.ChargeID)
+		return fmt.Errorf("store: mark payment applied: charge %s not found", m.ChargeID)
+	}
+	return nil
+}
+
+// MarkRefunded records the refund time, touching nothing else. A charge
+// with no record (refused before it was saved) is not an error.
+func (r *PaymentRepo) MarkRefunded(ctx context.Context, m service.PaymentMark) error {
+	if _, err := r.coll.UpdateOne(ctx, byID(m.ChargeID), markRefunded(m.At)); err != nil {
+		return fmt.Errorf("store: mark payment refunded: %w", err)
 	}
 	return nil
 }

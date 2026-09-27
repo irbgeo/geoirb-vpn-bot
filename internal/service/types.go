@@ -29,6 +29,13 @@ type CreateKeyInput struct {
 	Name   string
 }
 
+// takeOffInput is a key to take back off the server after a failed
+// change, and the error of that change.
+type takeOffInput struct {
+	Peer  *Peer
+	Cause error
+}
+
 // trialInput is the first key of a plain user.
 type trialInput struct {
 	User *User
@@ -68,6 +75,14 @@ type Peer struct {
 	// for the current ExpiresAt was sent. Reset on every extension.
 	Reminded3d bool
 	Reminded1d bool
+	// Blocked: an admin disabled the key. Unlike a key disabled by expiry,
+	// the user can't buy it back on; admin Enable or Extend lift it.
+	Blocked bool
+	// Unreadable: the secrets could not be decrypted (a row restored with
+	// another DB_SECRET_KEY, edited by hand). PrivateKey and PSK are empty;
+	// the rest is right, so the key still expires and is counted, but it
+	// can't be put back on the server or given out as a config.
+	Unreadable bool
 	CreatedAt  time.Time
 }
 
@@ -83,6 +98,14 @@ type Payment struct {
 	Applied    bool
 	CreatedAt  time.Time
 	RefundedAt time.Time // zero = not refunded
+}
+
+// PaymentMark is one change to a payment record: applied (to PeerKey) or
+// refunded (At).
+type PaymentMark struct {
+	ChargeID string
+	PeerKey  string
+	At       time.Time
 }
 
 // Page selects a slice of a list.

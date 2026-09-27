@@ -143,7 +143,7 @@ func (s *Server) Update(ctx context.Context, fn func(*ServerConf) error) error {
 			Expect:  read,
 		},
 	); err != nil {
-		return fmt.Errorf("amnezia: live interface updated but config not saved: %w", err)
+		return fmt.Errorf("%w: %w", ErrNotPersisted, err)
 	}
 	return nil
 }

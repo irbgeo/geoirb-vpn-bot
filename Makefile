@@ -7,10 +7,12 @@ lint:
 test:
 	go test ./...
 	./scripts/server-env_test.sh
+	./scripts/awg-conntrack_test.sh
 
-# Linux binary for the VPN server.
+# Linux binary for the VPN server (deploy.sh builds with OUT=<its package>).
+OUT ?= bot
 build:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bot ./cmd/bot
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$(OUT)" ./cmd/bot
 
 # Build and install/update the bot on the VPN server (systemd).
 deploy:

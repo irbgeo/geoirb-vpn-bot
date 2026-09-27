@@ -14,9 +14,12 @@
   address». Или `gcloud compute addresses create … --addresses 35.217.30.38`.
 - **Проверка:** адрес в списке помечен как Static.
 
-### 1.2. Задеплоить `3fa9e0d`
-- Имена ключей на кнопках карточки, «Обновить конфиги» присылает инструкцию, а не файлы.
-- `make deploy`.
+### 1.2. Задеплоить исправления второго аудита
+- 40 из 41 пункта (L35 — в 4.1). Деплой теперь идёт через `deploy/install.sh` и
+  делает бэкап **до** перезапуска бота: первый `make deploy` после этого проверяет и сам
+  новый порядок. Упадёт бэкап — старый бот продолжит работать.
+- После деплоя: `systemctl status geoirb-vpn-conntrack.timer`, в контейнере
+  `cat /proc/sys/net/netfilter/nf_conntrack_tcp_timeout_established` = 7200.
 
 ### 1.3. Сменить машину на более мощную
 - **Зачем:** e2-micro долго держит примерно 15–30 Мбит/с на всех (≈ 25% одного
@@ -84,6 +87,36 @@
 - **SSH:** ключ вместо пароля для `admin_vpn`, пароль сменить (он был в чате).
 - **Токен бота** был в логах до исправления go-tgbot: `/revoke` в @BotFather, новый токен
   в `.env`, `FORCE=1 make deploy` (деплой защищает токен от случайной смены).
+
+### 4.1. Бот без группы `docker` (аудит 27.09, L35)
+- **Зачем:** `vpnbot` в группе `docker`, а доступ к Docker = root на машине. Защита
+  systemd (`NoNewPrivileges`, `ProtectSystem`) это не останавливает. Путей атаки через
+  Telegram аудит не нашёл (команды идут списком аргументов, без shell), но взлом бота
+  сейчас = взлом всей машины.
+- **Почему не прокси к Docker:** контейнер Amnezia привилегированный, и любой
+  `docker exec` в нём — тоже root на хосте. Защищает только набор **фиксированных**
+  команд.
+- **Что бот делает в контейнере сейчас** (`internal/vpn/amnezia`): `awg genkey/pubkey/
+  genpsk`, `awg show … public-key|dump`, `cat` конфига и `clientsTable`, `ls` папки
+  конфига, и два своих `sh -c` скрипта — сохранение файла (`.bak` → `.tmp` → `mv`,
+  проверка sha256) и `awg syncconf`.
+- **План:**
+  1. Root-скрипт `/usr/local/sbin/geoirb-awg` (из `deploy/`) с подкомандами вместо
+     произвольных команд: `genkey`, `pubkey` (stdin), `genpsk`, `server-pubkey`, `dump`,
+     `read-conf`, `read-clients`, `write-conf <sha>` и `write-clients <sha>` (stdin; сам
+     делает `.bak`/`.tmp`/`mv` и сверку sha), `syncconf` (stdin). Имя контейнера — из
+     `awg-container.sh`. Входные данные проверяются: только нужные символы, лимит размера.
+  2. `sudoers`: `vpnbot ALL=(root) NOPASSWD: /usr/local/sbin/geoirb-awg`.
+  3. Новый `Runner` в адаптере вызывает `sudo -n geoirb-awg <подкоманда>` вместо
+     `docker exec`; логика сохранения переезжает из Go-скриптов в обёртку.
+  4. Убрать `SupplementaryGroups=docker` и `ReadWritePaths=/run/docker.sock` из unit,
+     `usermod -aG docker` из `install.sh`; `NoNewPrivileges` придётся снять (нужен sudo) —
+     вместо него узкое правило sudoers.
+  5. Тесты: обёртка — скриптовый тест с фейковым `docker` (как `awg-conntrack_test.sh`);
+     адаптер — тесты на новый `Runner`.
+- **Риск:** меняется путь каждой правки VPN. Делать в спокойное время, с «🛠 Техработы»,
+  свежим бэкапом и проверкой: выдать ключ, отключить, включить, удалить, `Reconcile`.
+- **Откат:** вернуть прошлый бинарник и unit (`git revert`, `make deploy`).
 
 ## 5. Проверки
 

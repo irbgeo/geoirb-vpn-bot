@@ -212,6 +212,8 @@ func invoiceErrorText(err error) (text string, known bool) {
 	switch {
 	case errors.Is(err, service.ErrNotForSale):
 		return notForSaleText, true
+	case errors.Is(err, service.ErrBlocked):
+		return blockedKeyText, true
 	case errors.Is(err, service.ErrNoTariff):
 		return noTariffText, true
 	case errors.Is(err, service.ErrNotFound):
@@ -221,8 +223,11 @@ func invoiceErrorText(err error) (text string, known bool) {
 }
 
 func preCheckoutErrorText(err error) string {
-	if errors.Is(err, service.ErrNotForSale) {
+	switch {
+	case errors.Is(err, service.ErrNotForSale):
 		return notForSaleText
+	case errors.Is(err, service.ErrBlocked):
+		return blockedKeyText
 	}
 	return staleInvoiceText
 }

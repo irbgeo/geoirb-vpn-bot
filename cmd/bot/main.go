@@ -72,16 +72,7 @@ func run() error {
 		},
 	)
 
-	// RetryAfter: a 429 "too many requests" waits (≤10 s) and retries once
-	// instead of losing the message.
-	opts := []tgbot.Option{
-		tgbot.WithRetryAfter(10 * time.Second),
-	}
-	if cfg.TelegramTestEnv {
-		opts = append(opts, tgbot.WithTestEnvironment())
-		log.Println("telegram: TEST environment")
-	}
-	client, err := tgbot.NewClient(cfg.BotToken, opts...)
+	client, err := newTelegramClient(cfg)
 	if err != nil {
 		return err
 	}
@@ -102,72 +93,14 @@ func run() error {
 		},
 	)
 
-	if _, err := client.SetMyCommands(ctx, bot.Commands()); err != nil {
-		log.Printf("telegram: set commands: %v", err)
-	}
-	router.Reconcile(ctx)
-
-	w := worker.New(
-		&worker.Input{
-			Job:      svc,
-			Delivery: router,
-			Every:    time.Minute,
-		},
-	)
-	workerDone := make(chan struct{})
-	go func() {
-		w.Run(ctx)
-		close(workerDone)
-	}()
-	go watchServerLoad(ctx, router)
-
-	// Dispatcher: chats are handled in parallel (one slow docker exec must
-	// not stall everyone), updates of one chat in order.
-	dispatcher := tgbot.NewDispatcher(
-		router.Handle,
-		func(err error) { log.Printf("handle: %v", err) },
-	)
-	log.Println("bot started (long polling)")
-	err = client.Poll(
+	return serve(
 		ctx,
-		tgbot.PollOptions{
-			Timeout: 10, // below go-tgbot's 15s HTTP timeout
-			OnError: func(err error) { log.Printf("poll: %v", err) },
-		},
-		dispatcher.Handle,
-	)
-	dispatcher.Shutdown(30 * time.Second)
-	router.Close() // a running broadcast stops and sends its report
-	<-workerDone   // let a running maintenance pass finish
-	return err
-}
-
-// serverLoad watches this machine's limits; nil (no alerts) off Linux,
-// e.g. when running the bot on a laptop.
-func serverLoad() bot.ServerLoad {
-	if runtime.GOOS != "linux" {
-		return nil
-	}
-	return sysload.New(
-		&sysload.Input{
-			ProcRoot: "/proc",
-			DiskPath: "/",
+		serveInput{
+			Client:  client,
+			Router:  router,
+			Service: svc,
 		},
 	)
-}
-
-// watchServerLoad checks the server limits every minute until ctx is done.
-func watchServerLoad(ctx context.Context, r *bot.Router) {
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			r.CheckServerLoad(ctx)
-		}
-	}
 }
 
 // openVPN finds the Amnezia container (unless AWG_CONTAINER is set) and
@@ -205,4 +138,88 @@ func tariffs(m map[int]int) []service.Tariff {
 	}
 	slices.SortFunc(out, func(a, b service.Tariff) int { return a.Days - b.Days })
 	return out
+}
+
+// newTelegramClient connects to the Bot API. RetryAfter: a 429 "too many
+// requests" waits (≤10 s) and retries once instead of losing the message.
+func newTelegramClient(cfg *config.Config) (*tgbot.Client, error) {
+	opts := []tgbot.Option{
+		tgbot.WithRetryAfter(10 * time.Second),
+	}
+	if cfg.TelegramTestEnv {
+		opts = append(opts, tgbot.WithTestEnvironment())
+		log.Println("telegram: TEST environment")
+	}
+	return tgbot.NewClient(cfg.BotToken, opts...)
+}
+
+// serverLoad watches this machine's limits; nil (no alerts) off Linux,
+// e.g. when running the bot on a laptop.
+func serverLoad() bot.ServerLoad {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	return sysload.New(
+		&sysload.Input{
+			ProcRoot: "/proc",
+			DiskPath: "/",
+		},
+	)
+}
+
+// serve runs the bot until ctx is done: startup checks, the worker, the
+// load monitor and long polling; then it stops them in order.
+func serve(ctx context.Context, in serveInput) error {
+	if _, err := in.Client.SetMyCommands(ctx, bot.Commands()); err != nil {
+		log.Printf("telegram: set commands: %v", err)
+	}
+	in.Router.Reconcile(ctx)
+
+	w := worker.New(
+		&worker.Input{
+			Job:      in.Service,
+			Delivery: in.Router,
+			Every:    time.Minute,
+		},
+	)
+	workerDone := make(chan struct{})
+	go func() {
+		w.Run(ctx)
+		close(workerDone)
+	}()
+	go watchServerLoad(ctx, in.Router)
+
+	// Dispatcher: chats are handled in parallel (one slow docker exec must
+	// not stall everyone), updates of one chat in order.
+	dispatcher := tgbot.NewDispatcher(
+		in.Router.Handle,
+		func(err error) { log.Printf("handle: %v", err) },
+	)
+	log.Println("bot started (long polling)")
+	err := in.Client.Poll(
+		ctx,
+		tgbot.PollOptions{
+			Timeout: 10, // below go-tgbot's 15s HTTP timeout
+			OnError: func(err error) { log.Printf("poll: %v", err) },
+		},
+		dispatcher.Handle,
+	)
+	dispatcher.Shutdown(30 * time.Second)
+	in.Router.Close() // a running broadcast stops and sends its report
+	<-workerDone      // let a running maintenance pass finish
+	return err
+}
+
+// watchServerLoad checks the server limits every minute until ctx is done.
+func watchServerLoad(ctx context.Context, r *bot.Router) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			r.CheckServerLoad(ctx)
+		}
+	}
 }

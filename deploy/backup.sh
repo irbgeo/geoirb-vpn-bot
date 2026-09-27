@@ -13,16 +13,9 @@ KEEP="${KEEP:-7}"
 ENV_FILE="${ENV_FILE:-/etc/geoirb-vpn-bot/env}"
 MONGO_CONTAINER="${MONGO_CONTAINER:-server-infra-mongo-1}"
 STAMP="$(grep -m1 '^BACKUP_STAMP=' "$ENV_FILE" | cut -d= -f2- || true)"
-
-AWG_CONTAINER="$(grep -m1 '^AWG_CONTAINER=' "$ENV_FILE" | cut -d= -f2- || true)"
-if [[ -z "$AWG_CONTAINER" ]]; then
-  running="$(docker ps --format '{{.Names}}')"
-  for name in amnezia-awg2 amnezia-awg; do
-    if grep -qx "$name" <<<"$running"; then AWG_CONTAINER="$name"; break; fi
-  done
-fi
-: "${AWG_CONTAINER:?no amnezia-awg2 or amnezia-awg container is running}"
-MONGO_URI="$(grep -m1 '^MONGO_URI=' "$ENV_FILE" | cut -d= -f2-)"
+. "$(dirname "$0")/awg-container.sh"
+MONGO_URI="$(grep -m1 '^MONGO_URI=' "$ENV_FILE" | cut -d= -f2- || true)"
+: "${MONGO_URI:?no MONGO_URI in $ENV_FILE}"
 
 umask 077
 mkdir -p "$DEST"

@@ -23,8 +23,3 @@ remote() {
     "$SERVER_USER@$SERVER_HOST" "$@"
 }
 
-# upload <local> <remote path> — copy a file to the server.
-upload() {
-  sshpass -e scp -o PubkeyAuthentication=no -o ConnectTimeout=15 -P "$SERVER_PORT" \
-    "$1" "$SERVER_USER@$SERVER_HOST:$2"
-}

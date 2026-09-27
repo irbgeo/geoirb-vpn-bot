@@ -160,7 +160,7 @@ type keyNotice struct {
 	NoOffer bool // no "extend" button (the key never expires)
 }
 
-// pendingKind is what a chat's next text message will be.
+// pendingKind is what a chat's next input will be.
 type pendingKind int
 
 const (
@@ -169,13 +169,31 @@ const (
 	pendingKeyName                          // user: the name of the key to create
 )
 
+// dialogTake asks dialogs.take for a chat's entry of one kind.
+type dialogTake struct {
+	ChatID int64
+	Kind   pendingKind
+}
+
+// massSend is one background send to every user with an enabled key:
+// Before runs once the slot is taken (e.g. flips maintenance), Started is
+// told to the admin, Deliver runs per user and Report words the result.
+type massSend struct {
+	AdminChat int64
+	Started   string
+	Before    func() error
+	Deliver   func(ctx context.Context, userID int64) error
+	Report    func(broadcastResult) string
+}
+
 // pendingTTL: a prompt older than this is dropped, so a later text is not
 // taken for an answer the admin forgot about.
 const pendingTTL = 10 * time.Minute
 
-// pendingInput is what the bot waits for from one admin.
+// pendingInput is what the bot waits for in one chat.
 type pendingInput struct {
-	ChatID int64 // the admin's chat
+	ChatID int64
+	UserID int64 // pendingKeyName: only this user answers
 	Kind   pendingKind
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
@@ -252,15 +270,15 @@ type supportView struct {
 	UserID  int64
 }
 
-// keyDelivery is a new key to send to a chat.
 // keyRequest is a user's own key to create in a chat; Name "" = the
-// old naming.
+// generated name ("tg:<user> #N").
 type keyRequest struct {
 	ChatID int64
 	UserID int64
 	Name   string
 }
 
+// keyDelivery is a new key to send to a chat.
 type keyDelivery struct {
 	ChatID int64
 	Peer   *service.Peer

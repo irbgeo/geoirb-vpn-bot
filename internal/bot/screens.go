@@ -33,6 +33,49 @@ const (
 		"Файл и QR — это ваш личный ключ: не пересылайте их другим людям."
 )
 
+// Commands are the bot's commands for the Telegram menu (SetMyCommands).
+func Commands() []tgbot.BotCommand {
+	return []tgbot.BotCommand{
+		{
+			Command:     "menu",
+			Description: "Меню: ключ, мой доступ, оплата",
+		},
+		{
+			Command:     "support",
+			Description: "Связаться с поддержкой",
+		},
+		{
+			Command:     "terms",
+			Description: "Условия использования и оплаты",
+		},
+		{
+			Command:     "paysupport",
+			Description: "Вопросы по оплате",
+		},
+	}
+}
+
+// ReconcileText describes DB/server differences for admins.
+func ReconcileText(r *service.ReconcileReport) string {
+	var b strings.Builder
+	b.WriteString("⚠️ Сверка базы и сервера: есть расхождения.\n")
+	b.WriteString(peersSection(
+		peersGroup{
+			Title: "Включены в базе, но нет на сервере",
+			Peers: r.MissingOnServer,
+		},
+	))
+	b.WriteString(peersSection(
+		peersGroup{
+			Title: "Отключены в базе, но есть на сервере",
+			Peers: r.DisabledButOnServer,
+		},
+	))
+	fmt.Fprintf(&b, "\nКлючей, созданных вручную: %d.\n", r.Manual)
+	b.WriteString("Бот ничего не менял автоматически.")
+	return b.String()
+}
+
 // Store links for step 1 (checked 2026-09-27).
 const (
 	urlAppStore   = "https://apps.apple.com/app/id1600529900"
@@ -57,35 +100,12 @@ func bypassNextKeyboard() *tgbot.InlineKeyboardMarkup {
 	)
 }
 
-// Commands are the bot's commands for the Telegram menu (SetMyCommands).
-func Commands() []tgbot.BotCommand {
-	return []tgbot.BotCommand{
-		{
-			Command:     "menu",
-			Description: "Меню: ключ, мой доступ, оплата",
-		},
-		{
-			Command:     "support",
-			Description: "Связаться с поддержкой",
-		},
-		{
-			Command:     "terms",
-			Description: "Условия использования и оплаты",
-		},
-		{
-			Command:     "paysupport",
-			Description: "Вопросы по оплате",
-		},
-	}
-}
-
 // msk: dates are shown in Moscow time (fixed zone, no tzdata needed).
 var msk = time.FixedZone("MSK", 3*60*60)
 
 const (
 	hasKeyText             = "У вас уже есть ключ — он в «📋 Мой доступ»: там можно получить конфиг ещё раз и продлить срок."
 	trialUsedText          = "Пробный период уже использован. Чтобы подключиться, нажмите «💳 Купить / продлить» в /menu."
-	keyLimitText           = "У вас уже 3 ключа — это максимум."
 	internalErrorText      = "Не получилось создать ключ. Попробуйте позже — админ уже знает."
 	invoiceFailedText      = "Не получилось выставить счёт. Попробуйте позже или напишите в /support."
 	configFailedText       = "Не получилось собрать конфиг. Попробуйте позже или напишите в /support."
@@ -94,6 +114,7 @@ const (
 	qrCaption              = "QR-код: отсканируйте его в приложении AmneziaVPN."
 	noKeysText             = "У вас пока нет ключей."
 	keyNotFoundText        = "Ключ не найден. Откройте «Мой доступ» ещё раз."
+	blockedKeyText         = "Этот ключ отключил администратор, продлить его нельзя. Напишите в /support."
 	noPrivateKeyText       = "Этот ключ создан в приложении Amnezia: его конфиг есть только на устройстве, где ключ создан. Нужен файл — получите новый ключ."
 	buyText                = "💳 Выберите срок. Оплата — Telegram Stars. Если ключ уже есть, срок прибавится к нему."
 	notForSaleText         = "Вам платить не нужно: ваш доступ бессрочный."
@@ -111,33 +132,12 @@ const (
 		"В приложении AmneziaWG такой настройки нет — там весь трафик идёт через VPN."
 )
 
-// ReconcileText describes DB/server differences for admins.
-func ReconcileText(r *service.ReconcileReport) string {
-	var b strings.Builder
-	b.WriteString("⚠️ Сверка базы и сервера: есть расхождения.\n")
-	b.WriteString(peersSection(
-		peersGroup{
-			Title: "Включены в базе, но нет на сервере",
-			Peers: r.MissingOnServer,
-		},
-	))
-	b.WriteString(peersSection(
-		peersGroup{
-			Title: "Отключены в базе, но есть на сервере",
-			Peers: r.DisabledButOnServer,
-		},
-	))
-	fmt.Fprintf(&b, "\nКлючей, созданных вручную: %d.\n", r.Manual)
-	b.WriteString("Бот ничего не менял автоматически.")
-	return b.String()
-}
-
 func greeting(u *service.User) string {
 	switch u.Role {
 	case service.RoleAdmin:
 		return "Привет! Вы админ. Нажмите кнопку, чтобы получить свой ключ (сколько угодно, без срока)."
 	case service.RoleUnlimited:
-		return "Привет! У вас безлимитный доступ: до 3 ключей без срока. Нажмите кнопку, чтобы получить ключ."
+		return fmt.Sprintf("Привет! У вас безлимитный доступ: до %d ключей без срока. Нажмите кнопку, чтобы получить ключ.", service.MaxUnlimitedKeys)
 	default:
 		return "Привет! Это VPN-бот. Нажмите кнопку — получите ключ и бесплатный пробный период."
 	}
@@ -277,12 +277,29 @@ func refundAlertText(a refundAlert) string {
 // refunded (the bot stopped in the middle).
 func unfinishedPaymentsText(ps []*service.Payment) string {
 	var b strings.Builder
-	b.WriteString("🔴 Оплаты не применены и не возвращены (бот остановился в процессе). " +
-		"Откройте пользователя и верните звёзды или продлите вручную:\n")
+	b.WriteString("🔴 Оплаты не отмечены как применённые и не возвращены (бот остановился в процессе). " +
+		"Дни могли уже добавиться: сначала проверьте срок ключа в карточке, потом верните звёзды или продлите вручную:\n")
 	for _, p := range ps {
-		fmt.Fprintf(&b, "• id %d — %d ⭐, %s, %s\n", p.UserID, p.Stars, tariffLabel(p.Days), mskTime(p.CreatedAt))
+		key := "новый ключ"
+		if p.PeerKey != "" {
+			key = "ключ " + shortKey(p.PeerKey)
+		}
+		fmt.Fprintf(&b, "• id %d — %d ⭐, %s, %s, %s\n", p.UserID, p.Stars, tariffLabel(p.Days), key, mskTime(p.CreatedAt))
 	}
 	return b.String()
+}
+
+// shortKey is the start of a public key, enough to find it in the card.
+func shortKey(publicKey string) string {
+	return publicKey[:min(8, len(publicKey))] + "…"
+}
+
+func refundNotRecordedText(p *service.Payment) string {
+	return fmt.Sprintf(
+		"⚠️ Звёзды (%d ⭐) пользователю id %d возвращены, но возврат не записан в базе: кнопка возврата останется. Второй раз Telegram не вернёт.",
+		p.Stars,
+		p.UserID,
+	)
 }
 
 func madeForeverText(p *service.Peer) string {
@@ -365,6 +382,21 @@ func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
 }
 
 const (
+	previewExpiredText    = "Этот предпросмотр устарел — ничего не отправлено. Откройте /menu и начните заново."
+	massSendBusyText      = "📣 Сейчас уже идёт рассылка — дождитесь её отчёта и нажмите «Отправить» ещё раз."
+	keyDeliveryFailedText = "🔑 Ключ создан, но отправить его сразу не получилось. Он в «📋 Мой доступ» — нажмите «📄 Конфиг»."
+)
+
+// maintAlreadyText: the preview's change is already made (by another
+// admin or an earlier press), so nothing is sent.
+func maintAlreadyText(on bool) string {
+	if on {
+		return "🛠 Техработы уже включены — сообщение не отправлено."
+	}
+	return "✅ Техработы уже закончены — сообщение не отправлено."
+}
+
+const (
 	maintenanceText = "🛠 На VPN-сервере идут технические работы. " +
 		"VPN может ненадолго отключаться или работать медленнее — это нормально, ничего делать не нужно. " +
 		"Напишем, когда закончим."
@@ -374,7 +406,6 @@ const (
 
 const (
 	configsStartedText = "🔄 Рассылаю просьбу обновить конфиг. Пришлю отчёт, когда закончу."
-	configsBusyText    = "🔄 Эта рассылка уже идёт — дождитесь отчёта."
 	configsNoticeText  = "🔄 Настройки VPN-сервера изменились — обновите ключ в приложении.\n\n" +
 		"1. Нажмите «📋 Мой доступ» (кнопка ниже или в /menu).\n" +
 		"2. У нужного ключа нажмите «📄 Конфиг» — придут новый файл и QR-код.\n" +
@@ -395,6 +426,7 @@ func configsAskText(recipients int) string {
 }
 
 var (
+	keyLimitText   = fmt.Sprintf("Больше ключей создать нельзя: максимум — %d.", service.MaxUnlimitedKeys)
 	askKeyNameText = "✍️ Как назвать ключ? Напишите, например, «iPhone» или «Ноутбук» — " +
 		"так будет проще отличать ключи. Или нажмите «Пропустить»."
 	badKeyNameText = fmt.Sprintf(
@@ -637,7 +669,7 @@ func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
 			tgbot.Row(tgbot.Button("📄 Конфиг: "+name, cbAdminCfg+pub), tgbot.Button("🗑 Удалить: "+name, cbAdminDel+pub)),
 		)
 	}
-	for _, p := range v.Payments {
+	for _, p := range recentPayments(v.Payments) {
 		if p.RefundedAt.IsZero() {
 			label := fmt.Sprintf("↩️ Вернуть %d ⭐ (%s)", p.Stars, p.CreatedAt.In(msk).Format("02.01"))
 			ref := paymentRef{
@@ -678,20 +710,33 @@ func issueTermKeyboard(userID int64) *tgbot.InlineKeyboardMarkup {
 }
 
 // paymentsText lists a user's payments for the admin card.
+// cardPaymentsLimit: the card shows only the newest payments, so a long
+// history can't push it over Telegram's message and keyboard limits.
+const cardPaymentsLimit = 10
+
 func paymentsText(ps []*service.Payment) string {
 	if len(ps) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("\n💳 Оплаты:\n")
-	for _, p := range ps {
+	for _, p := range recentPayments(ps) {
 		fmt.Fprintf(&b, "• %s — %d ⭐, %s", mskTime(p.CreatedAt), p.Stars, tariffLabel(p.Days))
 		if !p.RefundedAt.IsZero() {
 			b.WriteString(", ↩️ возвращено")
 		}
 		b.WriteString("\n")
 	}
+	if older := len(ps) - cardPaymentsLimit; older > 0 {
+		fmt.Fprintf(&b, "…и ещё %d старых\n", older)
+	}
 	return b.String()
+}
+
+// recentPayments is the newest cardPaymentsLimit payments (ps is newest
+// first).
+func recentPayments(ps []*service.Payment) []*service.Payment {
+	return ps[:min(len(ps), cardPaymentsLimit)]
 }
 
 func refundConfirmText(p *service.Payment) string {

@@ -1,6 +1,14 @@
 package amnezia
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrNotPersisted: Update changed the live interface but could not save
+// the config file. The file is now behind the live state: to undo, re-sync
+// the live interface from the file.
+var ErrNotPersisted = errors.New("amnezia: live interface updated but config not saved")
 
 // KV is one "Key = Value" line of a config section.
 type KV struct {

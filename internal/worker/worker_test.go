@@ -134,3 +134,32 @@ func TestRunHasATimeLimit(t *testing.T) {
 
 	require.True(t, job.hasDeadline.Load(), "a hung docker can't hold a run past the stop timeout")
 }
+
+// limitJob uses its whole time limit, then still returns what it found.
+type limitJob struct {
+	deliverErr error
+}
+
+func (s *limitJob) Maintain(ctx context.Context) (*service.Maintenance, error) {
+	<-ctx.Done()
+	return &service.Maintenance{}, nil
+}
+
+func (s *limitJob) DeliverMaintenance(ctx context.Context, _ *service.Maintenance) {
+	s.deliverErr = ctx.Err()
+}
+
+func TestDeliveryGetsItsOwnTimeLimit(t *testing.T) {
+	job := &limitJob{}
+	w := New(
+		&Input{
+			Job:      job,
+			Delivery: job,
+			Every:    time.Hour,
+		},
+	)
+	w.maintainLimit = 20 * time.Millisecond
+
+	w.once(context.Background())
+	require.NoError(t, job.deliverErr, "a slow maintenance does not leave the notices a dead context")
+}
