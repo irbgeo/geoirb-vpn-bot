@@ -186,7 +186,7 @@ func TestPaymentNewKeyDeliversIt(t *testing.T) {
 	)
 
 	require.NoError(t, r.Handle(context.Background(), paid()))
-	require.Len(t, s.files, 4, "config, QR, two lists")
+	require.Len(t, s.files, 2, "config and QR; the lists are the next step")
 }
 
 func TestPaymentRepeatDoesNothing(t *testing.T) {

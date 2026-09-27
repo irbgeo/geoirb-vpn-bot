@@ -14,6 +14,45 @@ import (
 
 // This file owns every user-facing text (Russian).
 
+// Step 1 and 2 of getting a key.
+const (
+	appsText = "🔑 Шаг 1. Установите приложение для VPN\n\n" +
+		"⭐ AmneziaVPN — рекомендуем: iPhone, iPad, Android, Windows, macOS, Linux. " +
+		"Только в нём можно настроить, чтобы российские сайты открывались без VPN.\n" +
+		"• AmneziaWG — проще, только VPN: iPhone, iPad, Android.\n" +
+		"• Роутер (Keenetic, OpenWrt) — нужна прошивка с поддержкой AmneziaWG 2.0, напишите в /support.\n\n" +
+		"Установите приложение и нажмите «Дальше»."
+	importText = "🔑 Шаг 2. Добавьте ключ в приложение\n\n" +
+		"AmneziaVPN: «+» (Добавить) → отсканируйте QR-код выше или выберите файл .conf → «Подключиться».\n" +
+		"AmneziaWG: «+» → «Сканировать QR-код» или «Импорт из файла» → включите переключатель.\n\n" +
+		"Проверка: откройте 2ip.ru — должен быть виден IP сервера, а не ваш.\n" +
+		"Файл и QR — это ваш личный ключ: не пересылайте их другим людям."
+)
+
+// Store links for step 1 (checked 2026-09-27).
+const (
+	urlAppStore   = "https://apps.apple.com/app/id1600529900"
+	urlGooglePlay = "https://play.google.com/store/apps/details?id=org.amnezia.vpn"
+	urlDownloads  = "https://amnezia.org/ru/downloads"
+)
+
+func appsKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.URLButton("📱 iPhone / iPad", urlAppStore),
+			tgbot.URLButton("🤖 Android", urlGooglePlay),
+		),
+		tgbot.Row(tgbot.URLButton("💻 Компьютер и другие", urlDownloads)),
+		tgbot.Row(tgbot.Button("➡️ Приложение установлено — дальше", cbIssueKey)),
+	)
+}
+
+func bypassNextKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("➡️ Дальше: российские сайты без VPN", cbBypass)),
+	)
+}
+
 // Commands are the bot's commands for the Telegram menu (SetMyCommands).
 func Commands() []tgbot.BotCommand {
 	return []tgbot.BotCommand{
@@ -59,10 +98,13 @@ const (
 	refundedText           = "Не получилось применить оплату, звёзды возвращены. Попробуйте позже."
 	refundFailedText       = "Не получилось применить оплату. Мы вернём звёзды вручную — напишите в /paysupport."
 	bypassDownText         = "Список российских сайтов для работы без VPN сейчас недоступен. Попробуйте получить ключ позже или настройте обход вручную."
-	bypassHowToText        = "🇷🇺 Российские сайты (банки, Госуслуги, маркетплейсы) лучше открывать без VPN.\n\n" +
-		"В AmneziaVPN: Настройки ⚙️ → Подключение → Раздельное туннелирование сайтов → " +
-		"«Адреса из списка НЕ должны использовать VPN» → ⋮ → Импорт → выберите файл выше.\n\n" +
-		"📱 Телефон: amnezia-ip-lite.json.\n💻 Компьютер: amnezia.json (или amnezia-ip-lite.json)."
+	bypassHowToText        = "🇷🇺 Шаг 3. Российские сайты без VPN\n\n" +
+		"Банки, Госуслуги и маркетплейсы лучше открывать напрямую, без VPN. Настройте это один раз в AmneziaVPN:\n" +
+		"1. Настройки ⚙️ → Подключение → Раздельное туннелирование сайтов.\n" +
+		"2. Включите и выберите «Адреса из списка НЕ должны использовать VPN».\n" +
+		"3. ⋮ (три точки) → Импорт → выберите файл ниже.\n\n" +
+		"📱 Телефон: amnezia-ip-lite.json.\n💻 Компьютер: amnezia.json (или amnezia-ip-lite.json).\n" +
+		"В приложении AmneziaWG такой настройки нет — там весь трафик идёт через VPN."
 )
 
 // ReconcileText describes DB/server differences for admins.
@@ -89,7 +131,7 @@ func ReconcileText(r *service.ReconcileReport) string {
 func greeting(u *service.User) string {
 	switch u.Role {
 	case service.RoleAdmin:
-		return "Привет! Вы админ. Нажмите кнопку, чтобы получить свой ключ (до 3, без срока)."
+		return "Привет! Вы админ. Нажмите кнопку, чтобы получить свой ключ (сколько угодно, без срока)."
 	case service.RoleUnlimited:
 		return "Привет! У вас безлимитный доступ: до 3 ключей без срока. Нажмите кнопку, чтобы получить ключ."
 	default:
@@ -449,10 +491,11 @@ func userCardText(u *service.User) string {
 		trial = "использован"
 	}
 	return fmt.Sprintf(
-		"👤 %s (id %d)\nРоль: %s\nПробный период: %s\nВ боте с: %s\n",
+		"👤 %s (id %d)\nРоль: %s\nКлючей: %d\nПробный период: %s\nВ боте с: %s\n",
 		userLabel(u),
 		u.ID,
 		u.Role,
+		u.KeysCount,
 		trial,
 		mskTime(u.CreatedAt),
 	)

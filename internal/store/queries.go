@@ -68,6 +68,34 @@ func registerUpdate(u *user) bson.M {
 	}
 }
 
+func incKeysCount(delta int) bson.M {
+	return bson.M{
+		"$inc": bson.M{
+			"keys_count": delta,
+		},
+	}
+}
+
+func setKeysCount(n int) bson.M {
+	return bson.M{
+		"$set": bson.M{
+			"keys_count": n,
+		},
+	}
+}
+
+// countedExcept matches users with a non-zero keys count whose ID is not in ids.
+func countedExcept(ids []int64) bson.M {
+	return bson.M{
+		"_id": bson.M{
+			"$nin": ids,
+		},
+		"keys_count": bson.M{
+			"$ne": 0,
+		},
+	}
+}
+
 func setTrialUsed() bson.M {
 	return bson.M{
 		"$set": bson.M{

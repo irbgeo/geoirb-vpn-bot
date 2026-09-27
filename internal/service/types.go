@@ -9,7 +9,7 @@ type Role string
 const (
 	RoleUser      Role = "user"      // trial + paid access
 	RoleUnlimited Role = "unlimited" // up to MaxUnlimitedKeys keys, never expire, free
-	RoleAdmin     Role = "admin"     // admin panel
+	RoleAdmin     Role = "admin"     // admin panel; any number of forever keys
 )
 
 // User is a Telegram user of the bot.
@@ -18,7 +18,20 @@ type User struct {
 	Username  string
 	Role      Role
 	TrialUsed bool
+	KeysCount int // keys of this user in the peers collection, kept in step
 	CreatedAt time.Time
+}
+
+// KeysDelta changes a user's KeysCount (+1 issued, -1 deleted).
+type KeysDelta struct {
+	UserID int64
+	Delta  int
+}
+
+// keyQuota is a user and how many keys they have (canCreate).
+type keyQuota struct {
+	User *User
+	Keys int
 }
 
 // RegisterInput is who pressed /start.

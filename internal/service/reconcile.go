@@ -1,10 +1,13 @@
 package service
 
-import "context"
+import (
+	"context"
+	"log"
+)
 
 // Reconcile compares the DB with the server config: enabled keys must be
 // on the server, disabled ones must not. It only reports; it never
-// deletes or adds anything.
+// deletes or adds keys. It also resets users' KeysCount from the DB keys.
 func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -19,8 +22,12 @@ func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	}
 
 	known := make(map[string]bool, len(ours))
+	counts := map[int64]int{}
 	r := &ReconcileReport{}
 	for _, p := range ours {
+		if p.UserID != 0 {
+			counts[p.UserID]++
+		}
 		known[p.PublicKey] = true
 		onServer := c.FindPeer(p.PublicKey) != nil
 		switch {
@@ -34,6 +41,11 @@ func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 		if !known[p.PublicKey] {
 			r.Manual++
 		}
+	}
+	// ponytail: counts from this server only; with several servers, sum
+	// them across servers before setting.
+	if err := s.users.SetKeyCounts(ctx, counts); err != nil {
+		log.Printf("service: sync keys counts: %v", err)
 	}
 	return r, nil
 }

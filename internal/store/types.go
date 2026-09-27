@@ -29,6 +29,7 @@ type user struct {
 	Username  string    `bson:"username"`
 	Role      string    `bson:"role"`
 	TrialUsed bool      `bson:"trial_used"`
+	KeysCount int       `bson:"keys_count"`
 	CreatedAt time.Time `bson:"created_at"`
 }
 
@@ -38,6 +39,7 @@ func userToStore(u *service.User) *user {
 		Username:  u.Username,
 		Role:      string(u.Role),
 		TrialUsed: u.TrialUsed,
+		KeysCount: u.KeysCount,
 		CreatedAt: u.CreatedAt,
 	}
 }
@@ -48,6 +50,7 @@ func (d *user) toService() *service.User {
 		Username:  d.Username,
 		Role:      roleOrUser(d.Role),
 		TrialUsed: d.TrialUsed,
+		KeysCount: d.KeysCount,
 		CreatedAt: d.CreatedAt,
 	}
 }

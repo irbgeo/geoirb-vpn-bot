@@ -191,9 +191,10 @@ func (f *fakeService) User(_ context.Context, id int64) (*service.User, error) {
 		return nil, service.ErrNotFound
 	}
 	return &service.User{
-		ID:       id,
-		Username: "bob",
-		Role:     f.role,
+		ID:        id,
+		Username:  "bob",
+		Role:      f.role,
+		KeysCount: len(f.access),
 	}, nil
 }
 
@@ -253,6 +254,10 @@ func (f *fakeService) UserConfig(_ context.Context, k service.UserKey) (*service
 
 func (f *fakeService) CreateKey(context.Context, int64) (*service.Peer, error) {
 	return f.created, f.createErr
+}
+
+func (f *fakeService) CheckCreateKey(context.Context, int64) error {
+	return f.createErr
 }
 
 func (f *fakeService) ClientConfig(_ context.Context, key string) (string, error) {
@@ -386,7 +391,33 @@ func pressCreateKey() tgbot.Update {
 	}
 }
 
-func TestCreateKeySendsConfigAndQR(t *testing.T) {
+func TestCreateKeyStepOneAsksToInstallAnApp(t *testing.T) {
+	r, s := newRouter(
+		&fakeService{
+			created: &service.Peer{
+				PublicKey: "PUB=",
+			},
+		},
+	)
+
+	require.NoError(t, r.Handle(context.Background(), pressCreateKey()))
+
+	require.Equal(t, []string{"cb1"}, s.answered, "button spinner stopped")
+	require.Empty(t, s.files, "no key yet")
+	require.Len(t, s.sent, 1)
+	for _, app := range []string{
+		"AmneziaVPN",
+		"AmneziaWG",
+	} {
+		require.Contains(t, s.sent[0].Text, app)
+	}
+	kb := s.sent[0].Keyboard.InlineKeyboard
+	require.Equal(t, "https://apps.apple.com/app/id1600529900", kb[0][0].URL)
+	require.Equal(t, "https://play.google.com/store/apps/details?id=org.amnezia.vpn", kb[0][1].URL)
+	require.Equal(t, "key:issue", kb[len(kb)-1][0].CallbackData, "next step")
+}
+
+func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 	r, s := newRouter(
 		&fakeService{
 			created: &service.Peer{
@@ -397,41 +428,43 @@ func TestCreateKeySendsConfigAndQR(t *testing.T) {
 		},
 	)
 
-	require.NoError(t, r.Handle(context.Background(), pressCreateKey()))
+	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
 
-	require.Equal(t, []string{"cb1"}, s.answered, "button spinner stopped")
-	require.Len(t, s.files, 4, "config, QR, two bypass lists")
+	require.Len(t, s.files, 2, "config and QR; the lists come in step 3")
 	conf, qr := s.files[0], s.files[1]
 	require.Equal(t, "vpn_bob_2.conf", conf.Name)
 	require.Equal(t, "[Interface]\nPrivateKey = PUB=\n", string(conf.Data))
 	require.Contains(t, conf.Caption, "до 04.10.2026 15:00 по Москве", "12:00 UTC is 15:00 MSK")
 	require.Equal(t, "qr.png", qr.Name)
 	require.Equal(t, "\x89PNG", string(qr.Data[:4]))
-	require.Equal(t, "amnezia.json", s.files[2].Name)
-	require.Contains(t, s.files[2].Caption, "только для компьютера")
-	require.Equal(t, "amnezia-ip-lite.json", s.files[3].Name)
-	require.Contains(t, s.files[3].Caption, "для телефона")
 	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "Адреса из списка НЕ должны использовать VPN", "how to import")
+	require.Contains(t, s.sent[0].Text, "QR")
+	require.Contains(t, s.sent[0].Text, "Подключиться")
+	require.Equal(t, "bypass", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData, "next step")
 }
 
-func TestCreateKeyBypassDownFallsBackToNote(t *testing.T) {
-	r, s := newRouter(
-		&fakeService{
-			created: &service.Peer{
-				PublicKey: "PUB=",
-				Name:      "tg:bob",
-			},
-		},
-	)
+func TestCreateKeyStepThreeTunnelingThenFiles(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+
+	require.NoError(t, r.Handle(context.Background(), press("bypass")))
+	require.Len(t, s.sent, 1)
+	require.Contains(t, s.sent[0].Text, "Адреса из списка НЕ должны использовать VPN")
+	require.Len(t, s.files, 2)
+	require.Equal(t, "amnezia.json", s.files[0].Name)
+	require.Contains(t, s.files[0].Caption, "только для компьютера")
+	require.Equal(t, "amnezia-ip-lite.json", s.files[1].Name)
+	require.Contains(t, s.files[1].Caption, "для телефона")
+}
+
+func TestBypassDownFallsBackToNote(t *testing.T) {
+	r, s := newRouter(&fakeService{})
 	r.bypass = &fakeBypass{
 		err: errors.New("github down"),
 	}
 
-	require.NoError(t, r.Handle(context.Background(), pressCreateKey()), "the key itself was delivered")
-	require.Len(t, s.files, 2, "config and QR")
-	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "недоступен")
+	require.NoError(t, r.Handle(context.Background(), press("bypass")))
+	require.Empty(t, s.files)
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "недоступен")
 }
 
 func TestCreateKeyForeverCaption(t *testing.T) {
@@ -444,7 +477,7 @@ func TestCreateKeyForeverCaption(t *testing.T) {
 		},
 	)
 
-	require.NoError(t, r.Handle(context.Background(), pressCreateKey()))
+	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
 	require.Contains(t, s.files[0].Caption, "бессрочный")
 }
 
@@ -573,17 +606,6 @@ func TestConfigAgainSendsOwnKeyOnly(t *testing.T) {
 
 	require.NoError(t, r.Handle(context.Background(), press("cfg:OTHER=")))
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "не найден")
-}
-
-func TestBypassButtonSendsListsOnly(t *testing.T) {
-	r, s := newRouter(&fakeService{})
-
-	require.NoError(t, r.Handle(context.Background(), press("bypass")))
-	require.Len(t, s.files, 2)
-	require.Equal(t, "amnezia.json", s.files[0].Name)
-	require.Equal(t, "amnezia-ip-lite.json", s.files[1].Name)
-	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "Импорт")
 }
 
 func TestHumanBytes(t *testing.T) {

@@ -131,6 +131,7 @@ func TestAdminUserCard(t *testing.T) {
 	require.NoError(t, r.Handle(context.Background(), press("a:user:7")))
 	card := s.edits[0]
 	require.Contains(t, card.Text, "@bob")
+	require.Contains(t, card.Text, "Ключей: 1")
 	require.Contains(t, card.Text, "10.8.1.10")
 	require.Equal(
 		t,
@@ -224,7 +225,7 @@ func TestAdminIssueForTelegramUserSendsKeyToThem(t *testing.T) {
 		},
 		svc.issued,
 	)
-	require.Len(t, s.files, 4, "config, QR, two lists")
+	require.Len(t, s.files, 2, "config and QR; the lists are the next step")
 	for _, f := range s.files {
 		require.Equal(t, int64(7), f.ChatID, "delivered to the user, not the admin")
 	}

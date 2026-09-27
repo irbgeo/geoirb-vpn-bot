@@ -40,6 +40,30 @@ func (r *UserRepo) Register(ctx context.Context, u *service.User) (*service.User
 	return d.toService(), nil
 }
 
+// AddKeys changes a user's keys count; a user without a row is left alone.
+func (r *UserRepo) AddKeys(ctx context.Context, d service.KeysDelta) error {
+	if _, err := r.coll.UpdateOne(ctx, byID(d.UserID), incKeysCount(d.Delta)); err != nil {
+		return fmt.Errorf("store: keys count of %d: %w", d.UserID, err)
+	}
+	return nil
+}
+
+// SetKeyCounts sets every user's keys count from counts; users not in it
+// get 0.
+func (r *UserRepo) SetKeyCounts(ctx context.Context, counts map[int64]int) error {
+	ids := make([]int64, 0, len(counts))
+	for id, n := range counts {
+		ids = append(ids, id)
+		if _, err := r.coll.UpdateOne(ctx, byID(id), setKeysCount(n)); err != nil {
+			return fmt.Errorf("store: set keys count of %d: %w", id, err)
+		}
+	}
+	if _, err := r.coll.UpdateMany(ctx, countedExcept(ids), setKeysCount(0)); err != nil {
+		return fmt.Errorf("store: reset keys counts: %w", err)
+	}
+	return nil
+}
+
 // SetTrialUsed marks the free trial as used, touching nothing else.
 func (r *UserRepo) SetTrialUsed(ctx context.Context, id int64) error {
 	if _, err := r.coll.UpdateOne(ctx, byID(id), setTrialUsed()); err != nil {

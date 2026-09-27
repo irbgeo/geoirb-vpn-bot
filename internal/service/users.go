@@ -12,7 +12,7 @@ import (
 const MaxUnlimitedKeys = 3
 
 var (
-	// ErrKeyLimit: an unlimited/admin user already has MaxUnlimitedKeys keys.
+	// ErrKeyLimit: an unlimited user already has MaxUnlimitedKeys keys.
 	ErrKeyLimit = errors.New("service: key limit reached")
 	// ErrHasKey: a plain user already has their key.
 	ErrHasKey = errors.New("service: user already has a key")
@@ -60,8 +60,9 @@ func (s *Service) Admins(ctx context.Context) ([]*User, error) {
 // CreateKey creates the user's own key, by role:
 //   - RoleUser: the first key starts the free trial (TrialDays), once;
 //     one key per user.
-//   - RoleUnlimited, RoleAdmin: up to MaxUnlimitedKeys never-expiring keys;
-//     disabled keys count too (they keep their slot and IP).
+//   - RoleUnlimited: up to MaxUnlimitedKeys never-expiring keys; disabled
+//     keys count too (they keep their slot and IP).
+//   - RoleAdmin: never-expiring keys, no limit.
 //
 // Counting and issuing run under one lock, so two quick taps can't create
 // an extra key.
@@ -78,10 +79,15 @@ func (s *Service) CreateKey(ctx context.Context, userID int64) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := canCreate(
+		keyQuota{
+			User: u,
+			Keys: len(have),
+		},
+	); err != nil {
+		return nil, err
+	}
 	if u.Role == RoleUnlimited || u.Role == RoleAdmin {
-		if len(have) >= MaxUnlimitedKeys {
-			return nil, ErrKeyLimit
-		}
 		return s.issue(
 			ctx,
 			IssueInput{
@@ -90,10 +96,48 @@ func (s *Service) CreateKey(ctx context.Context, userID int64) (*Peer, error) {
 			},
 		)
 	}
-	if len(have) > 0 {
-		return nil, ErrHasKey
-	}
 	return s.startTrial(ctx, u)
+}
+
+// CheckCreateKey says whether CreateKey would give the user a key now
+// (nil) or which error it would return, without issuing anything: the bot
+// asks before walking the user through installing an app.
+func (s *Service) CheckCreateKey(ctx context.Context, userID int64) error {
+	u, err := s.User(ctx, userID)
+	if err != nil {
+		return err
+	}
+	have, err := s.peers.ByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return canCreate(
+		keyQuota{
+			User: u,
+			Keys: len(have),
+		},
+	)
+}
+
+// canCreate holds CreateKey's rules: admin without a limit, unlimited up
+// to MaxUnlimitedKeys; a plain user one key, and the trial only once.
+func canCreate(q keyQuota) error {
+	if q.User.Role == RoleAdmin {
+		return nil
+	}
+	if q.User.Role == RoleUnlimited {
+		if q.Keys >= MaxUnlimitedKeys {
+			return ErrKeyLimit
+		}
+		return nil
+	}
+	if q.Keys > 0 {
+		return ErrHasKey
+	}
+	if q.User.TrialUsed {
+		return ErrTrialUsed
+	}
+	return nil
 }
 
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the

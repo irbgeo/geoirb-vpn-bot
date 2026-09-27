@@ -14,6 +14,11 @@ type UserRepository interface {
 	Get(ctx context.Context, id int64) (*User, error)
 	Register(ctx context.Context, u *User) (*User, error)
 	SetTrialUsed(ctx context.Context, id int64) error
+	// AddKeys changes KeysCount; a user without a row is left alone.
+	AddKeys(ctx context.Context, d KeysDelta) error
+	// SetKeyCounts sets every user's KeysCount from counts (a user not in
+	// counts has no keys).
+	SetKeyCounts(ctx context.Context, counts map[int64]int) error
 	List(ctx context.Context, p Page) ([]*User, int64, error)
 	ByRole(ctx context.Context, r Role) ([]*User, error)
 }

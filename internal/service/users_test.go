@@ -225,25 +225,34 @@ func TestCreateKeyUserTrialOnlyOnce(t *testing.T) {
 	require.ErrorIs(t, err, ErrTrialUsed, "no second trial after the key is gone")
 }
 
-func TestCreateKeyUnlimitedAndAdminUpToThreeForeverKeys(t *testing.T) {
-	for _, r := range []Role{
-		RoleUnlimited,
-		RoleAdmin,
-	} {
-		e := newEnv()
-		register(t, e, r)
-		ctx := context.Background()
+func TestCreateKeyUnlimitedUpToThreeForeverKeys(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleUnlimited)
+	ctx := context.Background()
 
-		for i := 1; i <= MaxUnlimitedKeys; i++ {
-			p, err := e.svc.CreateKey(ctx, 42)
-			require.NoError(t, err)
-			require.True(t, p.ExpiresAt.IsZero(), "never expires")
-			require.Equal(t, fmt.Sprintf("tg:bob #%d", i), p.Name)
-		}
-		_, err := e.svc.CreateKey(ctx, 42)
-		require.ErrorIs(t, err, ErrKeyLimit, string(r))
-		require.False(t, e.users().m[42].TrialUsed, "no trial involved")
+	for i := 1; i <= MaxUnlimitedKeys; i++ {
+		p, err := e.svc.CreateKey(ctx, 42)
+		require.NoError(t, err)
+		require.True(t, p.ExpiresAt.IsZero(), "never expires")
+		require.Equal(t, fmt.Sprintf("tg:bob #%d", i), p.Name)
 	}
+	_, err := e.svc.CreateKey(ctx, 42)
+	require.ErrorIs(t, err, ErrKeyLimit)
+	require.False(t, e.users().m[42].TrialUsed, "no trial involved")
+}
+
+func TestCreateKeyAdminHasNoLimit(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleAdmin)
+	ctx := context.Background()
+
+	for i := 1; i <= MaxUnlimitedKeys+2; i++ {
+		p, err := e.svc.CreateKey(ctx, 42)
+		require.NoError(t, err)
+		require.True(t, p.ExpiresAt.IsZero(), "never expires")
+		require.Equal(t, fmt.Sprintf("tg:bob #%d", i), p.Name)
+	}
+	require.NoError(t, e.svc.CheckCreateKey(ctx, 42))
 }
 
 func TestCreateKeyLimitCountsDisabledKeys(t *testing.T) {
@@ -264,4 +273,48 @@ func TestCreateKeyUnknownUser(t *testing.T) {
 	e := newEnv()
 	_, err := e.svc.CreateKey(context.Background(), 42)
 	require.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestCheckCreateKeyGivesCreateKeysVerdictWithoutIssuing(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleUser)
+	ctx := context.Background()
+
+	require.NoError(t, e.svc.CheckCreateKey(ctx, 42), "a new user may get the trial key")
+	require.Empty(t, e.peers.m, "nothing issued by a check")
+
+	_, err := e.svc.CreateKey(ctx, 42)
+	require.NoError(t, err)
+	require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 42), ErrHasKey)
+	require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 7), ErrNotFound)
+}
+
+func TestKeysCountFollowsIssueAndDelete(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleUnlimited)
+	ctx := context.Background()
+
+	a, err := e.svc.CreateKey(ctx, 42)
+	require.NoError(t, err)
+	_, err = e.svc.CreateKey(ctx, 42)
+	require.NoError(t, err)
+	require.Equal(t, 2, e.users().m[42].KeysCount)
+
+	require.NoError(t, e.svc.Delete(ctx, a.PublicKey))
+	require.Equal(t, 1, e.users().m[42].KeysCount)
+}
+
+func TestReconcileFixesKeysCounts(t *testing.T) {
+	e := newEnv()
+	register(t, e, RoleUnlimited)
+	ctx := context.Background()
+	_, err := e.svc.CreateKey(ctx, 42)
+	require.NoError(t, err)
+	u := e.users().m[42]
+	u.KeysCount = 7 // drifted (e.g. a failed update)
+	e.users().m[42] = u
+
+	_, err = e.svc.Reconcile(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, e.users().m[42].KeysCount)
 }

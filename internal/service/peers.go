@@ -73,7 +73,17 @@ func (s *Service) Delete(ctx context.Context, publicKey string) error {
 			return err
 		}
 	}
-	return s.peers.Delete(ctx, p.PublicKey)
+	if err := s.peers.Delete(ctx, p.PublicKey); err != nil {
+		return err
+	}
+	s.countKeys(
+		ctx,
+		KeysDelta{
+			UserID: p.UserID,
+			Delta:  -1,
+		},
+	)
+	return nil
 }
 
 // ClientConfig renders the .conf file for a key.
@@ -145,8 +155,26 @@ func (s *Service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 		}
 		return nil, err
 	}
+	s.countKeys(
+		ctx,
+		KeysDelta{
+			UserID: p.UserID,
+			Delta:  1,
+		},
+	)
 	s.showInApp(ctx, p)
 	return p, nil
+}
+
+// countKeys updates the owner's KeysCount. A failure is only logged: the
+// count is fixed at the next start (Reconcile), and limits never read it.
+func (s *Service) countKeys(ctx context.Context, d KeysDelta) {
+	if d.UserID == 0 {
+		return
+	}
+	if err := s.users.AddKeys(ctx, d); err != nil {
+		log.Printf("service: keys count of %d: %v", d.UserID, err)
+	}
 }
 
 // reservedIPs are the IPs of every DB key on this server, enabled or not:

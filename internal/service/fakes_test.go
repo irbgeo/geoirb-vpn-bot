@@ -36,6 +36,24 @@ func (f *fakeUsers) Register(_ context.Context, u *User) (*User, error) {
 	return &got, nil
 }
 
+func (f *fakeUsers) AddKeys(_ context.Context, d KeysDelta) error {
+	u, ok := f.m[d.UserID]
+	if !ok {
+		return nil // like the store: no row, nothing to count
+	}
+	u.KeysCount += d.Delta
+	f.m[d.UserID] = u
+	return nil
+}
+
+func (f *fakeUsers) SetKeyCounts(_ context.Context, counts map[int64]int) error {
+	for id, u := range f.m {
+		u.KeysCount = counts[id]
+		f.m[id] = u
+	}
+	return nil
+}
+
 func (f *fakeUsers) SetTrialUsed(_ context.Context, id int64) error {
 	u := f.m[id]
 	u.TrialUsed = true

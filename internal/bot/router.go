@@ -21,6 +21,7 @@ type Service interface {
 	Admins(ctx context.Context) ([]*service.User, error)
 	Reconcile(ctx context.Context) (*service.ReconcileReport, error)
 	CreateKey(ctx context.Context, userID int64) (*service.Peer, error)
+	CheckCreateKey(ctx context.Context, userID int64) error
 	ClientConfig(ctx context.Context, publicKey string) (string, error)
 	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
 	UserConfig(ctx context.Context, k service.UserKey) (*service.KeyConfig, error)
@@ -54,7 +55,8 @@ type Bypass interface {
 
 // Callback data of inline buttons (Telegram allows up to 64 bytes).
 const (
-	cbCreateKey = "key:create"
+	cbCreateKey = "key:create" // step 1: which app to install
+	cbIssueKey  = "key:issue"  // step 2: the key and how to add it
 	cbMyAccess  = "my"
 	cbBypass    = "bypass"
 	cbSupport   = "support"
@@ -245,6 +247,8 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	}
 	switch {
 	case cq.Data == cbCreateKey:
+		return r.keyStepApps(ctx, cq)
+	case cq.Data == cbIssueKey:
 		return r.createKey(ctx, cq)
 	case cq.Data == cbMyAccess:
 		return r.myAccess(ctx, cq)
@@ -321,8 +325,34 @@ func (r *Router) commandText(c command) string {
 	return unknownCommandText
 }
 
-// deliverKey sends a new key: config, QR code, bypass lists and how to
-// import them.
+// keyStepApps is step 1 of getting a key: which app to install, with
+// store links and "next". It first checks that a key can be given, so no
+// one installs an app to learn their trial is used up.
+func (r *Router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	if err := r.svc.CheckCreateKey(ctx, cq.SenderID()); err != nil {
+		text, known := createKeyErrorText(err)
+		return r.replyError(
+			ctx,
+			userError{
+				ChatID: cq.ChatID(),
+				Err:    err,
+				Text:   text,
+				Known:  known,
+			},
+		)
+	}
+	return r.send.Send(
+		ctx,
+		OutMessage{
+			ChatID:   cq.ChatID(),
+			Text:     appsText,
+			Keyboard: appsKeyboard(),
+		},
+	)
+}
+
+// deliverKey sends a new key (step 2): config, QR code and how to add it
+// to the app, with "next" to the split-tunneling step.
 func (r *Router) deliverKey(ctx context.Context, d keyDelivery) error {
 	conf, err := r.svc.ClientConfig(ctx, d.Peer.PublicKey)
 	if err != nil {
@@ -340,7 +370,14 @@ func (r *Router) deliverKey(ctx context.Context, d keyDelivery) error {
 	); err != nil {
 		return err
 	}
-	return r.sendBypass(ctx, d.ChatID)
+	return r.send.Send(
+		ctx,
+		OutMessage{
+			ChatID:   d.ChatID,
+			Text:     importText,
+			Keyboard: bypassNextKeyboard(),
+		},
+	)
 }
 
 // myAccess lists the user's keys with status, end date, last connection
@@ -457,9 +494,9 @@ func (r *Router) sendQR(ctx context.Context, in OutFile) error {
 	)
 }
 
-// sendBypass sends the lists of Russian sites/networks that must bypass
-// the VPN, then how to import them. If the lists can't be downloaded the
-// user gets a note; the key itself is already delivered.
+// sendBypass is the split-tunneling step: how to set it up in AmneziaVPN,
+// then the lists of Russian sites/networks that must not use the VPN. If
+// the lists can't be downloaded the user gets a note instead.
 func (r *Router) sendBypass(ctx context.Context, chatID int64) error {
 	files, err := r.bypass.Files(ctx)
 	if err != nil {
@@ -471,6 +508,15 @@ func (r *Router) sendBypass(ctx context.Context, chatID int64) error {
 				Text:   bypassDownText,
 			},
 		)
+	}
+	if err := r.send.Send(
+		ctx,
+		OutMessage{
+			ChatID: chatID,
+			Text:   bypassHowToText,
+		},
+	); err != nil {
+		return err
 	}
 	for _, f := range files {
 		err := r.send.SendDocument(
@@ -486,13 +532,7 @@ func (r *Router) sendBypass(ctx context.Context, chatID int64) error {
 			return err
 		}
 	}
-	return r.send.Send(
-		ctx,
-		OutMessage{
-			ChatID: chatID,
-			Text:   bypassHowToText,
-		},
-	)
+	return nil
 }
 
 // replyError tells the user what went wrong. An expected error (Known)

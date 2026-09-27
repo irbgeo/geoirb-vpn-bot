@@ -411,3 +411,56 @@ func TestConnectRefusesAWrongSecretKey(t *testing.T) {
 	)
 	require.ErrorContains(t, err, "DB_SECRET_KEY")
 }
+
+func TestKeyCounts(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, id := range []int64{
+		1,
+		2,
+	} {
+		_, err := s.Users.Register(
+			ctx,
+			&service.User{
+				ID:   id,
+				Role: service.RoleUser,
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, s.Users.AddKeys(
+		ctx,
+		service.KeysDelta{
+			UserID: 1,
+			Delta:  2,
+		},
+	))
+	u, err := s.Users.Get(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, 2, u.KeysCount)
+
+	require.NoError(t, s.Users.AddKeys(
+		ctx,
+		service.KeysDelta{
+			UserID: 99,
+			Delta:  1,
+		},
+	))
+	missing, err := s.Users.Get(ctx, 99)
+	require.NoError(t, err)
+	require.Nil(t, missing, "no user row is created by counting")
+
+	require.NoError(t, s.Users.SetKeyCounts(
+		ctx,
+		map[int64]int{
+			2: 3,
+		},
+	))
+	one, err := s.Users.Get(ctx, 1)
+	require.NoError(t, err)
+	two, err := s.Users.Get(ctx, 2)
+	require.NoError(t, err)
+	require.Equal(t, 0, one.KeysCount, "not in the map: no keys")
+	require.Equal(t, 3, two.KeysCount)
+}
