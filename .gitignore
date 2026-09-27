@@ -1,0 +1,6 @@
+secret
+.env
+/bot
+*.test
+.env.test
+backups/

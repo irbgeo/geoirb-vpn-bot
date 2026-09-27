@@ -1,0 +1,43 @@
+version: "2"
+
+run:
+  timeout: 5m
+  # Do not lint test files (_test.go): keep the linters focused on production code.
+  tests: false
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+    - nilerr
+    - bodyclose
+    - prealloc
+  settings:
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/irbgeo/geoirb-vpn-bot
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

@@ -1,0 +1,35 @@
+[Unit]
+Description=geoirb VPN Telegram bot (sells and manages AmneziaWG keys)
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+User=vpnbot
+Group=vpnbot
+# docker: the bot runs `docker exec` into the Amnezia container.
+SupplementaryGroups=docker
+EnvironmentFile=/etc/geoirb-vpn-bot/env
+ExecStart=/opt/geoirb-vpn-bot/bot
+Restart=always
+RestartSec=5
+# Shutdown waits for in-flight payments, a broadcast and a maintenance run.
+TimeoutStopSec=60
+
+# The docker CLI keeps its config in $HOME.
+StateDirectory=geoirb-vpn-bot
+Environment=HOME=/var/lib/geoirb-vpn-bot
+
+# The bot is small (~20 MB); each docker exec starts a docker CLI too.
+MemoryMax=200M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/docker.sock
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

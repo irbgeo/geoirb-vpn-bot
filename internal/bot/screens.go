@@ -1,0 +1,666 @@
+package bot
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	tgbot "github.com/irbgeo/go-tgbot"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
+)
+
+// This file owns every user-facing text (Russian).
+
+// Commands are the bot's commands for the Telegram menu (SetMyCommands).
+func Commands() []tgbot.BotCommand {
+	return []tgbot.BotCommand{
+		{
+			Command:     "start",
+			Description: "Меню: ключ, мой доступ, оплата",
+		},
+		{
+			Command:     "support",
+			Description: "Связаться с поддержкой",
+		},
+		{
+			Command:     "terms",
+			Description: "Условия использования и оплаты",
+		},
+		{
+			Command:     "paysupport",
+			Description: "Вопросы по оплате",
+		},
+	}
+}
+
+// msk: dates are shown in Moscow time (fixed zone, no tzdata needed).
+var msk = time.FixedZone("MSK", 3*60*60)
+
+const (
+	hasKeyText             = "У вас уже есть ключ — он в «📋 Мой доступ»: там можно получить конфиг ещё раз и продлить срок."
+	trialUsedText          = "Пробный период уже использован. Чтобы подключиться, нажмите «💳 Купить / продлить» в меню /start."
+	keyLimitText           = "У вас уже 3 ключа — это максимум."
+	internalErrorText      = "Не получилось создать ключ. Попробуйте позже — админ уже знает."
+	invoiceFailedText      = "Не получилось выставить счёт. Попробуйте позже или напишите в /support."
+	configFailedText       = "Не получилось собрать конфиг. Попробуйте позже или напишите в /support."
+	paidDeliveryFailedText = "✅ Оплата получена, но ключ не удалось отправить сразу. Он уже в «📋 Мой доступ» — нажмите «📄 Конфиг». Если не получится, напишите в /paysupport."
+	qrTooLongText          = "Конфиг не поместился в QR-код — используйте файл выше."
+	qrCaption              = "QR-код: отсканируйте его в приложении AmneziaVPN."
+	noKeysText             = "У вас пока нет ключей."
+	keyNotFoundText        = "Ключ не найден. Откройте «Мой доступ» ещё раз."
+	noPrivateKeyText       = "Этот ключ создан в приложении Amnezia: его конфиг есть только на устройстве, где ключ создан. Нужен файл — получите новый ключ."
+	buyText                = "💳 Выберите срок. Оплата — Telegram Stars. Если ключ уже есть, срок прибавится к нему."
+	notForSaleText         = "Вам платить не нужно: ваш доступ бессрочный."
+	noTariffText           = "Этот тариф больше недоступен. Откройте «Купить / продлить» ещё раз."
+	staleInvoiceText       = "Счёт устарел. Откройте «Купить / продлить» и оплатите новый — деньги не списаны."
+	refundedText           = "Не получилось применить оплату, звёзды возвращены. Попробуйте позже."
+	refundFailedText       = "Не получилось применить оплату. Мы вернём звёзды вручную — напишите в /paysupport."
+	bypassDownText         = "Список российских сайтов для работы без VPN сейчас недоступен. Попробуйте получить ключ позже или настройте обход вручную."
+	bypassHowToText        = "🇷🇺 Российские сайты (банки, Госуслуги, маркетплейсы) лучше открывать без VPN.\n\n" +
+		"В AmneziaVPN: Настройки ⚙️ → Подключение → Раздельное туннелирование сайтов → " +
+		"«Адреса из списка НЕ должны использовать VPN» → ⋮ → Импорт → выберите файл выше.\n\n" +
+		"📱 Телефон: amnezia-ip-lite.json.\n💻 Компьютер: amnezia.json (или amnezia-ip-lite.json)."
+)
+
+// ReconcileText describes DB/server differences for admins.
+func ReconcileText(r *service.ReconcileReport) string {
+	var b strings.Builder
+	b.WriteString("⚠️ Сверка базы и сервера: есть расхождения.\n")
+	b.WriteString(peersSection(
+		peersGroup{
+			Title: "Включены в базе, но нет на сервере",
+			Peers: r.MissingOnServer,
+		},
+	))
+	b.WriteString(peersSection(
+		peersGroup{
+			Title: "Отключены в базе, но есть на сервере",
+			Peers: r.DisabledButOnServer,
+		},
+	))
+	fmt.Fprintf(&b, "\nКлючей, созданных вручную: %d.\n", r.Manual)
+	b.WriteString("Бот ничего не менял автоматически.")
+	return b.String()
+}
+
+func greeting(u *service.User) string {
+	switch u.Role {
+	case service.RoleAdmin:
+		return "Привет! Вы админ. Нажмите кнопку, чтобы получить свой ключ (до 3, без срока)."
+	case service.RoleUnlimited:
+		return "Привет! У вас безлимитный доступ: до 3 ключей без срока. Нажмите кнопку, чтобы получить ключ."
+	default:
+		return "Привет! Это VPN-бот. Нажмите кнопку — получите ключ и бесплатный пробный период."
+	}
+}
+
+// mainKeyboard is the /start menu: plain users can buy, admins also get
+// the admin buttons.
+func mainKeyboard(role service.Role) *tgbot.InlineKeyboardMarkup {
+	rows := [][]tgbot.InlineKeyboardButton{
+		tgbot.Row(tgbot.Button("🔑 Получить ключ", cbCreateKey)),
+		tgbot.Row(tgbot.Button("📋 Мой доступ", cbMyAccess)),
+	}
+	if role == service.RoleUser {
+		rows = append(rows, tgbot.Row(tgbot.Button("💳 Купить / продлить", cbBuy)))
+	}
+	rows = append(
+		rows,
+		tgbot.Row(tgbot.Button("🇷🇺 Сайты без VPN", cbBypass)),
+		tgbot.Row(tgbot.Button("💬 Поддержка", cbSupport), tgbot.Button("📄 Условия", cbTerms)),
+	)
+	if role == service.RoleAdmin {
+		rows = append(
+			rows,
+			tgbot.Row(tgbot.Button("👥 Пользователи", cbAdminUsers+"0")),
+			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
+			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
+		)
+	}
+	return tgbot.InlineKeyboard(rows...)
+}
+
+func createKeyKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("🔑 Получить ключ", cbCreateKey)),
+	)
+}
+
+// accessKeyboard has a "config again" button per key, and "extend" for
+// users who buy.
+func accessKeyboard(v accessView) *tgbot.InlineKeyboardMarkup {
+	rows := make([][]tgbot.InlineKeyboardButton, 0, len(v.Keys))
+	for _, k := range v.Keys {
+		row := tgbot.Row(tgbot.Button("📄 Конфиг: "+k.Peer.Name, cbConfig+k.Peer.PublicKey))
+		if v.CanBuy {
+			row = append(row, tgbot.Button("💳 Продлить", cbBuyKey+k.Peer.PublicKey))
+		}
+		rows = append(rows, row)
+	}
+	return tgbot.InlineKeyboard(rows...)
+}
+
+// tariffsKeyboard: one button per tariff, e.g. "1 месяц — 150 ⭐".
+func tariffsKeyboard(v tariffsView) *tgbot.InlineKeyboardMarkup {
+	rows := make([][]tgbot.InlineKeyboardButton, 0, len(v.Tariffs))
+	for _, t := range v.Tariffs {
+		data := cbTariff + strconv.Itoa(t.Days)
+		if v.PublicKey != "" {
+			data += ":" + v.PublicKey
+		}
+		rows = append(rows, tgbot.Row(tgbot.Button(fmt.Sprintf("%s — %d ⭐", tariffLabel(t.Days), t.Stars), data)))
+	}
+	return tgbot.InlineKeyboard(rows...)
+}
+
+// tariffLabel: 30 → "1 месяц", 90 → "3 месяца", 365 → "12 месяцев",
+// anything else → "N дней".
+func tariffLabel(days int) string {
+	months := days / 30
+	if days == 365 {
+		months = 12
+	} else if days%30 != 0 {
+		return fmt.Sprintf("%d дней", days)
+	}
+	switch {
+	case months%10 == 1 && months%100 != 11:
+		return fmt.Sprintf("%d месяц", months)
+	case months%10 >= 2 && months%10 <= 4 && (months%100 < 12 || months%100 > 14):
+		return fmt.Sprintf("%d месяца", months)
+	}
+	return fmt.Sprintf("%d месяцев", months)
+}
+
+func invoiceTitle(days int) string {
+	return "VPN на " + tariffLabel(days)
+}
+
+func invoiceDescription(days int) string {
+	return "Доступ к VPN на " + tariffLabel(days) + ". Если ключ уже есть, срок прибавится к нему. " +
+		"Оплачивая, вы принимаете условия: /terms"
+}
+
+func extendedText(p *service.Peer) string {
+	return "✅ Оплата получена. Ключ " + p.Name + " продлён " + keyUntil(p) + "."
+}
+
+func paymentAlertText(a paymentAlert) string {
+	what := "продление"
+	if a.Result.NewKey {
+		what = "новый ключ"
+	}
+	text := fmt.Sprintf(
+		"💰 Оплата: %s (id %d) — %d ⭐, %s, %s.",
+		userLabel(
+			&service.User{
+				ID:       a.Payer.ID,
+				Username: a.Payer.Username,
+			},
+		),
+		a.Payer.ID,
+		a.Stars,
+		tariffLabel(a.Result.Days),
+		what,
+	)
+	if a.DeliveryErr != nil {
+		text += "\n⚠️ Ключ или сообщение не дошли до пользователя: " + a.DeliveryErr.Error()
+	}
+	return text
+}
+
+func refundAlertText(a refundAlert) string {
+	if a.RefundErr != nil {
+		return fmt.Sprintf(
+			"🔴 Оплата %s от id %d не применена (%v) и НЕ возвращена (%v). Верните вручную.",
+			a.ChargeID,
+			a.UserID,
+			a.Cause,
+			a.RefundErr,
+		)
+	}
+	return fmt.Sprintf("⚠️ Оплата %s от id %d не применена (%v), звёзды возвращены.", a.ChargeID, a.UserID, a.Cause)
+}
+
+// unfinishedPaymentsText lists payments that were neither applied nor
+// refunded (the bot stopped in the middle).
+func unfinishedPaymentsText(ps []*service.Payment) string {
+	var b strings.Builder
+	b.WriteString("🔴 Оплаты не применены и не возвращены (бот остановился в процессе). " +
+		"Откройте пользователя и верните звёзды или продлите вручную:\n")
+	for _, p := range ps {
+		fmt.Fprintf(&b, "• id %d — %d ⭐, %s, %s\n", p.UserID, p.Stars, tariffLabel(p.Days), mskTime(p.CreatedAt))
+	}
+	return b.String()
+}
+
+func madeForeverText(p *service.Peer) string {
+	return "✅ Ваш доступ теперь бессрочный: ключ " + p.Name + " работает без срока, продлевать не нужно."
+}
+
+func expiredText(p *service.Peer) string {
+	return "⛔️ Срок ключа " + p.Name + " закончился, ключ отключён. Продлите — заработает тот же ключ, настраивать заново не нужно."
+}
+
+func remind3dText(p *service.Peer) string {
+	return "⏳ Ключ " + p.Name + " действует меньше 3 дней: " + keyUntil(p) + ". Продлите заранее, чтобы VPN не отключился."
+}
+
+func remind1dText(p *service.Peer) string {
+	return "⏰ Ключ " + p.Name + " отключится меньше чем через сутки: " + keyUntil(p) + "."
+}
+
+func subnetAlertText(m *service.Maintenance) string {
+	return fmt.Sprintf(
+		"⚠️ Подсеть почти заполнена: занято %d из %d адресов. Новые ключи скоро некуда будет выдавать.",
+		m.SubnetUsed,
+		m.SubnetTotal,
+	)
+}
+
+func extendKeyboard(p *service.Peer) *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("💳 Продлить", cbBuyKey+p.PublicKey)),
+	)
+}
+
+const (
+	askBroadcastText     = "✍️ Напишите текст рассылки одним сообщением. Его получат все, у кого есть включённый ключ."
+	cancelledText        = "Отменено."
+	needTextText         = "Нужен текст — пришлите его одним сообщением."
+	broadcastStartedText = "📣 Рассылка началась. Пришлю отчёт, когда закончу."
+)
+
+func broadcastPreviewText(v broadcastView) string {
+	return fmt.Sprintf("📣 Отправить это %d пользователям?\n\n%s", v.Recipients, v.Text)
+}
+
+func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.Button("📣 Отправить", cbAdminBcOK),
+			tgbot.Button("Отмена", cbAdminCanc),
+		),
+	)
+}
+
+func broadcastReportText(r broadcastResult) string {
+	return fmt.Sprintf("📣 Рассылка готова: доставлено %d, не доставлено %d (заблокировали бота или удалили чат).", r.Sent, r.Failed)
+}
+
+// statsText is the admin overview. Traffic counters restart when the VPN
+// server restarts.
+func statsText(st *service.Stats) string {
+	var b strings.Builder
+	b.WriteString("📊 Статистика\n\n")
+	fmt.Fprintf(&b, "Пользователей: %d\n", st.Users)
+	fmt.Fprintf(&b, "Ключи: активных %d, отключённых %d, истекают за 7 дней: %d\n", st.Active, st.Disabled, st.Expiring7d)
+	fmt.Fprintf(&b, "В сети сейчас: %d\n", st.Online)
+	fmt.Fprintf(&b, "Подсеть: занято %d из %d\n", st.SubnetUsed, st.SubnetTotal)
+	fmt.Fprintf(&b, "Выручка за 30 дней: %d ⭐ (%d оплат)\n", st.Revenue30d, st.Payments30d)
+	if len(st.TopTraffic) > 0 {
+		b.WriteString("\nТрафик (с последнего перезапуска VPN):\n")
+		for _, k := range st.TopTraffic {
+			fmt.Fprintf(&b, "• %s (%s) — %s\n", k.Peer.Name, k.Peer.IP, humanBytes(k.Sent+k.Received))
+		}
+	}
+	return b.String()
+}
+
+// accessText lists the user's own keys.
+func accessText(keys []service.KeyInfo) string {
+	return "📋 Ваш доступ\n" + keysText(keys)
+}
+
+// keysText describes each key: status, end date, last connection,
+// traffic. Traffic counters restart when the VPN server restarts.
+func keysText(keys []service.KeyInfo) string {
+	var b strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&b, "\n🔑 %s — %s\n", k.Peer.Name, k.Peer.IP)
+		fmt.Fprintf(&b, "Статус: %s\n", keyStatus(k))
+		fmt.Fprintf(&b, "Срок: %s\n", keyUntil(k.Peer))
+		last := "никогда"
+		if !k.LastHandshake.IsZero() {
+			last = mskTime(k.LastHandshake)
+		}
+		fmt.Fprintf(&b, "Последнее подключение: %s\n", last)
+		fmt.Fprintf(&b, "Трафик: ↓ %s скачано, ↑ %s отправлено\n", humanBytes(k.Received), humanBytes(k.Sent))
+	}
+	return b.String()
+}
+
+func keyStatus(k service.KeyInfo) string {
+	switch {
+	case !k.Peer.Enabled:
+		return "⛔️ отключён"
+	case k.Online:
+		return "🟢 в сети"
+	}
+	return "⚪️ не в сети"
+}
+
+func keyUntil(p *service.Peer) string {
+	if p.ExpiresAt.IsZero() {
+		return "бессрочно"
+	}
+	return "до " + mskTime(p.ExpiresAt)
+}
+
+// mskTime formats a moment in Moscow time, saying so.
+func mskTime(t time.Time) string {
+	return t.In(msk).Format("02.01.2006 15:04") + " по Москве"
+}
+
+// humanBytes: 1536 → "1.5 КБ".
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d Б", n)
+	}
+	units := []string{
+		"КБ",
+		"МБ",
+		"ГБ",
+		"ТБ",
+		"ПБ",
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit && exp < len(units)-1; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), units[exp])
+}
+
+func keyCaption(p *service.Peer) string {
+	until := "Ключ бессрочный."
+	if !p.ExpiresAt.IsZero() {
+		until = "Ключ действует " + keyUntil(p) + "."
+	}
+	return "🔑 " + until + "\nИмпортируйте файл в приложение AmneziaVPN или AmneziaWG."
+}
+
+// configFileName turns "tg:bob #2" into "vpn_bob_2.conf": only ASCII
+// letters, digits and '-' survive, every other run becomes one '_'.
+func configFileName(p *service.Peer) string {
+	keep := func(r rune) bool {
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-'
+	}
+	parts := strings.FieldsFunc(strings.TrimPrefix(p.Name, "tg:"), func(r rune) bool { return !keep(r) })
+	return "vpn_" + strings.Join(parts, "_") + ".conf"
+}
+
+func peersSection(g peersGroup) string {
+	if len(g.Peers) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n%s:\n", g.Title)
+	for _, p := range g.Peers {
+		fmt.Fprintf(&b, "• %s (%s)\n", p.Name, p.IP)
+	}
+	return b.String()
+}
+
+// --- admin panel ---
+
+func usersText(v usersView) string {
+	return fmt.Sprintf("👥 Пользователи: всего %d, страница %d/%d", v.Total, v.Page+1, pages(v.Total))
+}
+
+// usersKeyboard: one button per user, then ◀️ / ▶️ when there are more pages.
+func usersKeyboard(v usersView) *tgbot.InlineKeyboardMarkup {
+	rows := make([][]tgbot.InlineKeyboardButton, 0, len(v.Users)+1)
+	for _, u := range v.Users {
+		label := fmt.Sprintf("%s · %s", userLabel(u), u.Role)
+		rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminUser+strconv.FormatInt(u.ID, 10))))
+	}
+	var nav []tgbot.InlineKeyboardButton
+	if v.Page > 0 {
+		nav = append(nav, tgbot.Button("◀️", cbAdminUsers+strconv.FormatInt(v.Page-1, 10)))
+	}
+	if v.Page+1 < pages(v.Total) {
+		nav = append(nav, tgbot.Button("▶️", cbAdminUsers+strconv.FormatInt(v.Page+1, 10)))
+	}
+	if len(nav) > 0 {
+		rows = append(rows, nav)
+	}
+	return tgbot.InlineKeyboard(rows...)
+}
+
+func pages(total int64) int64 {
+	return max(1, (total+adminPageSize-1)/adminPageSize)
+}
+
+// userLabel is "@username", or "id 123" for users without one.
+func userLabel(u *service.User) string {
+	if u.Username != "" {
+		return "@" + u.Username
+	}
+	return "id " + strconv.FormatInt(u.ID, 10)
+}
+
+func userCardText(u *service.User) string {
+	trial := "не использован"
+	if u.TrialUsed {
+		trial = "использован"
+	}
+	return fmt.Sprintf(
+		"👤 %s (id %d)\nРоль: %s\nПробный период: %s\nВ боте с: %s\n",
+		userLabel(u),
+		u.ID,
+		u.Role,
+		trial,
+		mskTime(u.CreatedAt),
+	)
+}
+
+// userCardKeyboard: per key [disable|enable] [+30 days], [config] [delete];
+// then "issue a key" and back to the list.
+func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
+	keys, userID := v.Keys, v.UserID
+	rows := make([][]tgbot.InlineKeyboardButton, 0, 2*len(keys)+1)
+	for _, k := range keys {
+		pub, ip := k.Peer.PublicKey, k.Peer.IP
+		extend := tgbot.Button(fmt.Sprintf("➕ %d дней", adminExtendDays), cbAdminExt+pub)
+		first := tgbot.Row(tgbot.Button("⛔️ Отключить "+ip, cbAdminDis+pub), extend)
+		switch {
+		case !k.Peer.Enabled && keyEnded(k.Peer):
+			first = tgbot.Row(extend) // enabling an ended key is undone within a minute
+		case !k.Peer.Enabled:
+			first = tgbot.Row(tgbot.Button("✅ Включить "+ip, cbAdminEn+pub), extend)
+		}
+		rows = append(
+			rows,
+			first,
+			tgbot.Row(tgbot.Button("📄 Конфиг", cbAdminCfg+pub), tgbot.Button("🗑 Удалить", cbAdminDel+pub)),
+		)
+	}
+	for _, p := range v.Payments {
+		if p.RefundedAt.IsZero() {
+			label := fmt.Sprintf("↩️ Вернуть %d ⭐ (%s)", p.Stars, p.CreatedAt.In(msk).Format("02.01"))
+			ref := paymentRef{
+				UserID: userID,
+				Ref:    payRef(p.ChargeID),
+			}
+			rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminRef+ref.String())))
+		}
+	}
+	rows = append(
+		rows,
+		tgbot.Row(tgbot.Button("🔑 Выдать ключ", cbAdminIss+strconv.FormatInt(userID, 10))),
+		tgbot.Row(tgbot.Button("◀️ К списку", cbAdminUsers+"0")),
+	)
+	return tgbot.InlineKeyboard(rows...)
+}
+
+const (
+	issueTermText = "🔑 Выдать ключ без оплаты. На какой срок?"
+)
+
+// issueTermKeyboard: 7 / 30 / 90 / 365 days or forever, then cancel.
+func issueTermKeyboard(userID int64) *tgbot.InlineKeyboardMarkup {
+	prefix := cbAdminIssD + strconv.FormatInt(userID, 10) + ":"
+	cancel := cbAdminUser + strconv.FormatInt(userID, 10)
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.Button("7 дней", prefix+"7"),
+			tgbot.Button("30 дней", prefix+"30"),
+			tgbot.Button("90 дней", prefix+"90"),
+		),
+		tgbot.Row(
+			tgbot.Button("365 дней", prefix+"365"),
+			tgbot.Button("♾ Бессрочно", prefix+"0"),
+		),
+		tgbot.Row(tgbot.Button("Отмена", cancel)),
+	)
+}
+
+// paymentsText lists a user's payments for the admin card.
+func paymentsText(ps []*service.Payment) string {
+	if len(ps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n💳 Оплаты:\n")
+	for _, p := range ps {
+		fmt.Fprintf(&b, "• %s — %d ⭐, %s", mskTime(p.CreatedAt), p.Stars, tariffLabel(p.Days))
+		if !p.RefundedAt.IsZero() {
+			b.WriteString(", ↩️ возвращено")
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func refundConfirmText(p *service.Payment) string {
+	return fmt.Sprintf(
+		"↩️ Вернуть %d ⭐ за «%s» (оплата %s)?\nКлюч не отключится — если нужно, отключите его отдельно.",
+		p.Stars,
+		tariffLabel(p.Days),
+		mskTime(p.CreatedAt),
+	)
+}
+
+func refundConfirmKeyboard(ref paymentRef) *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.Button("↩️ Да, вернуть", cbAdminRefOK+ref.String()),
+			tgbot.Button("Отмена", cbAdminUser+strconv.FormatInt(ref.UserID, 10)),
+		),
+	)
+}
+
+func refundedToUserText(p *service.Payment) string {
+	return fmt.Sprintf("↩️ Вам вернули %d ⭐ за «%s».", p.Stars, tariffLabel(p.Days))
+}
+
+func deleteConfirmText(p *service.Peer) string {
+	return fmt.Sprintf("🗑 Удалить ключ %s (%s)?\nКлюч перестанет работать сразу, отменить это нельзя.", p.Name, p.IP)
+}
+
+func deleteConfirmKeyboard(p *service.Peer) *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.Button("🗑 Да, удалить", cbAdminDelOK+p.PublicKey),
+			tgbot.Button("Отмена", cbAdminUser+strconv.FormatInt(p.UserID, 10)),
+		),
+	)
+}
+
+const unknownCommandText = "Не знаю такой команды. Нажмите /start — там всё меню."
+
+// termsText is /terms: what is sold, payment, refunds, rules, data kept.
+// Telegram requires it for bots that take Stars.
+func termsText(contact string) string {
+	return "📄 Условия использования\n\n" +
+		"1. Что вы получаете. Доступ к VPN (AmneziaWG) на выбранный срок: ключ-конфиг для приложений AmneziaVPN и AmneziaWG. " +
+		"Бесплатный пробный период — один раз на Telegram-аккаунт.\n" +
+		"2. Оплата — в Telegram Stars. Срок прибавляется к текущему; ключ, отключённый после окончания срока, включается обратно.\n" +
+		"3. Возврат. Если оплату не удалось применить, звёзды возвращаются автоматически. " +
+		"После начала пользования звёзды не возвращаются; спорные случаи — /paysupport.\n" +
+		"4. Правила. Нельзя использовать VPN для незаконных действий, спама, атак и взлома, а также передавать ключ другим людям. " +
+		"При нарушении доступ отключается без возврата.\n" +
+		"5. Доступность. Мы стараемся, чтобы VPN работал всегда, но не гарантируем 100%: " +
+		"возможны перерывы на обслуживание и блокировки со стороны провайдеров.\n" +
+		"6. Данные. Мы храним ваш Telegram ID и username, ключи доступа (в зашифрованном виде), даты и суммы оплат, " +
+		"время последнего подключения и объём трафика — только для работы сервиса. " +
+		"Какие сайты вы открываете, мы не записываем.\n" +
+		"7. Поддержка: " + contact + " или /support.\n\n" +
+		"Оплачивая, вы принимаете эти условия."
+}
+
+// supportText is /support: who to write to and what to include.
+func supportText(v supportView) string {
+	return fmt.Sprintf(
+		"💬 Поддержка: %s\n\nНапишите, что случилось: устройство, приложение и что не работает. "+
+			"Укажите ваш ID: %d — так мы быстрее найдём ваш ключ.\nВопросы по оплате: /paysupport.",
+		v.Contact,
+		v.UserID,
+	)
+}
+
+// paySupportText is /paysupport. Telegram requires it for Stars and wants
+// it to say that Telegram support can't help with purchases in the bot.
+func paySupportText(contact string) string {
+	return "По вопросам оплаты пишите " + contact + ": укажите, когда платили и сколько звёзд. " +
+		"Поддержка Telegram не может помочь с покупками в этом боте."
+}
+
+func cancelKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("Отмена", cbAdminCanc)),
+	)
+}
+
+// keyEnded: the key has an end date and it has passed.
+func keyEnded(p *service.Peer) bool {
+	return !p.ExpiresAt.IsZero() && !p.ExpiresAt.After(time.Now())
+}
+
+// adminErrorText explains a failed admin action. known is true for the
+// expected cases; an unknown error is shown as is, since the admin may
+// need it.
+func adminErrorText(err error) (text string, known bool) {
+	switch {
+	case errors.Is(err, service.ErrExpired):
+		return fmt.Sprintf("⚠️ Срок ключа закончился — нажмите «➕ %d дней», ключ включится сам.", adminExtendDays), true
+	case errors.Is(err, service.ErrNoPrivateKey):
+		return noPrivateKeyText, true
+	case errors.Is(err, service.ErrNotFound):
+		return "⚠️ Не найдено — возможно, ключ или пользователь уже удалены.", true
+	case errors.Is(err, errPaymentNotFound):
+		return "⚠️ Оплата не найдена — откройте карточку ещё раз.", true
+	}
+	return "⚠️ Не получилось: " + err.Error(), false
+}
+
+// backupAlertText: the last good backup is too old (zero = none found).
+func backupAlertText(last time.Time) string {
+	when := "не найден"
+	if !last.IsZero() {
+		when = "был " + mskTime(last)
+	}
+	return "⚠️ Свежего бэкапа нет: последний удачный бэкап " + when + ". " +
+		"Проверьте на сервере: journalctl -u geoirb-vpn-bot-backup"
+}
+
+func reconcileFailedText(err error) string {
+	return "⚠️ Сверка базы и сервера не удалась: " + err.Error()
+}
+
+// bypassCaption describes a known list; unknown ones get a generic line.
+func bypassCaption(name string) string {
+	switch name {
+	case "amnezia.json":
+		return "💻 Российские сайты мимо VPN (2000+ доменов) — только для компьютера."
+	case "amnezia-ip-lite.json":
+		return "📱 Российские сети мимо VPN — для телефона (на компьютере тоже работает)."
+	case "amnezia-ip.json":
+		return "💻 Весь российский сегмент интернета мимо VPN — только для компьютера."
+	}
+	return "Список адресов мимо VPN."
+}

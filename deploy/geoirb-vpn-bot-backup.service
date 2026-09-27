@@ -1,0 +1,8 @@
+[Unit]
+Description=Backup of the Amnezia config and the geoirb VPN bot database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/geoirb-vpn-bot/backup.sh

@@ -1,0 +1,50 @@
+package service
+
+import (
+	"errors"
+	"sync"
+	"time"
+)
+
+// ErrNotFound: the key is not in the bot's database. Peers created by hand
+// in the Amnezia app are never in it, so the bot can't touch them.
+var ErrNotFound = errors.New("service: key not found")
+
+// ErrExpired: the key's term ended; it can come back only by Extend.
+var ErrExpired = errors.New("service: key term ended, extend it")
+
+// ErrNoPrivateKey: the key was imported from the Amnezia app, so only the
+// device it was made on has its private key; the bot can't build a config.
+var ErrNoPrivateKey = errors.New("service: key has no private key (imported)")
+
+// Service is the bot's business logic. It knows nothing about Telegram.
+type Service struct {
+	users    UserRepository
+	peers    PeerRepository
+	payments PaymentRepository
+	vpn      VPN
+	cfg      Settings
+	now      func() time.Time
+	// ponytail: one lock for every key change (issue, extend, disable…), so a
+	// payment and an admin action on the same key can't overwrite each other.
+	// Per-key locks if this ever becomes a bottleneck.
+	mu sync.Mutex
+}
+
+// New creates a Service.
+func New(
+	d *Deps,
+) *Service {
+	now := d.Now
+	if now == nil {
+		now = time.Now
+	}
+	return &Service{
+		users:    d.Users,
+		peers:    d.Peers,
+		payments: d.Payments,
+		vpn:      d.VPN,
+		cfg:      d.Settings,
+		now:      now,
+	}
+}

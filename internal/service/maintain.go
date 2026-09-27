@@ -1,0 +1,141 @@
+package service
+
+import (
+	"context"
+	"log"
+	"time"
+)
+
+// Reminder windows before a key's end.
+const (
+	remind3d = 72 * time.Hour
+	remind1d = 24 * time.Hour
+)
+
+// Maintain is the periodic job: it disables keys whose term ended, picks
+// keys that need a "3 days" / "1 day" reminder, and measures the subnet.
+// Each reminder is marked sent before it is returned: a failed send loses
+// it rather than repeating it every minute. Under a day left, only the
+// 1-day reminder goes out.
+// A failed subnet reading is logged and left at zero: the key notices
+// matter more, and their marks are already saved.
+// ponytail: scans every key of the server each run — at most 254.
+func (s *Service) Maintain(ctx context.Context) (*Maintenance, error) {
+	m, err := s.maintainKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if m.SubnetUsed, m.SubnetTotal, err = s.subnetUsage(ctx); err != nil {
+		log.Printf("service: subnet usage: %v", err)
+		m.SubnetUsed, m.SubnetTotal = 0, 0
+	}
+	return m, nil
+}
+
+// maintainKeys expires keys and picks reminders, under s.mu.
+func (s *Service) maintainKeys(ctx context.Context) (*Maintenance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ps, err := s.peers.ByServer(ctx, s.cfg.ServerID)
+	if err != nil {
+		return nil, err
+	}
+	forever, err := s.foreverOwners(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m := &Maintenance{}
+	now := s.now()
+keys:
+	for _, p := range ps {
+		if forever[p.UserID] && !p.ExpiresAt.IsZero() {
+			if err := s.makeForever(ctx, p); err != nil {
+				// The server is likely down: stop, the next run retries.
+				log.Printf("service: make %s forever: %v", p.IP, err)
+				break keys
+			}
+			m.MadeForever = append(m.MadeForever, p)
+			continue
+		}
+		if !p.Enabled || p.ExpiresAt.IsZero() {
+			continue
+		}
+		left := p.ExpiresAt.Sub(now)
+		switch {
+		case left <= 0:
+			if err := s.disablePeer(ctx, p); err != nil {
+				// The server is likely down: stop instead of waiting a
+				// docker timeout per key; the next run retries.
+				log.Printf("service: expire %s: %v", p.IP, err)
+				break keys
+			}
+			m.Expired = append(m.Expired, p)
+		case left <= remind1d && !p.Reminded1d:
+			p.Reminded1d, p.Reminded3d = true, true
+			if s.savePeer(ctx, p) {
+				m.Remind1d = append(m.Remind1d, p)
+			}
+		case left <= remind3d && !p.Reminded3d:
+			p.Reminded3d = true
+			if s.savePeer(ctx, p) {
+				m.Remind3d = append(m.Remind3d, p)
+			}
+		}
+	}
+
+	return m, nil
+}
+
+// foreverOwners are the users whose keys never expire: unlimited and
+// admin. The role is set by hand in the DB, so a key issued with an end
+// date (e.g. a trial) is fixed here, within a minute of the change.
+func (s *Service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
+	ids := map[int64]bool{}
+	for _, r := range []Role{
+		RoleUnlimited,
+		RoleAdmin,
+	} {
+		us, err := s.users.ByRole(ctx, r)
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range us {
+			ids[u.ID] = true
+		}
+	}
+	return ids, nil
+}
+
+// makeForever drops a key's end date and reminders, and puts it back on
+// the server (same keys, same IP) if it was disabled. The caller holds s.mu.
+func (s *Service) makeForever(ctx context.Context, p *Peer) error {
+	p.ExpiresAt = time.Time{}
+	p.Reminded3d = false
+	p.Reminded1d = false
+	return s.enableAndSave(ctx, p)
+}
+
+// savePeer saves a reminder mark; false (logged) if it failed, so the
+// reminder is not sent and is tried again next run.
+func (s *Service) savePeer(ctx context.Context, p *Peer) bool {
+	if err := s.peers.Save(ctx, p); err != nil {
+		log.Printf("service: save reminder for %s: %v", p.IP, err)
+		return false
+	}
+	return true
+}
+
+// subnetUsage counts taken client IPs: peers on the server plus the IPs
+// reserved for the bot's keys (disabled ones have no peer).
+func (s *Service) subnetUsage(ctx context.Context) (used, total int, err error) {
+	c, err := s.vpn.ReadConf(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	reserved, err := s.reservedIPs(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	return c.SubnetUsage(reserved)
+}
