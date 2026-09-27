@@ -277,7 +277,7 @@ func TestUnknownCommandGetsHint(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 
 	require.NoError(t, r.Handle(context.Background(), startUpdate("/foo")))
-	require.Contains(t, s.sent[0].Text, "/start")
+	require.Contains(t, s.sent[0].Text, "/menu")
 }
 
 func TestCommandsForTelegramMenu(t *testing.T) {
@@ -289,7 +289,7 @@ func TestCommandsForTelegramMenu(t *testing.T) {
 	require.Equal(
 		t,
 		[]string{
-			"start",
+			"menu",
 			"support",
 			"terms",
 			"paysupport",

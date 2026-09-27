@@ -363,6 +363,30 @@ func TestStartRegistersAndGreets(t *testing.T) {
 	require.Equal(t, "terms", s.sent[0].Keyboard.InlineKeyboard[4][1].CallbackData)
 }
 
+func TestMenuCommandShowsTheSameMenuAsStart(t *testing.T) {
+	svc := &fakeService{
+		role: service.RoleUser,
+	}
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), startUpdate("/menu")))
+
+	require.Len(t, svc.registered, 1, "registers like /start")
+	require.Len(t, s.sent, 1)
+	require.Equal(t, "key:create", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData)
+}
+
+func TestTextsPointToMenuNotStart(t *testing.T) {
+	for _, text := range []string{
+		trialUsedText,
+		configsNoticeText,
+		unknownCommandText,
+	} {
+		require.NotContains(t, text, "/start")
+		require.Contains(t, text, "/menu")
+	}
+}
+
 func TestStartShowsAdminRole(t *testing.T) {
 	r, s := newRouter(
 		&fakeService{

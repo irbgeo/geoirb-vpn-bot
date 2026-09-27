@@ -145,7 +145,9 @@ func (r *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 		return nil
 	}
 	if cmd, ok := upd.Command(); ok {
-		if cmd == "start" {
+		// /start: Telegram sends it on the first "Start"; /menu is the name
+		// users see in the command list and texts.
+		if cmd == "start" || cmd == "menu" {
 			return r.start(ctx, upd.Message)
 		}
 		return r.send.Send(

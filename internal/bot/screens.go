@@ -61,7 +61,7 @@ func bypassNextKeyboard() *tgbot.InlineKeyboardMarkup {
 func Commands() []tgbot.BotCommand {
 	return []tgbot.BotCommand{
 		{
-			Command:     "start",
+			Command:     "menu",
 			Description: "Меню: ключ, мой доступ, оплата",
 		},
 		{
@@ -84,7 +84,7 @@ var msk = time.FixedZone("MSK", 3*60*60)
 
 const (
 	hasKeyText             = "У вас уже есть ключ — он в «📋 Мой доступ»: там можно получить конфиг ещё раз и продлить срок."
-	trialUsedText          = "Пробный период уже использован. Чтобы подключиться, нажмите «💳 Купить / продлить» в меню /start."
+	trialUsedText          = "Пробный период уже использован. Чтобы подключиться, нажмите «💳 Купить / продлить» в /menu."
 	keyLimitText           = "У вас уже 3 ключа — это максимум."
 	internalErrorText      = "Не получилось создать ключ. Попробуйте позже — админ уже знает."
 	invoiceFailedText      = "Не получилось выставить счёт. Попробуйте позже или напишите в /support."
@@ -143,7 +143,7 @@ func greeting(u *service.User) string {
 	}
 }
 
-// mainKeyboard is the /start menu: plain users can buy, admins also get
+// mainKeyboard is the /start and /menu menu: plain users can buy, admins also get
 // the admin buttons.
 func mainKeyboard(role service.Role) *tgbot.InlineKeyboardMarkup {
 	rows := [][]tgbot.InlineKeyboardButton{
@@ -378,7 +378,7 @@ const (
 	configsStartedText = "🔄 Рассылаю просьбу обновить конфиг. Пришлю отчёт, когда закончу."
 	configsBusyText    = "🔄 Эта рассылка уже идёт — дождитесь отчёта."
 	configsNoticeText  = "🔄 Настройки VPN-сервера изменились — обновите ключ в приложении.\n\n" +
-		"1. Нажмите «📋 Мой доступ» (кнопка ниже или в меню /start).\n" +
+		"1. Нажмите «📋 Мой доступ» (кнопка ниже или в /menu).\n" +
 		"2. У нужного ключа нажмите «📄 Конфиг» — придут новый файл и QR-код.\n" +
 		"3. В приложении удалите старое подключение и добавьте новое из файла или QR-кода.\n\n" +
 		"Ключ и срок остаются прежними. Если ключей несколько — повторите для каждого."
@@ -707,7 +707,7 @@ func deleteConfirmKeyboard(p *service.Peer) *tgbot.InlineKeyboardMarkup {
 	)
 }
 
-const unknownCommandText = "Не знаю такой команды. Нажмите /start — там всё меню."
+const unknownCommandText = "Не знаю такой команды. Нажмите /menu — там всё меню."
 
 // termsText is /terms: what is sold, payment, refunds, rules, data kept.
 // Telegram requires it for bots that take Stars.

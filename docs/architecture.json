@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "geoirb-vpn-bot: архитектура",
+    "output": "docs/architecture.html",
+    "quality_profile": "showcase",
+    "repository": { "url": "https://github.com/irbgeo/geoirb-vpn-bot", "provider": "github", "link_mode": "web", "revision": "3fa9e0dff4988c458a64a05ce803a69a387232d0" },
+    "viewBox": [1350, 760]
+  },
+  "components": [
+    { "id": "users", "type": "external", "label": "Пользователи", "sublabel": "чат с ботом", "pos": [20, 230], "size": [140, 64] },
+    { "id": "telegram", "type": "cloud", "label": "Telegram Bot API", "sublabel": "сообщения + Stars", "brand": "telegram", "pos": [235, 230], "size": [155, 64] },
+    { "id": "router", "type": "backend", "label": "bot.Router", "sublabel": "меню, админка, оплата", "pos": [470, 230], "size": [150, 64], "sources": [{ "path": "internal/bot/router.go" }] },
+    { "id": "service", "type": "backend", "label": "service", "sublabel": "ключи, роли, оплата", "pos": [700, 230], "size": [150, 64], "sources": [{ "path": "internal/service/peers.go" }] },
+    { "id": "mongo", "type": "database", "label": "MongoDB", "sublabel": "users, peers, payments", "brand": "mongodb", "pos": [930, 230], "size": [165, 64], "sources": [{ "path": "internal/store/queries.go" }] },
+    { "id": "bypass", "type": "external", "label": "Списки lib4u", "sublabel": "сайты без VPN", "brand": "github", "pos": [470, 16], "size": [150, 64], "sources": [{ "path": "internal/bypass/bypass.go" }] },
+    { "id": "sysload", "type": "backend", "label": "sysload", "sublabel": "/proc раз в минуту", "pos": [470, 420], "size": [150, 64], "sources": [{ "path": "internal/sysload/sysload.go" }] },
+    { "id": "worker", "type": "backend", "label": "worker", "sublabel": "сроки, напоминания", "pos": [700, 420], "size": [150, 64], "sources": [{ "path": "internal/worker/worker.go" }] },
+    { "id": "awg", "type": "security", "label": "amnezia-awg2", "sublabel": "awg0, amneziawg-go", "brand": "docker", "pos": [930, 420], "size": [165, 64], "sources": [{ "path": "internal/vpn/amnezia/server.go" }] },
+    { "id": "backup", "type": "backend", "label": "Бэкап", "sublabel": "timer 04:00 UTC", "pos": [1150, 330], "size": [150, 64], "sources": [{ "path": "deploy/backup.sh" }] },
+    { "id": "clients", "type": "frontend", "label": "VPN-приложения", "sublabel": "AmneziaVPN, AmneziaWG", "pos": [930, 620], "size": [165, 64] },
+    { "id": "internet", "type": "external", "label": "Интернет", "sublabel": "сайты и сервисы", "pos": [1150, 620], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "GCP e2-micro · Ubuntu 26.04", "wraps": ["router", "service", "sysload", "worker", "mongo", "awg", "backup"], "pad": 22 },
+    { "kind": "security-group", "label": "systemd geoirb-vpn-bot (vpnbot)", "wraps": ["router", "service", "sysload", "worker"], "pad": 12 }
+  ],
+  "connections": [
+    { "from": "users", "to": "telegram", "label": "кнопки", "variant": "emphasis" },
+    { "from": "telegram", "to": "router", "label": "long polling", "variant": "emphasis" },
+    { "from": "router", "to": "service", "label": "вызовы", "variant": "emphasis" },
+    { "from": "service", "to": "mongo", "label": "AES-GCM ключи" },
+    { "from": "service", "to": "awg", "label": "docker exec", "variant": "emphasis" },
+    { "from": "router", "to": "bypass", "label": "HTTPS, кэш 6 ч", "variant": "dashed", "labelDy": -38 },
+    { "from": "worker", "to": "service", "label": "Maintain" },
+    { "from": "sysload", "to": "router", "label": "алерты", "variant": "dashed" },
+    { "from": "clients", "to": "awg", "label": "UDP 443", "variant": "security" },
+    { "from": "awg", "to": "internet", "label": "NAT, MSS 1340" },
+    { "from": "backup", "to": "mongo", "label": "mongodump", "variant": "dashed" },
+    { "from": "backup", "to": "awg", "label": "tar конфига", "variant": "dashed", "labelDy": 11 }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Ключи и оплата", "items": ["Роли user / unlimited / admin — только в базе", "Приватные ключи в MongoDB зашифрованы AES-256-GCM", "Stars: проверка до оплаты, Pay идемпотентен"] },
+    { "dot": "emerald", "title": "Надёжность", "items": ["awg syncconf — без разрыва остальных клиентов", "Reconcile при старте, бэкап раз в сутки, 7 копий", "Алерты: подсеть, бэкап, нагрузка сервера"] },
+    { "dot": "rose", "title": "Нагрузка", "items": ["conntrack 65536, TCP MSS 1340 (MTU GCP 1460)", "Потолок — процессор e2-micro (~15–30 Мбит/с)", "План: модуль ядра, MTU 1380 — docs/plan.md"] }
+  ]
+}
