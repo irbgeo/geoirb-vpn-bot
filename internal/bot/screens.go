@@ -185,7 +185,7 @@ func createKeyKeyboard() *tgbot.InlineKeyboardMarkup {
 func accessKeyboard(v accessView) *tgbot.InlineKeyboardMarkup {
 	rows := make([][]tgbot.InlineKeyboardButton, 0, len(v.Keys))
 	for _, k := range v.Keys {
-		row := tgbot.Row(tgbot.Button("📄 Конфиг: "+k.Peer.Name, cbConfig+k.Peer.PublicKey))
+		row := tgbot.Row(tgbot.Button("📄 Конфиг: "+keyLabel(k.Peer), cbConfig+k.Peer.PublicKey))
 		if v.CanBuy {
 			row = append(row, tgbot.Button("💳 Продлить", cbBuyKey+k.Peer.PublicKey))
 		}
@@ -375,18 +375,28 @@ const (
 )
 
 const (
-	configsStartedText = "🔄 Обновление конфигов началось. Пришлю отчёт, когда закончу."
-	configsBusyText    = "🔄 Обновление конфигов уже идёт — дождитесь отчёта."
-	configsNoticeText  = "🔄 Настройки VPN-сервера изменились. Обновите ключ: " +
-		"удалите старое подключение в приложении и добавьте новое из файла или QR-кода ниже."
+	configsStartedText = "🔄 Рассылаю просьбу обновить конфиг. Пришлю отчёт, когда закончу."
+	configsBusyText    = "🔄 Эта рассылка уже идёт — дождитесь отчёта."
+	configsNoticeText  = "🔄 Настройки VPN-сервера изменились — обновите ключ в приложении.\n\n" +
+		"1. Нажмите «📋 Мой доступ» (кнопка ниже или в меню /start).\n" +
+		"2. У нужного ключа нажмите «📄 Конфиг» — придут новый файл и QR-код.\n" +
+		"3. В приложении удалите старое подключение и добавьте новое из файла или QR-кода.\n\n" +
+		"Ключ и срок остаются прежними. Если ключей несколько — повторите для каждого."
 )
 
 func configsAskText(recipients int) string {
 	return fmt.Sprintf(
-		"🔄 Отправить новый конфиг %d пользователям (всем, у кого есть включённый ключ)?\n\n"+
+		"🔄 Попросить %d пользователям (всем, у кого есть включённый ключ) обновить конфиг? "+
+			"Файлы не рассылаются: каждый получит их сам в «📋 Мой доступ».\n\n"+
 			"Конфиг собирается из текущих настроек сервера и ENDPOINT_HOST. "+
 			"Если сменился IP и в ENDPOINT_HOST указан IP, сначала поменяйте его в .env и сделайте make deploy.",
 		recipients,
+	)
+}
+
+func myAccessKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("📋 Мой доступ", cbMyAccess)),
 	)
 }
 
@@ -400,7 +410,7 @@ func configsKeyboard() *tgbot.InlineKeyboardMarkup {
 }
 
 func configsReportText(r broadcastResult) string {
-	return fmt.Sprintf("🔄 Конфиги отправлены: получили %d, не доставлено %d (заблокировали бота, удалили чат или ошибка).", r.Sent, r.Failed)
+	return fmt.Sprintf("🔄 Просьба обновить конфиг отправлена: получили %d, не доставлено %d (заблокировали бота или удалили чат).", r.Sent, r.Failed)
 }
 
 func broadcastReportText(r broadcastResult) string {
@@ -492,12 +502,20 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), units[exp])
 }
 
+// keyLabel names a key on buttons: its name, or its IP when it has none.
+func keyLabel(p *service.Peer) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return p.IP
+}
+
 func keyCaption(p *service.Peer) string {
 	until := "Ключ бессрочный."
 	if !p.ExpiresAt.IsZero() {
 		until = "Ключ действует " + keyUntil(p) + "."
 	}
-	return "🔑 " + until + "\nИмпортируйте файл в приложение AmneziaVPN или AmneziaWG."
+	return "🔑 " + keyLabel(p) + "\n" + until + "\nИмпортируйте файл в приложение AmneziaVPN или AmneziaWG."
 }
 
 // configFileName turns "tg:bob #2" into "vpn_bob_2.conf": only ASCII
@@ -582,19 +600,19 @@ func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
 	keys, userID := v.Keys, v.UserID
 	rows := make([][]tgbot.InlineKeyboardButton, 0, 2*len(keys)+1)
 	for _, k := range keys {
-		pub, ip := k.Peer.PublicKey, k.Peer.IP
-		extend := tgbot.Button(fmt.Sprintf("➕ %d дней", adminExtendDays), cbAdminExt+pub)
-		first := tgbot.Row(tgbot.Button("⛔️ Отключить "+ip, cbAdminDis+pub), extend)
+		pub, name := k.Peer.PublicKey, keyLabel(k.Peer)
+		extend := tgbot.Button(fmt.Sprintf("➕ %d дней: %s", adminExtendDays, name), cbAdminExt+pub)
+		first := tgbot.Row(tgbot.Button("⛔️ Отключить: "+name, cbAdminDis+pub), extend)
 		switch {
 		case !k.Peer.Enabled && keyEnded(k.Peer):
 			first = tgbot.Row(extend) // enabling an ended key is undone within a minute
 		case !k.Peer.Enabled:
-			first = tgbot.Row(tgbot.Button("✅ Включить "+ip, cbAdminEn+pub), extend)
+			first = tgbot.Row(tgbot.Button("✅ Включить: "+name, cbAdminEn+pub), extend)
 		}
 		rows = append(
 			rows,
 			first,
-			tgbot.Row(tgbot.Button("📄 Конфиг", cbAdminCfg+pub), tgbot.Button("🗑 Удалить", cbAdminDel+pub)),
+			tgbot.Row(tgbot.Button("📄 Конфиг: "+name, cbAdminCfg+pub), tgbot.Button("🗑 Удалить: "+name, cbAdminDel+pub)),
 		)
 	}
 	for _, p := range v.Payments {

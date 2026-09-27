@@ -552,12 +552,15 @@ func TestAdminUpdateConfigs(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
 	r.Wait()
-	require.Contains(t, s.sent[1].Text, "началось", "the admin is told at once")
-	require.Equal(t, int64(7), s.sent[2].ChatID)
-	require.Contains(t, s.sent[2].Text, "Обновите")
-	require.Len(t, s.files, 2, "only the enabled key with a private key: .conf + QR, and only to user 7")
-	require.Equal(t, int64(7), s.files[0].ChatID)
-	require.Equal(t, int64(7), s.files[1].ChatID)
+	require.Contains(t, s.sent[1].Text, "Рассылаю", "the admin is told at once")
+	notice := s.sent[2]
+	require.Equal(t, int64(7), notice.ChatID)
+	require.Contains(t, notice.Text, "обновите ключ")
+	require.Contains(t, notice.Text, "📋 Мой доступ")
+	require.Contains(t, notice.Text, "📄 Конфиг")
+	require.Equal(t, cbMyAccess, notice.Keyboard.InlineKeyboard[0][0].CallbackData, "opens My access")
+	require.Empty(t, s.files, "no configs are sent: the user gets them from My access")
+	require.Len(t, s.sent, 4, "ask, started, one notice, report")
 	report := s.sent[len(s.sent)-1]
 	require.Equal(t, int64(42), report.ChatID)
 	require.Contains(t, report.Text, "получили 1")
@@ -613,4 +616,52 @@ func TestAdminMaintenanceNoticesUseTheBroadcastPreview(t *testing.T) {
 		require.Equal(t, int64(7), s.sent[2].ChatID)
 		require.Contains(t, strings.ToLower(s.sent[2].Text), tc.want)
 	}
+}
+
+func TestCardKeyButtonsNameTheKey(t *testing.T) {
+	kb := userCardKeyboard(
+		cardView{
+			UserID: 7,
+			Keys: []service.KeyInfo{
+				{
+					Peer: &service.Peer{
+						PublicKey: "A=",
+						Name:      "mac",
+						IP:        "10.8.1.2",
+						Enabled:   true,
+					},
+				},
+				{
+					Peer: &service.Peer{
+						PublicKey: "B=",
+						Name:      "Admin [iOS 26.6.1]",
+						IP:        "10.8.1.1",
+					},
+				},
+			},
+		},
+	)
+	byData := map[string]string{}
+	for _, row := range kb.InlineKeyboard {
+		for _, b := range row {
+			byData[b.CallbackData] = b.Text
+		}
+	}
+	require.Contains(t, byData["a:dis:A="], "mac")
+	require.Contains(t, byData["a:cfg:A="], "mac")
+	require.Contains(t, byData["a:del:A="], "mac")
+	require.Contains(t, byData["a:en:B="], "Admin [iOS 26.6.1]")
+	require.Contains(t, byData["a:del:B="], "Admin [iOS 26.6.1]")
+}
+
+func TestConfigCaptionNamesTheKey(t *testing.T) {
+	require.Contains(
+		t,
+		keyCaption(
+			&service.Peer{
+				Name: "mac",
+			},
+		),
+		"mac",
+	)
 }

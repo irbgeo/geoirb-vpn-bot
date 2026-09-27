@@ -1,14 +1,9 @@
 package bot
 
-import (
-	"context"
-	"errors"
+import "context"
 
-	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
-)
-
-// adminConfigsAsk shows how many users get a fresh config and waits for
-// "send" or "cancel".
+// adminConfigsAsk shows how many users get the "update your config"
+// notice and waits for "send" or "cancel".
 func (r *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 	ids, err := r.svc.BroadcastRecipients(ctx)
 	if err != nil {
@@ -24,9 +19,9 @@ func (r *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 	)
 }
 
-// adminConfigs sends every user with an enabled key a notice and a fresh
-// config for each such key, in the background like a broadcast. Only one
-// run at a time, so a double press doesn't send everything twice.
+// adminConfigs tells every user with an enabled key to get a fresh config
+// from "My access", in the background like a broadcast. Only one run at a
+// time, so a double press doesn't send everything twice.
 func (r *Router) adminConfigs(ctx context.Context, a adminAction) error {
 	r.mu.Lock()
 	busy := r.configsRunning
@@ -60,7 +55,7 @@ func (r *Router) adminConfigs(ctx context.Context, a adminAction) error {
 			broadcastJob{
 				AdminChat:  a.ChatID,
 				Recipients: ids,
-				Deliver:    r.sendFreshConfigs,
+				Deliver:    r.sendConfigsNotice,
 				Report:     configsReportText,
 			},
 		)
@@ -74,54 +69,16 @@ func (r *Router) endConfigs() {
 	r.mu.Unlock()
 }
 
-// sendFreshConfigs sends one user the notice, then a config for each of
-// their enabled keys. Keys the bot has no private key for (made on a
-// device) are skipped: only that device can build their config.
-func (r *Router) sendFreshConfigs(ctx context.Context, userID int64) error {
-	keys, err := r.svc.Access(ctx, userID)
-	if err != nil {
-		return err
-	}
-	err = r.send.Send(
+// sendConfigsNotice tells one user to get a fresh config themselves, with
+// a button to "My access": nothing is sent unasked, and the user takes it
+// when they are ready to re-add it in the app.
+func (r *Router) sendConfigsNotice(ctx context.Context, userID int64) error {
+	return r.send.Send(
 		ctx,
 		OutMessage{
-			ChatID: userID,
-			Text:   configsNoticeText,
-		},
-	)
-	if err != nil {
-		return err
-	}
-	for _, k := range keys {
-		if !k.Peer.Enabled {
-			continue
-		}
-		if err := r.sendFreshConfig(
-			ctx,
-			service.UserKey{
-				UserID:    userID,
-				PublicKey: k.Peer.PublicKey,
-			},
-		); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *Router) sendFreshConfig(ctx context.Context, k service.UserKey) error {
-	kc, err := r.svc.UserConfig(ctx, k)
-	if errors.Is(err, service.ErrNoPrivateKey) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return r.sendConfig(
-		ctx,
-		configDelivery{
-			ChatID: k.UserID,
-			Key:    kc,
+			ChatID:   userID,
+			Text:     configsNoticeText,
+			Keyboard: myAccessKeyboard(),
 		},
 	)
 }
