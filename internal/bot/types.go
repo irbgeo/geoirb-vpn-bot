@@ -252,6 +252,12 @@ type Deps struct {
 	MaintenanceFlag string
 }
 
+// menuScreen is the main menu: greeting and buttons.
+type menuScreen struct {
+	Text     string
+	Keyboard *tgbot.InlineKeyboardMarkup
+}
+
 // menuView is what the main menu keyboard needs.
 type menuView struct {
 	Role        service.Role

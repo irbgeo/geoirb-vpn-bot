@@ -17,6 +17,7 @@ import (
 )
 
 type fakeSender struct {
+	editErr   error
 	mu        sync.Mutex
 	invoices  []*OutInvoice
 	answers   []PreCheckoutAnswer
@@ -56,6 +57,9 @@ func (f *fakeSender) Refund(ctx context.Context, in RefundInput) error {
 func (f *fakeSender) Edit(_ context.Context, m EditMessage) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.editErr != nil {
+		return f.editErr
+	}
 	f.edits = append(f.edits, m)
 	return nil
 }
@@ -454,7 +458,8 @@ func TestCreateKeyStepOneAsksToInstallAnApp(t *testing.T) {
 	kb := s.sent[0].Keyboard.InlineKeyboard
 	require.Equal(t, "https://apps.apple.com/app/id1600529900", kb[0][0].URL)
 	require.Equal(t, "https://play.google.com/store/apps/details?id=org.amnezia.vpn", kb[0][1].URL)
-	require.Equal(t, "key:issue", kb[len(kb)-1][0].CallbackData, "next step")
+	require.Equal(t, "key:issue", kb[len(kb)-2][0].CallbackData, "next step")
+	require.Equal(t, cbMenu, kb[len(kb)-1][0].CallbackData, "then back to the menu")
 }
 
 func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {

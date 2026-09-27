@@ -61,6 +61,7 @@ type Bypass interface {
 
 // Callback data of inline buttons (Telegram allows up to 64 bytes).
 const (
+	cbMenu      = "menu"       // back to the main menu, in the same message
 	cbCreateKey = "key:create" // step 1: which app to install
 	cbIssueKey  = "key:issue"  // step 2: ask for the key's name
 	cbKeyNoName = "key:noname" // skip the name: the key and how to add it
@@ -226,33 +227,78 @@ func (r *Router) NotifyAdmins(ctx context.Context, text string) {
 	}
 }
 
-// start registers the user (first /start adds them to the bot) and shows
-// the main button.
+// start registers the user (first /start adds them to the bot) and sends
+// the main menu. /start and /menu are a way out of any prompt.
 func (r *Router) start(ctx context.Context, m *tgbot.Message) error {
-	r.dialogs.drop(m.Chat.ID) // /start is a way out of any prompt
-	u, err := r.svc.Register(
-		ctx,
-		service.RegisterInput{
-			ID:       m.From.ID,
-			Username: m.From.Username,
-		},
-	)
+	r.dialogs.drop(m.Chat.ID)
+	menu, err := r.mainMenu(ctx, m.From)
 	if err != nil {
 		return err
 	}
 	return r.send.Send(
 		ctx,
 		OutMessage{
-			ChatID: m.Chat.ID,
-			Text:   greeting(u),
-			Keyboard: mainKeyboard(
-				menuView{
-					Role:        u.Role,
-					Maintenance: u.Role == service.RoleAdmin && r.maint.on(),
-				},
-			),
+			ChatID:   m.Chat.ID,
+			Text:     menu.Text,
+			Keyboard: menu.Keyboard,
 		},
 	)
+}
+
+// backToMenu is the "◀️ Меню" button: it turns the same message back into
+// the main menu, so the chat does not fill up with menus. If Telegram does
+// not let the bot edit it (e.g. too old), the menu comes as a new message.
+func (r *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	r.dialogs.drop(cq.ChatID())
+	menu, err := r.mainMenu(ctx, &cq.From)
+	if err != nil {
+		return err
+	}
+	err = r.send.Edit(
+		ctx,
+		EditMessage{
+			ChatID:    cq.ChatID(),
+			MessageID: cq.MessageID(),
+			Text:      menu.Text,
+			Keyboard:  menu.Keyboard,
+		},
+	)
+	if err == nil {
+		return nil
+	}
+	log.Printf("bot: menu in place: %v", err)
+	return r.send.Send(
+		ctx,
+		OutMessage{
+			ChatID:   cq.ChatID(),
+			Text:     menu.Text,
+			Keyboard: menu.Keyboard,
+		},
+	)
+}
+
+// mainMenu registers the user (or refreshes the username) and builds the
+// menu for their role.
+func (r *Router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, error) {
+	u, err := r.svc.Register(
+		ctx,
+		service.RegisterInput{
+			ID:       from.ID,
+			Username: from.Username,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &menuScreen{
+		Text: greeting(u),
+		Keyboard: mainKeyboard(
+			menuView{
+				Role:        u.Role,
+				Maintenance: u.Role == service.RoleAdmin && r.maint.on(),
+			},
+		),
+	}, nil
 }
 
 func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
@@ -260,6 +306,8 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		log.Printf("bot: answer callback: %v", err)
 	}
 	switch {
+	case cq.Data == cbMenu:
+		return r.backToMenu(ctx, cq)
 	case cq.Data == cbCreateKey:
 		return r.keyStepApps(ctx, cq)
 	case cq.Data == cbIssueKey:
@@ -288,6 +336,7 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 						UserID: cq.SenderID(),
 					},
 				),
+				Keyboard: menuKeyboard(),
 			},
 		)
 	case cq.Data == cbBuy:
@@ -630,8 +679,9 @@ func (r *Router) sendBypass(ctx context.Context, chatID int64) error {
 	if err := r.send.Send(
 		ctx,
 		OutMessage{
-			ChatID: chatID,
-			Text:   bypassHowToText,
+			ChatID:   chatID,
+			Text:     bypassHowToText,
+			Keyboard: menuKeyboard(),
 		},
 	); err != nil {
 		return err

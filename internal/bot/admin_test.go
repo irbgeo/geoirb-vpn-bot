@@ -115,13 +115,14 @@ func TestAdminUsersPages(t *testing.T) {
 	require.Contains(t, first.Text, "всего 12")
 	require.Contains(t, first.Text, "1/2")
 	b := buttons(first)
-	require.Len(t, b, 11, "10 users + next")
+	require.Len(t, b, 12, "10 users + next + menu")
 	require.Equal(t, "a:user:1", b[0])
 	require.Equal(t, "a:users:1", b[10])
+	require.Equal(t, cbMenu, b[11])
 
 	require.NoError(t, r.Handle(context.Background(), press("a:users:1")))
 	second := buttons(s.edits[1])
-	require.Equal(t, []string{"a:user:11", "a:user:12", "a:users:0"}, second, "2 users + back")
+	require.Equal(t, []string{"a:user:11", "a:user:12", "a:users:0", cbMenu}, second, "2 users + back + menu")
 }
 
 func TestAdminNegativePageShowsFirst(t *testing.T) {
@@ -148,6 +149,7 @@ func TestAdminUserCard(t *testing.T) {
 			"a:del:PUB1=",
 			"a:iss:7",
 			"a:users:0",
+			cbMenu,
 		},
 		buttons(card),
 	)

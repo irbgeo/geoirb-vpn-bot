@@ -91,6 +91,7 @@ func appsKeyboard() *tgbot.InlineKeyboardMarkup {
 		),
 		tgbot.Row(tgbot.URLButton("💻 Компьютер и другие", urlDownloads)),
 		tgbot.Row(tgbot.Button("➡️ Приложение установлено — дальше", cbIssueKey)),
+		menuRow(),
 	)
 }
 
@@ -172,9 +173,21 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(rows...)
 }
 
+// menuRow is the "◀️ Меню" button: it turns its message back into the
+// main menu (backToMenu).
+func menuRow() []tgbot.InlineKeyboardButton {
+	return tgbot.Row(tgbot.Button("◀️ Меню", cbMenu))
+}
+
+// menuKeyboard is a keyboard with only the "◀️ Меню" button.
+func menuKeyboard() *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(menuRow())
+}
+
 func createKeyKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(tgbot.Button("🔑 Получить ключ", cbCreateKey)),
+		menuRow(),
 	)
 }
 
@@ -189,6 +202,7 @@ func accessKeyboard(v accessView) *tgbot.InlineKeyboardMarkup {
 		}
 		rows = append(rows, row)
 	}
+	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
 }
 
@@ -202,6 +216,7 @@ func tariffsKeyboard(v tariffsView) *tgbot.InlineKeyboardMarkup {
 		}
 		rows = append(rows, tgbot.Row(tgbot.Button(fmt.Sprintf("%s — %d ⭐", tariffLabel(t.Days), t.Stars), data)))
 	}
+	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
 }
 
@@ -617,6 +632,7 @@ func usersKeyboard(v usersView) *tgbot.InlineKeyboardMarkup {
 	if len(nav) > 0 {
 		rows = append(rows, nav)
 	}
+	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
 }
 
@@ -682,7 +698,10 @@ func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
 	rows = append(
 		rows,
 		tgbot.Row(tgbot.Button("🔑 Выдать ключ", cbAdminIss+strconv.FormatInt(userID, 10))),
-		tgbot.Row(tgbot.Button("◀️ К списку", cbAdminUsers+"0")),
+		tgbot.Row(
+			tgbot.Button("◀️ К списку", cbAdminUsers+"0"),
+			tgbot.Button("◀️ Меню", cbMenu),
+		),
 	)
 	return tgbot.InlineKeyboard(rows...)
 }

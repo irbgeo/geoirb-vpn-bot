@@ -240,8 +240,9 @@ func (r *Router) adminStats(ctx context.Context, a adminAction) error {
 	return r.send.Send(
 		ctx,
 		OutMessage{
-			ChatID: a.ChatID,
-			Text:   statsText(st),
+			ChatID:   a.ChatID,
+			Text:     statsText(st),
+			Keyboard: menuKeyboard(),
 		},
 	)
 }
