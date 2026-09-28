@@ -5,7 +5,7 @@ lint:
 
 # Go tests (store tests need Mongo on localhost:27017) and the script tests.
 test:
-	go test ./...
+	go test -cover ./...
 	./scripts/server-env_test.sh
 	./scripts/awg-conntrack_test.sh
 
