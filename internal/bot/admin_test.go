@@ -196,7 +196,7 @@ func TestAdminConfigSendsFiles(t *testing.T) {
 
 	require.NoError(t, r.Handle(context.Background(), press("a:cfg:PUB1=")))
 	require.Len(t, s.files, 2, "config and QR")
-	require.Equal(t, "vpn_u7.conf", s.files[0].Name)
+	require.Equal(t, "key_u7.conf", s.files[0].Name)
 }
 
 func TestAdminIssueAsksForTerm(t *testing.T) {

@@ -523,7 +523,7 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 
 	require.Len(t, s.files, 2, "config and QR; the lists come in step 3")
 	conf, qr := s.files[0], s.files[1]
-	require.Equal(t, "vpn_bob_2.conf", conf.Name)
+	require.Equal(t, "key_bob_2.conf", conf.Name)
 	require.Equal(t, "[Interface]\nPrivateKey = PUB=\n", string(conf.Data))
 	require.Contains(t, conf.Caption, "до 04.10.2026 15:00 по Москве", "12:00 UTC is 15:00 MSK")
 	require.Equal(t, "qr.png", qr.Name)
@@ -791,7 +791,7 @@ func TestConfigAgainSendsOwnKeyOnly(t *testing.T) {
 		"asks for the presser's own key",
 	)
 	require.Len(t, s.files, 2, "config and QR, no bypass lists again")
-	require.Equal(t, "vpn_bob.conf", s.files[0].Name)
+	require.Equal(t, "key_bob.conf", s.files[0].Name)
 
 	require.NoError(t, r.Handle(context.Background(), press("cfg:OTHER=")))
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "не найден")

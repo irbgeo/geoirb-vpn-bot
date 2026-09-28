@@ -18,10 +18,10 @@ import (
 
 // Step 1 and 2 of getting a key.
 const (
-	appsText = "🔑 Шаг 1. Установите приложение для VPN\n\n" +
+	appsText = "🔑 Шаг 1. Установите приложение для подключения\n\n" +
 		"⭐ AmneziaVPN — рекомендуем: iPhone, iPad, Android, Windows, macOS, Linux. " +
-		"Только в нём можно настроить, чтобы российские сайты открывались без VPN.\n" +
-		"• AmneziaWG — проще, только VPN: iPhone, iPad, Android.\n" +
+		"Только в нём можно настроить, чтобы российские сайты открывались напрямую.\n" +
+		"• AmneziaWG — проще, без этой настройки: iPhone, iPad, Android.\n" +
 		"• DefaultVPN — iPhone, iPad (iOS 16+), тоже от Amnezia.\n" +
 		"• WG Tunnel — Android, Windows, Linux (сайт wgtunnel.com).\n" +
 		"• Роутер Keenetic — AWG Manager (ставится через Entware); другой роутер — напишите в /support.\n\n" +
@@ -98,7 +98,7 @@ func appsKeyboard() *tgbot.InlineKeyboardMarkup {
 
 func bypassNextKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
-		tgbot.Row(tgbot.Button("➡️ Дальше: российские сайты без VPN", cbBypass)),
+		tgbot.Row(tgbot.Button("➡️ Дальше: российские сайты напрямую", cbBypass)),
 	)
 }
 
@@ -124,14 +124,14 @@ const (
 	staleInvoiceText       = "Счёт устарел. Откройте «Купить / продлить» и оплатите новый — деньги не списаны."
 	refundedText           = "Не получилось применить оплату, звёзды возвращены. Попробуйте позже."
 	refundFailedText       = "Не получилось применить оплату. Мы вернём звёзды вручную — напишите в /paysupport."
-	bypassDownText         = "Список российских сайтов для работы без VPN сейчас недоступен. Попробуйте получить ключ позже или настройте обход вручную."
-	bypassHowToText        = "🇷🇺 Шаг 3. Российские сайты без VPN\n\n" +
-		"Банки, Госуслуги и маркетплейсы лучше открывать напрямую, без VPN. Настройте это один раз в AmneziaVPN:\n" +
+	bypassDownText         = "Список российских сайтов для прямого подключения сейчас недоступен. Попробуйте получить ключ позже или настройте обход вручную."
+	bypassHowToText        = "🇷🇺 Шаг 3. Российские сайты напрямую\n\n" +
+		"Банки, Госуслуги и маркетплейсы лучше открывать напрямую. Настройте это один раз в AmneziaVPN:\n" +
 		"1. Настройки ⚙️ → Подключение → Раздельное туннелирование сайтов.\n" +
 		"2. Включите и выберите «Адреса из списка НЕ должны использовать VPN».\n" +
 		"3. ⋮ (три точки) → Импорт → выберите файл ниже.\n\n" +
 		"📱 Телефон: ru-sites-phone.json.\n💻 Компьютер: ru-sites-computer.json (или ru-sites-phone.json).\n" +
-		"В приложении AmneziaWG такой настройки нет — там весь трафик идёт через VPN."
+		"В приложении AmneziaWG такой настройки нет — там весь трафик идёт через сервер."
 )
 
 func greeting(u *service.User) string {
@@ -141,7 +141,7 @@ func greeting(u *service.User) string {
 	case service.RoleUnlimited:
 		return fmt.Sprintf("Привет! У вас безлимитный доступ: до %d ключей без срока. Нажмите кнопку, чтобы получить ключ.", service.MaxUnlimitedKeys)
 	default:
-		return "Привет! Это VPN-бот. Нажмите кнопку — получите ключ и бесплатный пробный период."
+		return "Привет! Нажмите кнопку — получите ключ и бесплатный пробный период."
 	}
 }
 
@@ -158,7 +158,7 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 	}
 	rows = append(
 		rows,
-		tgbot.Row(tgbot.Button("🇷🇺 Сайты без VPN", cbBypass)),
+		tgbot.Row(tgbot.Button("🇷🇺 Сайты напрямую", cbBypass)),
 		tgbot.Row(tgbot.Button("💬 Поддержка", cbSupport), tgbot.Button("📄 Условия", cbTerms)),
 		tgbot.Row(tgbot.Button("💡 Отзывы и предложения", cbFeedback)),
 	)
@@ -249,11 +249,11 @@ func tariffLabel(days int) string {
 }
 
 func invoiceTitle(days int) string {
-	return "VPN на " + tariffLabel(days)
+	return "Доступ на " + tariffLabel(days)
 }
 
 func invoiceDescription(days int) string {
-	return "Доступ к VPN на " + tariffLabel(days) + ". Если ключ уже есть, срок прибавится к нему. " +
+	return "Доступ к сервису на " + tariffLabel(days) + ". Если ключ уже есть, срок прибавится к нему. " +
 		"Оплачивая, вы принимаете условия: /terms"
 }
 
@@ -336,7 +336,7 @@ func expiredText(p *service.Peer) string {
 }
 
 func remind3dText(p *service.Peer) string {
-	return "⏳ Ключ " + p.Name + " действует меньше 3 дней: " + keyUntil(p) + ". Продлите заранее, чтобы VPN не отключился."
+	return "⏳ Ключ " + p.Name + " действует меньше 3 дней: " + keyUntil(p) + ". Продлите заранее, чтобы доступ не отключился."
 }
 
 func remind1dText(p *service.Peer) string {
@@ -371,9 +371,9 @@ func loadAlertText(a sysload.Alert) string {
 	case sysload.Conntrack:
 		text += " Когда таблица заполнится, у пользователей перестанут открываться сайты."
 	case sysload.CPU:
-		text += " Уже 5 минут подряд: VPN может тормозить, нужна машина мощнее."
+		text += " Уже 5 минут подряд: подключение может тормозить, нужна машина мощнее."
 	case sysload.Memory:
-		text += " Может не хватить памяти для VPN, базы и бота."
+		text += " Может не хватить памяти для туннеля, базы и бота."
 	case sysload.Disk:
 		text += " Могут перестать работать бэкапы и база."
 	}
@@ -422,16 +422,16 @@ func maintAlreadyText(on bool) string {
 }
 
 const (
-	maintenanceText = "🛠 На VPN-сервере идут технические работы. " +
-		"VPN может ненадолго отключаться или работать медленнее — это нормально, ничего делать не нужно. " +
+	maintenanceText = "🛠 На сервере идут технические работы. " +
+		"Подключение может ненадолго отключаться или работать медленнее — это нормально, ничего делать не нужно. " +
 		"Напишем, когда закончим."
-	maintenanceEndText = "✅ Технические работы закончены, VPN работает как обычно. " +
-		"Если не подключается — выключите и включите VPN в приложении, а если не поможет — напишите в /support."
+	maintenanceEndText = "✅ Технические работы закончены, всё работает как обычно. " +
+		"Если не подключается — выключите и включите подключение в приложении, а если не поможет — напишите в /support."
 )
 
 const (
 	configsStartedText = "🔄 Рассылаю просьбу обновить конфиг. Пришлю отчёт, когда закончу."
-	configsNoticeText  = "🔄 Настройки VPN-сервера изменились — обновите ключ в приложении.\n\n" +
+	configsNoticeText  = "🔄 Настройки сервера изменились — обновите ключ в приложении.\n\n" +
 		"1. Нажмите «📋 Мой доступ» (кнопка ниже или в /menu).\n" +
 		"2. У нужного ключа нажмите «📄 Конфиг» — придут новый файл и QR-код.\n" +
 		"3. В приложении удалите старое подключение и добавьте новое из файла или QR-кода.\n\n" +
@@ -549,7 +549,7 @@ func statsText(st *service.Stats) string {
 	fmt.Fprintf(&b, "Подсеть: занято %d из %d\n", st.SubnetUsed, st.SubnetTotal)
 	fmt.Fprintf(&b, "Выручка за 30 дней: %d ⭐ (%d оплат)\n", st.Revenue30d, st.Payments30d)
 	if len(st.TopTraffic) > 0 {
-		b.WriteString("\nТрафик (с последнего перезапуска VPN):\n")
+		b.WriteString("\nТрафик (с последнего перезапуска туннеля):\n")
 		for _, k := range st.TopTraffic {
 			fmt.Fprintf(&b, "• %s (%s) — %s\n", k.Peer.Name, k.Peer.IP, humanBytes(k.Sent+k.Received))
 		}
@@ -639,14 +639,14 @@ func keyCaption(p *service.Peer) string {
 	return "🔑 " + keyLabel(p) + "\n" + until + "\nИмпортируйте файл в приложение AmneziaVPN или AmneziaWG."
 }
 
-// configFileName turns "tg:bob #2" into "vpn_bob_2.conf": only ASCII
+// configFileName turns "tg:bob #2" into "key_bob_2.conf": only ASCII
 // letters, digits and '-' survive, every other run becomes one '_'.
 func configFileName(p *service.Peer) string {
 	keep := func(r rune) bool {
 		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-'
 	}
 	parts := strings.FieldsFunc(strings.TrimPrefix(p.Name, "tg:"), func(r rune) bool { return !keep(r) })
-	return "vpn_" + strings.Join(parts, "_") + ".conf"
+	return "key_" + strings.Join(parts, "_") + ".conf"
 }
 
 func peersSection(g peersGroup) string {
@@ -915,14 +915,14 @@ const unknownCommandText = "Не знаю такой команды. Нажми�
 // Telegram requires it for bots that take Stars.
 func termsText(contact string) string {
 	return "📄 Условия использования\n\n" +
-		"1. Что вы получаете. Доступ к VPN (AmneziaWG) на выбранный срок: ключ-конфиг для приложений AmneziaVPN и AmneziaWG. " +
+		"1. Что вы получаете. Доступ к сервису (протокол AmneziaWG) на выбранный срок: ключ-конфиг для приложений AmneziaVPN и AmneziaWG. " +
 		"Бесплатный пробный период — один раз на Telegram-аккаунт.\n" +
 		"2. Оплата — в Telegram Stars. Срок прибавляется к текущему; ключ, отключённый после окончания срока, включается обратно.\n" +
 		"3. Возврат. Если оплату не удалось применить, звёзды возвращаются автоматически. " +
 		"После начала пользования звёзды не возвращаются; спорные случаи — /paysupport.\n" +
-		"4. Правила. Нельзя использовать VPN для незаконных действий, спама, атак и взлома, а также передавать ключ другим людям. " +
+		"4. Правила. Нельзя использовать сервис для незаконных действий, спама, атак и взлома, а также передавать ключ другим людям. " +
 		"При нарушении доступ отключается без возврата.\n" +
-		"5. Доступность. Мы стараемся, чтобы VPN работал всегда, но не гарантируем 100%: " +
+		"5. Доступность. Мы стараемся, чтобы сервис работал всегда, но не гарантируем 100%: " +
 		"возможны перерывы на обслуживание и блокировки со стороны провайдеров.\n" +
 		"6. Данные. Мы храним ваш Telegram ID и username, ключи доступа (в зашифрованном виде), даты и суммы оплат, " +
 		"время последнего подключения и объём трафика — только для работы сервиса. " +
@@ -994,9 +994,9 @@ func reconcileFailedText(err error) string {
 func bypassCaption(name string) string {
 	switch name {
 	case bypass.ComputerList:
-		return "💻 Российские сайты мимо VPN (домены и сети) — только для компьютера."
+		return "💻 Российские сайты напрямую (домены и сети) — только для компьютера."
 	case bypass.PhoneList:
-		return "📱 Российские сети мимо VPN — для телефона (на компьютере тоже работает)."
+		return "📱 Российские сети напрямую — для телефона (на компьютере тоже работает)."
 	}
-	return "Список адресов мимо VPN."
+	return "Список адресов для прямого подключения."
 }
