@@ -49,6 +49,11 @@ type PaymentRepository interface {
 	Since(ctx context.Context, t time.Time) ([]*Payment, error)
 }
 
+// FeedbackRepository stores users' reviews and suggestions.
+type FeedbackRepository interface {
+	Add(ctx context.Context, f *Feedback) error
+}
+
 // VPN is the AmneziaWG server (implemented by *amnezia.Server).
 type VPN interface {
 	GenKeys(ctx context.Context) (amnezia.Keys, error)

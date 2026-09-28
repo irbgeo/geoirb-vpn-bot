@@ -602,3 +602,25 @@ func TestKeyCounts(t *testing.T) {
 	require.Equal(t, 0, one.KeysCount, "not in the map: no keys")
 	require.Equal(t, 3, two.KeysCount)
 }
+
+func TestFeedbackAdd(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	fb := &service.Feedback{
+		UserID:    42,
+		Username:  "alice",
+		Text:      "Добавьте тариф на неделю",
+		CreatedAt: ts("2026-09-28T10:00:00Z"),
+	}
+	require.NoError(t, s.Feedback.Add(ctx, fb))
+
+	var got []feedback
+	cur, err := s.Feedback.coll.Find(ctx, matchAll())
+	require.NoError(t, err)
+	require.NoError(t, cur.All(ctx, &got))
+	require.Len(t, got, 1)
+	require.Equal(t, int64(42), got[0].UserID)
+	require.Equal(t, "alice", got[0].Username)
+	require.Equal(t, "Добавьте тариф на неделю", got[0].Text)
+	require.True(t, got[0].CreatedAt.Equal(fb.CreatedAt))
+}

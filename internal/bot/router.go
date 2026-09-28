@@ -25,6 +25,7 @@ type Service interface {
 	ClientConfig(ctx context.Context, publicKey string) (string, error)
 	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
 	UserConfig(ctx context.Context, k service.UserKey) (*service.KeyConfig, error)
+	AddFeedback(ctx context.Context, in service.FeedbackInput) error
 
 	// admin panel
 	User(ctx context.Context, id int64) (*service.User, error)
@@ -62,6 +63,7 @@ type Bypass interface {
 // Callback data of inline buttons (Telegram allows up to 64 bytes).
 const (
 	cbMenu      = "menu"       // back to the main menu, in the same message
+	cbFeedback  = "feedback"   // reviews and suggestions: asks for the text
 	cbCreateKey = "key:create" // step 1: which app to install
 	cbIssueKey  = "key:issue"  // step 2: ask for the key's name
 	cbKeyNoName = "key:noname" // skip the name: the key and how to add it
@@ -157,8 +159,13 @@ func (r *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 			},
 		)
 	}
-	if p, ok := r.dialogs.peek(upd.Message.Chat.ID); ok && p.Kind == pendingKeyName {
-		return r.keyNamed(ctx, upd.Message)
+	if p, ok := r.dialogs.peek(upd.Message.Chat.ID); ok {
+		switch p.Kind {
+		case pendingKeyName:
+			return r.keyNamed(ctx, upd.Message)
+		case pendingFeedback:
+			return r.feedbackText(ctx, upd.Message)
+		}
 	}
 	return r.adminText(ctx, upd.Message)
 }
@@ -308,6 +315,8 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	switch {
 	case cq.Data == cbMenu:
 		return r.backToMenu(ctx, cq)
+	case cq.Data == cbFeedback:
+		return r.askFeedback(ctx, cq)
 	case cq.Data == cbCreateKey:
 		return r.keyStepApps(ctx, cq)
 	case cq.Data == cbIssueKey:

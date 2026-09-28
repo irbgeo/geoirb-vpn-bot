@@ -100,6 +100,21 @@ type Payment struct {
 	RefundedAt time.Time // zero = not refunded
 }
 
+// Feedback is a review or suggestion a user sent from the bot.
+type Feedback struct {
+	UserID    int64
+	Username  string
+	Text      string
+	CreatedAt time.Time
+}
+
+// FeedbackInput is a user's review or suggestion to save.
+type FeedbackInput struct {
+	UserID   int64
+	Username string
+	Text     string
+}
+
 // PaymentMark is one change to a payment record: applied (to PeerKey) or
 // refunded (At).
 type PaymentMark struct {
@@ -119,6 +134,7 @@ type Deps struct {
 	Users    UserRepository
 	Peers    PeerRepository
 	Payments PaymentRepository
+	Feedback FeedbackRepository
 	VPN      VPN
 	Settings Settings
 	Now      func() time.Time // nil = time.Now

@@ -81,6 +81,15 @@ func (f *fakeUsers) List(_ context.Context, p Page) ([]*User, int64, error) {
 	return all[min(p.Skip, end):end], int64(len(all)), nil
 }
 
+type fakeFeedback struct {
+	saved []Feedback
+}
+
+func (f *fakeFeedback) Add(_ context.Context, fb *Feedback) error {
+	f.saved = append(f.saved, *fb)
+	return nil
+}
+
 type fakePeers struct {
 	m       map[string]Peer
 	saveErr error

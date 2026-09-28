@@ -17,13 +17,15 @@ type Store struct {
 	Users    *UserRepo
 	Peers    *PeerRepo
 	Payments *PaymentRepo
+	Feedback *FeedbackRepo
 }
 
 // Compile-time checks that the repos satisfy the service ports.
 var (
-	_ service.UserRepository    = (*UserRepo)(nil)
-	_ service.PeerRepository    = (*PeerRepo)(nil)
-	_ service.PaymentRepository = (*PaymentRepo)(nil)
+	_ service.UserRepository     = (*UserRepo)(nil)
+	_ service.PeerRepository     = (*PeerRepo)(nil)
+	_ service.PaymentRepository  = (*PaymentRepo)(nil)
+	_ service.FeedbackRepository = (*FeedbackRepo)(nil)
 )
 
 // Connect dials MongoDB, verifies the connection, creates indexes and
@@ -57,6 +59,9 @@ func Connect(
 		},
 		Payments: &PaymentRepo{
 			coll: db.Collection("payments"),
+		},
+		Feedback: &FeedbackRepo{
+			coll: db.Collection("feedback"),
 		},
 	}
 	if err := s.ensureIndexes(ctx); err != nil {

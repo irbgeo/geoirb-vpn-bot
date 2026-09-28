@@ -13,8 +13,6 @@ var ErrNotFound = errors.New("service: key not found")
 // ErrExpired: the key's term ended; it can come back only by Extend.
 var ErrExpired = errors.New("service: key term ended, extend it")
 
-// ErrNoPrivateKey: the key was imported from the Amnezia app, so only the
-// device it was made on has its private key; the bot can't build a config.
 // ErrIPTaken: a disabled key can't go back on the server because its IP
 // is taken there by another peer (e.g. one made in the Amnezia app).
 var ErrIPTaken = errors.New("service: the key's IP is taken on the server by another peer")
@@ -26,6 +24,8 @@ var ErrBlocked = errors.New("service: key disabled by an admin")
 // back on the server (see Peer.Unreadable).
 var ErrUnreadable = errors.New("service: key secrets are unreadable")
 
+// ErrNoPrivateKey: the key was imported from the Amnezia app, so only the
+// device it was made on has its private key; the bot can't build a config.
 var ErrNoPrivateKey = errors.New("service: key has no private key (imported)")
 
 // Service is the bot's business logic. It knows nothing about Telegram.
@@ -33,6 +33,7 @@ type Service struct {
 	users    UserRepository
 	peers    PeerRepository
 	payments PaymentRepository
+	feedback FeedbackRepository
 	vpn      VPN
 	cfg      Settings
 	now      func() time.Time
@@ -54,6 +55,7 @@ func New(
 		users:    d.Users,
 		peers:    d.Peers,
 		payments: d.Payments,
+		feedback: d.Feedback,
 		vpn:      d.VPN,
 		cfg:      d.Settings,
 		now:      now,

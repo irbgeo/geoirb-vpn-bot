@@ -160,6 +160,7 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 		rows,
 		tgbot.Row(tgbot.Button("🇷🇺 Сайты без VPN", cbBypass)),
 		tgbot.Row(tgbot.Button("💬 Поддержка", cbSupport), tgbot.Button("📄 Условия", cbTerms)),
+		tgbot.Row(tgbot.Button("💡 Отзывы и предложения", cbFeedback)),
 	)
 	if role == service.RoleAdmin {
 		rows = append(
@@ -440,6 +441,19 @@ func configsAskText(recipients int) string {
 		configsNoticeText,
 	)
 }
+
+const (
+	askFeedbackText = "💡 Напишите отзыв или предложение одним сообщением — что нравится, что мешает, чего не хватает. " +
+		"Мы читаем всё. Передумали — нажмите «◀️ Меню»."
+	needFeedbackTextText = "Нужен текст — напишите отзыв одним сообщением."
+	feedbackThanksText   = "🙏 Спасибо! Сохранили ваш отзыв."
+	feedbackFailedText   = "Не получилось сохранить отзыв. Попробуйте позже."
+)
+
+var badFeedbackText = fmt.Sprintf(
+	"Слишком длинно: нужно до %d символов. Сократите и отправьте ещё раз.",
+	service.MaxFeedbackLen,
+)
 
 var (
 	keyLimitText   = fmt.Sprintf("Больше ключей создать нельзя: максимум — %d.", service.MaxUnlimitedKeys)

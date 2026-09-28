@@ -167,6 +167,7 @@ const (
 	pendingBroadcast pendingKind = iota + 1 // admin: text of a broadcast
 	readyBroadcast                          // admin: text given, waiting for "send"
 	pendingKeyName                          // user: the name of the key to create
+	pendingFeedback                         // user: a review or suggestion
 )
 
 // dialogTake asks dialogs.take for a chat's entry of one kind.

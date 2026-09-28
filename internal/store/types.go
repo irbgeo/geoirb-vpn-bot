@@ -166,3 +166,19 @@ func timeVal(t *time.Time) time.Time {
 	}
 	return *t
 }
+
+type feedback struct {
+	UserID    int64     `bson:"user_id"`
+	Username  string    `bson:"username"`
+	Text      string    `bson:"text"`
+	CreatedAt time.Time `bson:"created_at"`
+}
+
+func feedbackToStore(f *service.Feedback) *feedback {
+	return &feedback{
+		UserID:    f.UserID,
+		Username:  f.Username,
+		Text:      f.Text,
+		CreatedAt: f.CreatedAt,
+	}
+}

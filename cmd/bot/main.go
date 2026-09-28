@@ -61,6 +61,7 @@ func run() error {
 			Users:    st.Users,
 			Peers:    st.Peers,
 			Payments: st.Payments,
+			Feedback: st.Feedback,
 			VPN:      vpn,
 			Settings: service.Settings{
 				ServerID:     cfg.ServerID,

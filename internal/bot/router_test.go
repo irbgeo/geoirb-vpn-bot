@@ -96,6 +96,8 @@ func (f *fakeSender) Send(_ context.Context, m OutMessage) error {
 }
 
 type fakeService struct {
+	feedback      []service.FeedbackInput
+	feedbackErr   error
 	recipientsErr error
 	refundMarkErr error
 	createdWith   []service.CreateKeyInput
@@ -127,6 +129,14 @@ type fakeService struct {
 
 func (f *fakeService) Stats(context.Context) (*service.Stats, error) {
 	return f.stats, nil
+}
+
+func (f *fakeService) AddFeedback(_ context.Context, in service.FeedbackInput) error {
+	if f.feedbackErr != nil {
+		return f.feedbackErr
+	}
+	f.feedback = append(f.feedback, in)
+	return nil
 }
 
 func (f *fakeService) BroadcastRecipients(context.Context) ([]int64, error) {

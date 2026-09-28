@@ -14,6 +14,7 @@ type env struct {
 	svc      *Service
 	peers    *fakePeers
 	payments *fakePayments
+	feedback *fakeFeedback
 	vpn      *fakeVPN
 }
 
@@ -22,6 +23,7 @@ func newEnv() *env {
 		m: map[string]Peer{},
 	}
 	vpn := newFakeVPN()
+	feedback := &fakeFeedback{}
 	payments := &fakePayments{
 		m: map[string]Payment{},
 	}
@@ -32,6 +34,7 @@ func newEnv() *env {
 			},
 			Peers:    peers,
 			Payments: payments,
+			Feedback: feedback,
 			VPN:      vpn,
 			Settings: Settings{
 				ServerID:     "srv",
@@ -56,6 +59,7 @@ func newEnv() *env {
 		svc:      svc,
 		peers:    peers,
 		payments: payments,
+		feedback: feedback,
 		vpn:      vpn,
 	}
 }
