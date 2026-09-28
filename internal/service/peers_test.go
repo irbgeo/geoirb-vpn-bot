@@ -334,3 +334,9 @@ func keys(ps []*Peer) []string {
 	}
 	return out
 }
+
+func TestReconcileReportOK(t *testing.T) {
+	require.True(t, (&ReconcileReport{Manual: 3}).OK(), "manual peers are not a difference")
+	require.False(t, (&ReconcileReport{MissingOnServer: []*Peer{{}}}).OK())
+	require.False(t, (&ReconcileReport{DisabledButOnServer: []*Peer{{}}}).OK())
+}

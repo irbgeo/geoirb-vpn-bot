@@ -110,3 +110,19 @@ func TestDeleteOwnKey(t *testing.T) {
 	require.NotContains(t, e.peers.m, old.PublicKey)
 	require.False(t, e.vpn.hasPeer(old.PublicKey))
 }
+
+func TestDeleteOwnKeyKeepsTheKeyWhenTheServerFails(t *testing.T) {
+	e := newEnv()
+	old := ownKey(t, e)
+	e.vpn.err = errBoom
+
+	err := e.svc.DeleteOwnKey(
+		context.Background(),
+		UserKey{
+			UserID:    42,
+			PublicKey: old.PublicKey,
+		},
+	)
+	require.ErrorIs(t, err, errBoom)
+	require.Contains(t, e.peers.m, old.PublicKey)
+}

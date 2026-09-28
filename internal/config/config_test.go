@@ -115,9 +115,14 @@ func TestLoadTariffs(t *testing.T) {
 		c.Tariffs,
 	)
 
-	t.Setenv("TARIFFS", "30:0")
-	_, err = Load()
-	require.ErrorContains(t, err, "TARIFFS")
+	for _, bad := range []string{
+		"30:0",
+		"0:200",
+	} {
+		t.Setenv("TARIFFS", bad)
+		_, err = Load()
+		require.ErrorContains(t, err, "TARIFFS", bad)
+	}
 }
 
 func TestLoadBadSecretKey(t *testing.T) {

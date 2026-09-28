@@ -365,6 +365,7 @@ func TestAdminBroadcast(t *testing.T) {
 	svc.recipients = []int64{
 		7,
 		8,
+		9,
 	}
 	r, s := newRouter(svc)
 	r.pause = 0
@@ -376,7 +377,7 @@ func TestAdminBroadcast(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, startUpdate("Сервер переедет в субботу")))
 	preview := s.sent[1]
-	require.Contains(t, preview.Text, "2 пользователям")
+	require.Contains(t, preview.Text, "3 пользователям")
 	require.Contains(t, preview.Text, "Сервер переедет в субботу")
 	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
 	require.Equal(t, "a:cancel", preview.Keyboard.InlineKeyboard[0][1].CallbackData)
@@ -388,7 +389,7 @@ func TestAdminBroadcast(t *testing.T) {
 	require.Equal(t, "Сервер переедет в субботу", s.sent[3].Text)
 	report := s.sent[len(s.sent)-1]
 	require.Equal(t, int64(42), report.ChatID)
-	require.Contains(t, report.Text, "доставлено 1")
+	require.Contains(t, report.Text, "доставлено 2", "counts must not be symmetric")
 	require.Contains(t, report.Text, "не доставлено 1")
 
 	sent := len(s.sent)

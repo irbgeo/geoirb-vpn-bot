@@ -82,3 +82,19 @@ func TestFeedbacksPage(t *testing.T) {
 	require.Equal(t, int64(2), total)
 	require.Equal(t, "второй", list[0].Text, "newest first")
 }
+
+func TestAddFeedbackTakesTheLongestText(t *testing.T) {
+	e := newEnv()
+
+	require.NoError(
+		t,
+		e.svc.AddFeedback(
+			context.Background(),
+			FeedbackInput{
+				UserID: 42,
+				Text:   strings.Repeat("я", MaxFeedbackLen),
+			},
+		),
+	)
+	require.Len(t, e.feedback.saved, 1)
+}

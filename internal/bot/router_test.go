@@ -913,3 +913,32 @@ func TestReconcileText(t *testing.T) {
 	require.Contains(t, text, "вручную: 9")
 	require.Contains(t, text, "ничего не менял")
 }
+
+func TestMyAccessExtendButtonOnlyForPayingUsers(t *testing.T) {
+	for role, canBuy := range map[service.Role]bool{
+		service.RoleUser:      true,
+		service.RoleUnlimited: false,
+		service.RoleAdmin:     false,
+	} {
+		r, s := newRouter(
+			&fakeService{
+				role: role,
+				access: []service.KeyInfo{
+					{
+						Peer: &service.Peer{
+							PublicKey: "PUB1=",
+							Name:      "tg:bob",
+						},
+					},
+				},
+			},
+		)
+
+		require.NoError(t, r.Handle(context.Background(), press("my")))
+		row := s.sent[0].Keyboard.InlineKeyboard[0]
+		require.Equal(t, canBuy, len(row) == 2, role)
+		if canBuy {
+			require.Equal(t, cbBuyKey+"PUB1=", row[1].CallbackData)
+		}
+	}
+}
