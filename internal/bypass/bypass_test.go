@@ -2,151 +2,74 @@ package bypass
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync/atomic"
+	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-// listServer serves /a.json and /b.json; body can be swapped per test.
-func listServer(t *testing.T, body *atomic.Value, hits *atomic.Int32) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		b := body.Load().(string)
-		if b == "500" {
-			http.Error(w, "down", http.StatusInternalServerError)
-			return
+func TestListsAreBuiltInAmneziaImportFormat(t *testing.T) {
+	files, err := Lists{}.Files(context.Background())
+	require.NoError(t, err)
+
+	var names []string
+	for _, f := range files {
+		names = append(names, f.Name)
+		var entries []struct {
+			Hostname string `json:"hostname"`
 		}
-		_, _ = w.Write([]byte(b))
-	}))
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-type clock struct {
-	t time.Time
-}
-
-func (c *clock) now() time.Time {
-	return c.t
-}
-
-func newFetcher(srv *httptest.Server, c *clock) *Fetcher {
-	return New(
-		&Input{
-			URLs: []string{
-				srv.URL + "/lists/a.json",
-				srv.URL + "/lists/b.json",
-			},
-			TTL: time.Hour,
-			Now: c.now,
+		require.NoError(t, json.Unmarshal(f.Data, &entries), f.Name)
+		require.NotEmpty(t, entries, f.Name)
+		for _, e := range entries {
+			require.NotEmpty(t, e.Hostname, "every entry has a hostname or a network: %s", f.Name)
+		}
+	}
+	require.Equal(
+		t,
+		[]string{
+			ComputerList,
+			PhoneList,
 		},
+		names,
 	)
 }
 
-const list = `[{"hostname": "sberbank.ru", "ip": ""}]`
-
-func TestFilesDownloadsAllNamedByURL(t *testing.T) {
-	var body atomic.Value
-	var hits atomic.Int32
-	body.Store(list)
-	f := newFetcher(listServer(t, &body, &hits), &clock{
-		t: time.Now(),
-	})
-
-	files, err := f.Files(context.Background())
+func TestListsAreCopies(t *testing.T) {
+	a, err := Lists{}.Files(context.Background())
 	require.NoError(t, err)
-	require.Len(t, files, 2)
-	require.Equal(t, "a.json", files[0].Name)
-	require.Equal(t, "b.json", files[1].Name)
-	require.Equal(t, list, string(files[0].Data))
+	a[0].Data[0] = 'X'
+
+	b, err := Lists{}.Files(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, byte('['), b[0].Data[0], "a caller can't change the lists for the next one")
 }
 
-func TestFilesCachedForTTL(t *testing.T) {
-	var body atomic.Value
-	var hits atomic.Int32
-	body.Store(list)
-	c := &clock{
-		t: time.Now(),
-	}
-	f := newFetcher(listServer(t, &body, &hits), c)
-	ctx := context.Background()
-
-	_, err := f.Files(ctx)
-	require.NoError(t, err)
-	_, err = f.Files(ctx)
-	require.NoError(t, err)
-	require.Equal(t, int32(2), hits.Load(), "second call served from cache")
-
-	c.t = c.t.Add(2 * time.Hour)
-	_, err = f.Files(ctx)
-	require.NoError(t, err)
-	require.Equal(t, int32(4), hits.Load(), "refetched after TTL")
+// Entries that must never be in a list: our client DNS servers (a bypass
+// would send users' DNS queries past the VPN) and ranges so wide they take
+// many non-Russian sites past the VPN too.
+var forbidden = []string{
+	"1.1.1.1",
+	"1.0.0.1",
+	"194.0.0.0/8",
+	"193.0.0.0/9",
+	"77.88.0.0/13",
+	"217.0.0.0/13",
 }
 
-func TestFilesFallsBackToLastGoodCopy(t *testing.T) {
-	var body atomic.Value
-	var hits atomic.Int32
-	body.Store(list)
-	c := &clock{
-		t: time.Now(),
-	}
-	f := newFetcher(listServer(t, &body, &hits), c)
-	ctx := context.Background()
-	_, err := f.Files(ctx)
+func TestListsHaveNoDNSServersOrOverlyWideRanges(t *testing.T) {
+	files, err := Lists{}.Files(context.Background())
 	require.NoError(t, err)
-
-	body.Store("500")
-	c.t = c.t.Add(2 * time.Hour)
-	files, err := f.Files(ctx)
-	require.NoError(t, err, "GitHub down: the last good copy is used")
-	require.Equal(t, list, string(files[0].Data))
-}
-
-func TestFilesRejectsBadContent(t *testing.T) {
-	for name, b := range map[string]string{
-		"http error": "500",
-		"html page":  "<html>rate limited</html>",
-		"not a list": `{"hostname": "x"}`,
-		"too big":    "[" + strings.Repeat(" ", maxSize) + "]",
-	} {
-		var body atomic.Value
-		var hits atomic.Int32
-		body.Store(b)
-		f := newFetcher(listServer(t, &body, &hits), &clock{
-			t: time.Now(),
-		})
-
-		_, err := f.Files(context.Background())
-		require.Error(t, err, name)
+	for _, f := range files {
+		var entries []struct {
+			Hostname string   `json:"hostname"`
+			IP       string   `json:"ip"`
+			IPs      []string `json:"ips"`
+		}
+		require.NoError(t, json.Unmarshal(f.Data, &entries))
+		for _, e := range entries {
+			for _, v := range append([]string{e.Hostname, e.IP}, e.IPs...) {
+				require.NotContains(t, forbidden, v, "%s: entry %q", f.Name, e.Hostname)
+			}
+		}
 	}
-}
-
-func TestFilesWaitAfterAFailureBeforeTryingAgain(t *testing.T) {
-	var body atomic.Value
-	var hits atomic.Int32
-	body.Store("500")
-	c := &clock{
-		t: time.Now(),
-	}
-	f := newFetcher(listServer(t, &body, &hits), c)
-	ctx := context.Background()
-
-	_, err := f.Files(ctx)
-	require.Error(t, err)
-	tried := hits.Load()
-	_, err = f.Files(ctx)
-	require.Error(t, err)
-	require.Equal(t, tried, hits.Load(), "GitHub is down: no new download for a while")
-
-	body.Store(list)
-	c.t = c.t.Add(10 * time.Minute)
-	files, err := f.Files(ctx)
-	require.NoError(t, err, "tries again later")
-	require.Len(t, files, 2)
 }

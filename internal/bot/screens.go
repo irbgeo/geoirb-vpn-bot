@@ -9,6 +9,7 @@ import (
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 )
@@ -129,7 +130,7 @@ const (
 		"1. Настройки ⚙️ → Подключение → Раздельное туннелирование сайтов.\n" +
 		"2. Включите и выберите «Адреса из списка НЕ должны использовать VPN».\n" +
 		"3. ⋮ (три точки) → Импорт → выберите файл ниже.\n\n" +
-		"📱 Телефон: amnezia-ip-lite.json.\n💻 Компьютер: amnezia.json (или amnezia-ip-lite.json).\n" +
+		"📱 Телефон: ru-sites-phone.json.\n💻 Компьютер: ru-sites-computer.json (или ru-sites-phone.json).\n" +
 		"В приложении AmneziaWG такой настройки нет — там весь трафик идёт через VPN."
 )
 
@@ -877,12 +878,10 @@ func reconcileFailedText(err error) string {
 // bypassCaption describes a known list; unknown ones get a generic line.
 func bypassCaption(name string) string {
 	switch name {
-	case "amnezia.json":
-		return "💻 Российские сайты мимо VPN (2000+ доменов) — только для компьютера."
-	case "amnezia-ip-lite.json":
+	case bypass.ComputerList:
+		return "💻 Российские сайты мимо VPN (домены и сети) — только для компьютера."
+	case bypass.PhoneList:
 		return "📱 Российские сети мимо VPN — для телефона (на компьютере тоже работает)."
-	case "amnezia-ip.json":
-		return "💻 Весь российский сегмент интернета мимо VPN — только для компьютера."
 	}
 	return "Список адресов мимо VPN."
 }

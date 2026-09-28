@@ -41,10 +41,6 @@ func TestLoadDefaults(t *testing.T) {
 				90:  400,
 				365: 1500,
 			},
-			BypassURLs: []string{
-				"https://github.com/lib4u/amnezia-tunneling-ru/releases/download/latest/amnezia.json",
-				"https://github.com/lib4u/amnezia-tunneling-ru/releases/download/latest/amnezia-ip-lite.json",
-			},
 			DockerBin:     "docker",
 			DockerTimeout: 20 * time.Second,
 			SecretKey:     bytes.Repeat([]byte{1}, 32),

@@ -309,11 +309,11 @@ func (f *fakeBypass) Files(context.Context) ([]bypass.File, error) {
 	}
 	return []bypass.File{
 		{
-			Name: "amnezia.json",
+			Name: bypass.ComputerList,
 			Data: []byte("[]"),
 		},
 		{
-			Name: "amnezia-ip-lite.json",
+			Name: bypass.PhoneList,
 			Data: []byte("[]"),
 		},
 	}, nil
@@ -591,9 +591,9 @@ func TestCreateKeyStepThreeTunnelingThenFiles(t *testing.T) {
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "Адреса из списка НЕ должны использовать VPN")
 	require.Len(t, s.files, 2)
-	require.Equal(t, "amnezia.json", s.files[0].Name)
+	require.Equal(t, bypass.ComputerList, s.files[0].Name)
 	require.Contains(t, s.files[0].Caption, "только для компьютера")
-	require.Equal(t, "amnezia-ip-lite.json", s.files[1].Name)
+	require.Equal(t, bypass.PhoneList, s.files[1].Name)
 	require.Contains(t, s.files[1].Caption, "для телефона")
 }
 

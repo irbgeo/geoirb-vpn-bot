@@ -25,9 +25,6 @@ type Config struct {
 	// server then only needs a DNS change.
 	EndpointHost string `envconfig:"ENDPOINT_HOST"`
 	ClientDNS    string `envconfig:"CLIENT_DNS" default:"1.1.1.1, 1.0.0.1"`
-	// BypassURLs: split-tunneling lists (Amnezia import format) sent with
-	// every key. Default: lib4u/amnezia-tunneling-ru, rebuilt daily.
-	BypassURLs []string `envconfig:"BYPASS_URLS" default:"https://github.com/lib4u/amnezia-tunneling-ru/releases/download/latest/amnezia.json,https://github.com/lib4u/amnezia-tunneling-ru/releases/download/latest/amnezia-ip-lite.json"`
 	// Tariffs: days of access → price in Telegram Stars, e.g.
 	// TARIFFS=30:150,90:400,365:1500.
 	Tariffs map[int]int `envconfig:"TARIFFS" default:"30:150,90:400,365:1500"`

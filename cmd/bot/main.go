@@ -84,12 +84,7 @@ func run() error {
 			BackupStamp:     cfg.BackupStamp,
 			MaintenanceFlag: cfg.MaintenanceFlag,
 			Load:            serverLoad(),
-			Bypass: bypass.New(
-				&bypass.Input{
-					URLs: cfg.BypassURLs,
-					TTL:  6 * time.Hour,
-				},
-			),
+			Bypass:          bypass.Lists{},
 		},
 	)
 

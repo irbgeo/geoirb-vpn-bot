@@ -141,7 +141,7 @@
       "id": "bypass",
       "type": "backend",
       "label": "bypass",
-      "sublabel": "списки, кэш 6 ч",
+      "sublabel": "списки встроены",
       "pos": [
         430,
         450
@@ -212,9 +212,8 @@
     {
       "id": "lists",
       "type": "external",
-      "label": "Списки lib4u",
-      "sublabel": "сайты без VPN",
-      "brand": "github",
+      "label": "Списки сайтов",
+      "sublabel": "ru-sites-*.json",
       "pos": [
         430,
         660
@@ -346,10 +345,11 @@
       "labelDy": 24
     },
     {
-      "from": "lists",
-      "to": "bypass",
-      "label": "HTTPS",
-      "variant": "dashed"
+      "from": "bypass",
+      "to": "lists",
+      "label": "файлы в Telegram",
+      "variant": "dashed",
+      "labelDy": 24
     },
     {
       "from": "lists",
@@ -386,7 +386,7 @@
       "items": [
         "awg syncconf — без разрыва остальных клиентов",
         "Reconcile при старте; бэкап (скрипт сервера) раз в сутки, 7 копий",
-        "Списки lib4u применяет приложение; бот только отдаёт файлы"
+        "Списки сайтов встроены в бота; применяет их приложение"
       ]
     },
     {
