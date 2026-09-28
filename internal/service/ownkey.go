@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"log"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 // ReissueKey gives a user's key new secrets (a lost phone, a leaked
@@ -24,7 +22,7 @@ func (s *Service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 		return nil, err
 	}
 	p := *old
-	p.PublicKey, p.PrivateKey, p.PSK, p.Unreadable = keys.Public, keys.Private, keys.PSK, false
+	p.PublicKey, p.PrivateKey, p.PSK = keys.Public, keys.Private, keys.PSK
 	if err := s.swapKey(
 		ctx,
 		swapInput{
@@ -35,7 +33,7 @@ func (s *Service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 		return nil, err
 	}
 	log.Printf("service: user %d reissued key %s", k.UserID, p.IP)
-	return &p, nil
+	return p.public(), nil
 }
 
 // DeleteOwnKey deletes one of the user's own keys for good.
@@ -68,27 +66,23 @@ func (s *Service) ownPeer(ctx context.Context, k UserKey) (*Peer, error) {
 }
 
 // swapKey replaces in.Old with in.New (same IP) in the DB and, for an
-// enabled key, on the server in one update. The DB records are swapped
-// inside the update, so a DB failure leaves the server as it was. On any
-// failure the old key is put back. The caller holds s.mu.
+// enabled key, on the server. The DB records are swapped first, so a DB
+// failure leaves the server as it was. On any failure the old key is put
+// back. The caller holds s.mu.
 func (s *Service) swapKey(ctx context.Context, in swapInput) error {
 	err := s.swapRecords(ctx, in)
 	if err == nil && in.Old.Enabled {
-		err = s.vpn.Update(ctx, func(c *amnezia.ServerConf) error {
-			c.RemovePeer(in.Old.PublicKey)
-			c.AddPeer(serverPeer(in.New))
-			return nil
-		})
+		err = s.vpn.ReplacePeer(
+			ctx,
+			&ReplacePeerInput{
+				Old: in.Old.vpnPeer(),
+				New: in.New.vpnPeer(),
+			},
+		)
 	}
 	if err != nil {
-		s.unswap(ctx, in, err)
+		s.unswap(ctx, in)
 		return err
-	}
-	if in.Old.Enabled {
-		if err := s.vpn.RemoveClient(ctx, in.Old.PublicKey); err != nil {
-			log.Printf("service: clientsTable remove %s: %v", in.Old.IP, err)
-		}
-		s.showInApp(ctx, in.New)
 	}
 	return nil
 }
@@ -101,28 +95,15 @@ func (s *Service) swapRecords(ctx context.Context, in swapInput) error {
 	return s.peers.Save(ctx, in.New)
 }
 
-// unswap undoes a failed swapKey: the new record and peer go, the old
-// record comes back and, if it was enabled, the old peer is on the server
-// again. It runs even when ctx is cancelled; errors are logged.
-func (s *Service) unswap(ctx context.Context, in swapInput, cause error) {
+// unswap undoes a failed swapKey in the DB: the new record goes, the old
+// one comes back (the VPN already put the old peer back). It runs even
+// when ctx is cancelled; errors are logged.
+func (s *Service) unswap(ctx context.Context, in swapInput) {
 	rb := context.WithoutCancel(ctx)
 	if err := s.peers.Delete(rb, in.New.PublicKey); err != nil {
 		log.Printf("service: undo reissue of %s: %v", in.Old.IP, err)
 	}
 	if err := s.peers.Save(rb, in.Old); err != nil {
 		log.Printf("service: undo reissue of %s: restore old record: %v", in.Old.IP, err)
-	}
-	if !in.Old.Enabled {
-		return
-	}
-	s.takeOff(
-		rb,
-		takeOffInput{
-			Peer:  in.New,
-			Cause: cause,
-		},
-	)
-	if err := s.addToServer(rb, in.Old); err != nil {
-		log.Printf("service: undo reissue of %s: old peer back: %v", in.Old.IP, err)
 	}
 }

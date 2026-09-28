@@ -18,10 +18,13 @@ type fakeRunner struct {
 	handler func(in ExecInput) (string, error)
 }
 
-func (f *fakeRunner) Exec(_ context.Context, in ExecInput) (string, error) {
+func (f *fakeRunner) Exec(ctx context.Context, in ExecInput) (string, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, in)
 	f.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", err // like docker: a cancelled call does not run
+	}
 	return f.handler(in)
 }
 

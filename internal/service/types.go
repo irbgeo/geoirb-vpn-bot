@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"net/netip"
+	"time"
+)
 
 // Role controls what a user may do. It is set by hand in the DB
 // (users.role); the bot never changes it.
@@ -33,13 +36,6 @@ type CreateKeyInput struct {
 type swapInput struct {
 	Old *Peer
 	New *Peer
-}
-
-// takeOffInput is a key to take back off the server after a failed
-// change, and the error of that change.
-type takeOffInput struct {
-	Peer  *Peer
-	Cause error
 }
 
 // trialInput is the first key of a plain user.
@@ -83,13 +79,49 @@ type Peer struct {
 	Reminded1d bool
 	// Blocked: an admin disabled the key. Unlike a key disabled by expiry,
 	// the user can't buy it back on; admin Enable or Extend lift it.
-	Blocked bool
-	// Unreadable: the secrets could not be decrypted (a row restored with
-	// another DB_SECRET_KEY, edited by hand). PrivateKey and PSK are empty;
-	// the rest is right, so the key still expires and is counted, but it
-	// can't be put back on the server or given out as a config.
-	Unreadable bool
-	CreatedAt  time.Time
+	Blocked   bool
+	CreatedAt time.Time
+}
+
+// hasSecrets: every working key has a PSK. A key without one (its stored
+// secrets could not be read) still expires and is counted, but can't be
+// put back on the server.
+func (p *Peer) hasSecrets() bool {
+	return p.PSK != ""
+}
+
+// vpnPeer is the key as the VPN server needs it.
+func (p *Peer) vpnPeer() *VPNPeer {
+	return &VPNPeer{
+		PublicKey: p.PublicKey,
+		PSK:       p.PSK,
+		IP:        p.IP,
+		Name:      p.Name,
+		CreatedAt: p.CreatedAt,
+	}
+}
+
+// public is a copy without the private key and PSK: they never leave the
+// service, only a rendered config does. nil stays nil.
+func (p *Peer) public() *Peer {
+	if p == nil {
+		return nil
+	}
+	c := *p
+	c.PrivateKey, c.PSK = "", ""
+	return &c
+}
+
+// publicAll is public for a list.
+func publicAll(ps []*Peer) []*Peer {
+	if ps == nil {
+		return nil
+	}
+	out := make([]*Peer, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.public())
+	}
+	return out
 }
 
 // Payment is one successful Telegram Stars payment.
@@ -264,4 +296,56 @@ type ReconcileReport struct {
 // OK reports whether the database and the server agree.
 func (r *ReconcileReport) OK() bool {
 	return len(r.MissingOnServer) == 0 && len(r.DisabledButOnServer) == 0
+}
+
+// VPNKeys is a fresh key set from the VPN server.
+type VPNKeys struct {
+	Private string
+	Public  string
+	PSK     string
+}
+
+// VPNPeer is a key as the VPN server sees it.
+type VPNPeer struct {
+	PublicKey string
+	PSK       string
+	IP        string
+	// Name and CreatedAt are shown in the Amnezia app's client list.
+	Name      string
+	CreatedAt time.Time
+}
+
+// AddPeerInput is a new key for VPN.AddPeer. Peer.IP is picked by the VPN.
+type AddPeerInput struct {
+	Peer *VPNPeer
+	// Reserved are IPs taken besides the server's peers (disabled keys).
+	Reserved []netip.Addr
+	// Save stores the key with its new IP before the server changes; if it
+	// fails, the server is not touched.
+	Save func(ip string) error
+}
+
+// ReplacePeerInput is a key swapped for a new one on the same IP.
+type ReplacePeerInput struct {
+	Old *VPNPeer
+	New *VPNPeer
+}
+
+// PeerStat is the live state of one peer. Sent and Received are from the
+// client's side.
+type PeerStat struct {
+	PublicKey string
+	// LastHandshake is zero when the peer never connected.
+	LastHandshake time.Time
+	Sent          int64
+	Received      int64
+}
+
+// ClientSpec is what a client config is made of.
+type ClientSpec struct {
+	IP           string
+	PrivateKey   string
+	PSK          string
+	DNS          string // e.g. "1.1.1.1, 1.0.0.1"
+	EndpointHost string // domain or IP of the server
 }

@@ -9,7 +9,8 @@ import (
 
 // serveInput is what serve runs.
 type serveInput struct {
-	Client  *tgbot.Client
-	Router  *bot.Router
-	Service *service.Service
+	Client   *tgbot.Client
+	Router   *bot.Router
+	Notifier *bot.Notifier
+	Service  *service.Service
 }

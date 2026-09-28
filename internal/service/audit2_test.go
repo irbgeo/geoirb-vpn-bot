@@ -2,13 +2,10 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 // expiredKey issues a key and lets Maintain disable it: a disabled key
@@ -22,10 +19,10 @@ func expiredKey(t *testing.T, e *env) *Peer {
 	return p
 }
 
-func TestExtendRollsBackWhenEnablingTimesOut(t *testing.T) {
+func TestExtendFailureOnTheServerKeepsTheKeyDisabled(t *testing.T) {
 	e := newEnv()
 	p := expiredKey(t, e)
-	e.vpn.appliedErr = errBoom // docker timed out after the command ran
+	e.vpn.err = errBoom
 
 	_, err := e.svc.Extend(
 		context.Background(),
@@ -130,28 +127,11 @@ func TestExpiredKeyIsNotBlocked(t *testing.T) {
 	require.False(t, e.peers.m[p.PublicKey].Blocked, "expiry is not an admin block: the user may pay")
 }
 
-func TestIssueRollbackResyncsWhenOnlyTheLiveInterfaceChanged(t *testing.T) {
-	e := newEnv()
-	// the peer reached the live interface, the file was not saved
-	e.vpn.syncErr = fmt.Errorf("%w: disk full", amnezia.ErrNotPersisted)
-
-	_, err := e.svc.Issue(
-		context.Background(),
-		IssueInput{
-			UserID: 42,
-			Name:   "tg:alice",
-			Days:   30,
-		},
-	)
-	require.Error(t, err)
-	require.Equal(t, 2, e.vpn.updates, "rollback re-syncs from the file even though the file lacks the peer")
-}
-
 func TestRefundDuringPayIsNotLost(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
 	// the admin refunds while Pay is applying the days
-	e.vpn.onUpdate = func() {
+	e.vpn.onChange = func() {
 		require.NoError(t, e.svc.MarkRefunded(context.Background(), "c1"))
 	}
 
@@ -185,7 +165,7 @@ func TestPayRecordsTheKeyItExtendsBeforeApplying(t *testing.T) {
 			Days:   30,
 		},
 	)
-	e.vpn.syncErr = errBoom
+	e.vpn.err = errBoom
 
 	_, err = e.svc.Pay(
 		ctx,
@@ -205,7 +185,7 @@ func TestMaintainExpiresAKeyWhoseSecretsAreUnreadable(t *testing.T) {
 	e := newEnv()
 	p := seed(t, e, now.Add(-time.Minute))
 	stored := e.peers.m[p.PublicKey]
-	stored.Unreadable, stored.PrivateKey, stored.PSK = true, "", ""
+	stored.PrivateKey, stored.PSK = "", "" // secrets that could not be read
 	e.peers.m[p.PublicKey] = stored
 
 	m, err := e.svc.Maintain(context.Background())
@@ -221,12 +201,11 @@ func TestUnreadableKeyIsNotPutBackOnTheServer(t *testing.T) {
 		Role: RoleUnlimited,
 	}
 	e.peers.m["SEALED="] = Peer{
-		PublicKey:  "SEALED=",
-		ServerID:   "srv",
-		UserID:     7,
-		IP:         "10.8.1.2",
-		ExpiresAt:  now.AddDate(0, 0, 3),
-		Unreadable: true,
+		PublicKey: "SEALED=",
+		ServerID:  "srv",
+		UserID:    7,
+		IP:        "10.8.1.2",
+		ExpiresAt: now.AddDate(0, 0, 3), // no PSK: secrets could not be read
 	}
 	expired := seed(t, e, now.Add(-time.Minute))
 

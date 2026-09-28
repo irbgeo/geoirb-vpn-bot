@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 func TestStats(t *testing.T) {
@@ -19,18 +17,18 @@ func TestStats(t *testing.T) {
 	off := seed(t, e, now.AddDate(0, 0, 30))   // disabled below
 	forever := seed(t, e, time.Time{})         // never expires
 	require.NoError(t, e.svc.Disable(ctx, off.PublicKey))
-	e.vpn.stats = []amnezia.PeerStat{
+	e.vpn.stats = []PeerStat{
 		{
-			PublicKey:       online.PublicKey,
-			LatestHandshake: now.Add(-time.Minute),
-			RX:              10,
-			TX:              1000,
+			PublicKey:     online.PublicKey,
+			LastHandshake: now.Add(-time.Minute),
+			Sent:          10,
+			Received:      1000,
 		},
 		{
-			PublicKey:       idle.PublicKey,
-			LatestHandshake: now.Add(-time.Hour),
-			RX:              5,
-			TX:              50,
+			PublicKey:     idle.PublicKey,
+			LastHandshake: now.Add(-time.Hour),
+			Sent:          5,
+			Received:      50,
 		},
 	}
 	e.payments.m = map[string]Payment{

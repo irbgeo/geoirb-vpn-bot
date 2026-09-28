@@ -15,7 +15,7 @@ import (
 func (r *Router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	reissue := strings.HasPrefix(cq.Data, cbReissueAsk)
 	pub := strings.TrimPrefix(strings.TrimPrefix(cq.Data, cbReissueAsk), cbDeleteAsk)
-	keys, err := r.svc.Access(ctx, cq.SenderID())
+	keys, err := r.keys.Access(ctx, cq.SenderID())
 	if err != nil {
 		return err
 	}
@@ -38,7 +38,7 @@ func (r *Router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) e
 
 // reissueKey gives the key new secrets and sends its new config.
 func (r *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	p, err := r.svc.ReissueKey(
+	p, err := r.keys.ReissueKey(
 		ctx,
 		service.UserKey{
 			UserID:    cq.SenderID(),
@@ -48,7 +48,7 @@ func (r *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	if err != nil {
 		return r.ownKeyFailed(ctx, cq, err)
 	}
-	conf, err := r.svc.ClientConfig(ctx, p.PublicKey)
+	conf, err := r.keys.ClientConfig(ctx, p.PublicKey)
 	if err == nil {
 		err = r.sendConfig(
 			ctx,
@@ -80,7 +80,7 @@ func (r *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error 
 
 // deleteOwnKey deletes one of the user's keys for good.
 func (r *Router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	err := r.svc.DeleteOwnKey(
+	err := r.keys.DeleteOwnKey(
 		ctx,
 		service.UserKey{
 			UserID:    cq.SenderID(),

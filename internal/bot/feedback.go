@@ -47,7 +47,7 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	}
-	err := r.svc.AddFeedback(
+	err := r.feedback.AddFeedback(
 		ctx,
 		service.FeedbackInput{
 			UserID:   m.From.ID,
@@ -76,7 +76,7 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 		)
 	}
 	r.dialogs.drop(m.Chat.ID)
-	r.NotifyAdmins(
+	r.notify.NotifyAdmins(
 		ctx,
 		feedbackAlertText(
 			&service.Feedback{

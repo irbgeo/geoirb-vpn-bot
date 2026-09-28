@@ -148,29 +148,13 @@ func TestMaintainStopsAtTheFirstServerError(t *testing.T) {
 	seed(t, e, now.Add(-time.Hour))
 	seed(t, e, now.Add(-time.Hour))
 	seed(t, e, now.Add(-time.Hour))
-	e.vpn.syncErr = errBoom
-	e.vpn.updates = 0
+	e.vpn.err = errBoom
+	e.vpn.changes = 0
 
 	m, err := e.svc.Maintain(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, m.Expired)
-	require.Equal(t, 1, e.vpn.updates, "no more docker calls after the first failure; the next run retries")
-}
-
-func TestIssueRemovesAPeerLeftOnTheServer(t *testing.T) {
-	e := newEnv()
-	e.vpn.appliedErr = errBoom // the peer got on the server, then the call "failed"
-
-	_, err := e.svc.Issue(
-		context.Background(),
-		IssueInput{
-			Name: "x",
-			Days: 30,
-		},
-	)
-	require.ErrorIs(t, err, errBoom)
-	require.Empty(t, e.peers.m)
-	require.False(t, e.vpn.hasPeer("PUB1="), "no peer without an owner")
+	require.Equal(t, 1, e.vpn.changes, "no more docker calls after the first failure; the next run retries")
 }
 
 func TestRegisterKeepsARoleSetByHandInBetween(t *testing.T) {

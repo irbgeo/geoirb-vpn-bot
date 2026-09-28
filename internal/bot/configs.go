@@ -5,7 +5,7 @@ import "context"
 // adminConfigsAsk shows how many users get the "update your config"
 // notice and waits for "send" or "cancel".
 func (r *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
-	ids, err := r.svc.BroadcastRecipients(ctx)
+	ids, err := r.ops.BroadcastRecipients(ctx)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}

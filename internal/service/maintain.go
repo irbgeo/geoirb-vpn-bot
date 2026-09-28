@@ -30,6 +30,10 @@ func (s *Service) Maintain(ctx context.Context) (*Maintenance, error) {
 		log.Printf("service: subnet usage: %v", err)
 		m.SubnetUsed, m.SubnetTotal = 0, 0
 	}
+	m.MadeForever = publicAll(m.MadeForever)
+	m.Expired = publicAll(m.Expired)
+	m.Remind3d = publicAll(m.Remind3d)
+	m.Remind1d = publicAll(m.Remind1d)
 	return m, nil
 }
 
@@ -142,13 +146,9 @@ func (s *Service) savePeer(ctx context.Context, p *Peer) bool {
 // subnetUsage counts taken client IPs: peers on the server plus the IPs
 // reserved for the bot's keys (disabled ones have no peer).
 func (s *Service) subnetUsage(ctx context.Context) (used, total int, err error) {
-	c, err := s.vpn.ReadConf(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
 	reserved, err := s.reservedIPs(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
-	return c.SubnetUsage(reserved)
+	return s.vpn.SubnetUsage(ctx, reserved)
 }

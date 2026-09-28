@@ -26,7 +26,7 @@ func (r *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 			Text:   buyText,
 			Keyboard: tariffsKeyboard(
 				tariffsView{
-					Tariffs:   r.svc.Tariffs(),
+					Tariffs:   r.billing.Tariffs(),
 					PublicKey: key,
 				},
 			),
@@ -41,7 +41,7 @@ func (r *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if err != nil {
 		return fmt.Errorf("bot: bad tariff button %q", cq.Data)
 	}
-	inv, err := r.svc.Invoice(
+	inv, err := r.billing.Invoice(
 		ctx,
 		service.PurchaseInput{
 			UserID:    cq.SenderID(),
@@ -77,7 +77,7 @@ func (r *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 // preCheckout accepts the payment only if the purchase still holds;
 // otherwise Telegram charges nothing. Must answer within 10 seconds.
 func (r *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) error {
-	err := r.svc.CheckPurchase(
+	err := r.billing.CheckPurchase(
 		ctx,
 		service.PaymentInput{
 			PayerID: q.From.ID,
@@ -100,7 +100,7 @@ func (r *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) err
 // go back: a user is never charged for nothing.
 func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 	sp := m.SuccessfulPayment
-	res, err := r.svc.Pay(
+	res, err := r.billing.Pay(
 		ctx,
 		service.PaymentInput{
 			ChargeID: sp.TelegramPaymentChargeID,
@@ -164,7 +164,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 			log.Printf("bot: tell %d the payment worked: %v", m.Chat.ID, sendErr)
 		}
 	}
-	r.NotifyAdmins(ctx, paymentAlertText(alert))
+	r.notify.NotifyAdmins(ctx, paymentAlertText(alert))
 	return err
 }
 
@@ -190,10 +190,10 @@ func (r *Router) refund(ctx context.Context, f failedPayment) error {
 	)
 	if a.RefundErr != nil {
 		text = refundFailedText
-	} else if err := r.svc.MarkRefunded(ctx, a.ChargeID); err != nil {
+	} else if err := r.billing.MarkRefunded(ctx, a.ChargeID); err != nil {
 		log.Printf("bot: mark refunded %s: %v", a.ChargeID, err)
 	}
-	r.NotifyAdmins(ctx, refundAlertText(a))
+	r.notify.NotifyAdmins(ctx, refundAlertText(a))
 	if sendErr := r.send.Send(
 		ctx,
 		OutMessage{

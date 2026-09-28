@@ -106,21 +106,23 @@ func (s *Service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 		if name == "" {
 			name = fmt.Sprintf("tg:%s #%d", displayName(u), len(have)+1)
 		}
-		return s.issue(
+		p, err := s.issue(
 			ctx,
 			IssueInput{
 				UserID: userID,
 				Name:   name,
 			},
 		)
+		return p.public(), err
 	}
-	return s.startTrial(
+	p, err := s.startTrial(
 		ctx,
 		trialInput{
 			User: u,
 			Name: name,
 		},
 	)
+	return p.public(), err
 }
 
 // CheckCreateKey says whether CreateKey would give the user a key now

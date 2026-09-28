@@ -62,7 +62,7 @@ func run() error {
 			Peers:    st.Peers,
 			Payments: st.Payments,
 			Feedback: st.Feedback,
-			VPN:      vpn,
+			VPN:      amnezia.NewVPN(vpn),
 			Settings: service.Settings{
 				ServerID:     cfg.ServerID,
 				EndpointHost: cfg.EndpointHost,
@@ -77,14 +77,26 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	sender := bot.NewTelegramSender(client)
+	notifier := bot.NewNotifier(
+		&bot.NotifierDeps{
+			Users:       svc,
+			Sender:      sender,
+			BackupStamp: cfg.BackupStamp,
+			Load:        serverLoad(),
+		},
+	)
 	router := bot.New(
 		&bot.Deps{
-			Service:         svc,
-			Sender:          bot.NewTelegramSender(client),
+			Users:           svc,
+			Keys:            svc,
+			Billing:         svc,
+			Ops:             svc,
+			Feedback:        svc,
+			Sender:          sender,
+			Notifier:        notifier,
 			SupportContact:  cfg.SupportContact,
-			BackupStamp:     cfg.BackupStamp,
 			MaintenanceFlag: cfg.MaintenanceFlag,
-			Load:            serverLoad(),
 			Bypass:          bypass.Lists{},
 		},
 	)
@@ -92,9 +104,10 @@ func run() error {
 	return serve(
 		ctx,
 		serveInput{
-			Client:  client,
-			Router:  router,
-			Service: svc,
+			Client:   client,
+			Router:   router,
+			Notifier: notifier,
+			Service:  svc,
 		},
 	)
 }
@@ -174,7 +187,7 @@ func serve(ctx context.Context, in serveInput) error {
 	w := worker.New(
 		&worker.Input{
 			Job:      in.Service,
-			Delivery: in.Router,
+			Delivery: in.Notifier,
 			Every:    time.Minute,
 		},
 	)
@@ -183,7 +196,7 @@ func serve(ctx context.Context, in serveInput) error {
 		w.Run(ctx)
 		close(workerDone)
 	}()
-	go watchServerLoad(ctx, in.Router)
+	go watchServerLoad(ctx, in.Notifier)
 
 	// Dispatcher: chats are handled in parallel (one slow docker exec must
 	// not stall everyone), updates of one chat in order.
@@ -207,7 +220,7 @@ func serve(ctx context.Context, in serveInput) error {
 }
 
 // watchServerLoad checks the server limits every minute until ctx is done.
-func watchServerLoad(ctx context.Context, r *bot.Router) {
+func watchServerLoad(ctx context.Context, n *bot.Notifier) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {
@@ -215,7 +228,7 @@ func watchServerLoad(ctx context.Context, r *bot.Router) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			r.CheckServerLoad(ctx)
+			n.CheckServerLoad(ctx)
 		}
 	}
 }

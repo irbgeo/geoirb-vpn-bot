@@ -92,7 +92,7 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 			log.Printf("service: repeat of payment %s: key lookup: %v", in.ChargeID, err)
 		}
 		return &PayResult{
-			Peer:   p,
+			Peer:   p.public(),
 			Days:   pay.Days,
 			Repeat: true,
 		}, nil
@@ -141,6 +141,7 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 			log.Printf("service: payment %s applied but not marked: %v", in.ChargeID, err)
 		}
 	}
+	res.Peer = res.Peer.public()
 	return res, nil
 }
 

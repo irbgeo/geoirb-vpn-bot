@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 func TestAccessJoinsKeysWithLiveStats(t *testing.T) {
@@ -36,16 +34,16 @@ func TestAccessJoinsKeysWithLiveStats(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, e.svc.Disable(ctx, disabled.PublicKey))
-	e.vpn.stats = []amnezia.PeerStat{
+	e.vpn.stats = []PeerStat{
 		{
-			PublicKey:       online.PublicKey,
-			LatestHandshake: now.Add(-time.Minute),
-			RX:              100,
-			TX:              2000,
+			PublicKey:     online.PublicKey,
+			LastHandshake: now.Add(-time.Minute),
+			Sent:          100,
+			Received:      2000,
 		},
 		{
-			PublicKey:       idle.PublicKey,
-			LatestHandshake: now.Add(-time.Hour),
+			PublicKey:     idle.PublicKey,
+			LastHandshake: now.Add(-time.Hour),
 		},
 	}
 

@@ -2,9 +2,8 @@ package service
 
 import (
 	"context"
+	"net/netip"
 	"time"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 // UserRepository stores users. Get returns (nil, nil) when not found.
@@ -30,8 +29,8 @@ type PeerRepository interface {
 	Delete(ctx context.Context, publicKey string) error
 	ByUser(ctx context.Context, userID int64) ([]*Peer, error)
 	ByServer(ctx context.Context, serverID string) ([]*Peer, error)
-	// ServerIPs: the IP of every peer on the server, also of rows whose
-	// secrets can't be read (ByServer skips those).
+	// ServerIPs: the IP of every peer of the server, enabled or not (a
+	// disabled key keeps its IP reserved).
 	ServerIPs(ctx context.Context, serverID string) ([]string, error)
 }
 
@@ -56,13 +55,30 @@ type FeedbackRepository interface {
 	List(ctx context.Context, p Page) ([]*Feedback, int64, error)
 }
 
-// VPN is the AmneziaWG server (implemented by *amnezia.Server).
+// VPN is the VPN server, in keys and configs (implemented by
+// *amnezia.VPN). A change either fully happens or is undone before the
+// error is returned: the server never keeps half of it. Only the key's
+// place in the app's client list may lag (logged, not an error).
 type VPN interface {
-	GenKeys(ctx context.Context) (amnezia.Keys, error)
-	ServerPublicKey(ctx context.Context) (string, error)
-	ReadConf(ctx context.Context) (*amnezia.ServerConf, error)
-	Update(ctx context.Context, fn func(*amnezia.ServerConf) error) error
-	Stats(ctx context.Context) ([]amnezia.PeerStat, error)
-	SetClient(ctx context.Context, e amnezia.ClientEntry) error
-	RemoveClient(ctx context.Context, publicKey string) error
+	// GenKeys makes a fresh key set.
+	GenKeys(ctx context.Context) (VPNKeys, error)
+	// AddPeer puts a new key on the lowest free IP (see AddPeerInput).
+	AddPeer(ctx context.Context, in *AddPeerInput) error
+	// PutPeer puts a known key back on its IP; ErrIPTaken if another peer
+	// holds it. A key already there is left as it is.
+	PutPeer(ctx context.Context, p *VPNPeer) error
+	// RemovePeer takes a key off; a key not there is fine.
+	RemovePeer(ctx context.Context, p *VPNPeer) error
+	// ReplacePeer puts New in place of Old in one step; on failure Old is
+	// back.
+	ReplacePeer(ctx context.Context, in *ReplacePeerInput) error
+	// PeerKeys: the public key of every peer on the server, ours or not.
+	PeerKeys(ctx context.Context) ([]string, error)
+	// SubnetUsage: client IPs taken (the server's peers plus reserved) and
+	// how many there are in all.
+	SubnetUsage(ctx context.Context, reserved []netip.Addr) (used, total int, err error)
+	// Stats: live handshake and traffic of every peer.
+	Stats(ctx context.Context) ([]PeerStat, error)
+	// ClientConfig renders a client config file.
+	ClientConfig(ctx context.Context, c *ClientSpec) (string, error)
 }

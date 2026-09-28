@@ -240,14 +240,25 @@ type OutFile struct {
 	Caption string
 }
 
+// NotifierDeps is everything NewNotifier needs.
+type NotifierDeps struct {
+	Users       Users
+	Sender      Sender
+	BackupStamp string     // file touched by each good backup; "" = no check
+	Load        ServerLoad // nil = no server load alerts
+}
+
 // Deps is everything New needs.
 type Deps struct {
-	Service        Service
+	Users          Users
+	Keys           Keys
+	Billing        Billing
+	Ops            Ops
+	Feedback       Feedback
 	Sender         Sender
 	Bypass         Bypass
-	SupportContact string     // e.g. "@geoirb"
-	BackupStamp    string     // file touched by each good backup; "" = no check
-	Load           ServerLoad // nil = no server load alerts
+	Notifier       *Notifier
+	SupportContact string // e.g. "@geoirb"
 	// MaintenanceFlag: a file that exists while maintenance is on, so the
 	// state survives a restart. "" = kept in memory only.
 	MaintenanceFlag string

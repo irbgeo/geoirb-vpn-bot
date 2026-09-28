@@ -33,7 +33,7 @@ func TestDeliverExpiredToOwnerWithExtendButton(t *testing.T) {
 		},
 	}
 
-	r.DeliverMaintenance(context.Background(), m)
+	r.notify.DeliverMaintenance(context.Background(), m)
 
 	require.Len(t, s.sent, 1)
 	require.Equal(t, int64(42), s.sent[0].ChatID)
@@ -60,7 +60,7 @@ func TestDeliverReminders(t *testing.T) {
 		},
 	}
 
-	r.DeliverMaintenance(context.Background(), m)
+	r.notify.DeliverMaintenance(context.Background(), m)
 
 	require.Len(t, s.sent, 2)
 	require.Contains(t, s.sent[0].Text, "меньше 3 дней")
@@ -85,13 +85,13 @@ func TestSubnetAlertOnceUntilItDrops(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	r.DeliverMaintenance(ctx, full(210))
-	r.DeliverMaintenance(ctx, full(215))
+	r.notify.DeliverMaintenance(ctx, full(210))
+	r.notify.DeliverMaintenance(ctx, full(215))
 	require.Len(t, s.sent, 1, "one alert while it stays full")
 	require.Contains(t, s.sent[0].Text, "210 из 254")
 
-	r.DeliverMaintenance(ctx, full(100))
-	r.DeliverMaintenance(ctx, full(220))
+	r.notify.DeliverMaintenance(ctx, full(100))
+	r.notify.DeliverMaintenance(ctx, full(220))
 	require.Len(t, s.sent, 2, "alerts again after dropping below")
 }
 
@@ -109,9 +109,9 @@ func TestUnknownSubnetKeepsAlertState(t *testing.T) {
 		SubnetTotal: 254,
 	}
 
-	r.DeliverMaintenance(ctx, full)
-	r.DeliverMaintenance(ctx, &service.Maintenance{}) // subnet read failed
-	r.DeliverMaintenance(ctx, full)
+	r.notify.DeliverMaintenance(ctx, full)
+	r.notify.DeliverMaintenance(ctx, &service.Maintenance{}) // subnet read failed
+	r.notify.DeliverMaintenance(ctx, full)
 	require.Len(t, s.sent, 1, "an unknown reading neither alerts nor resets")
 }
 
@@ -126,7 +126,7 @@ func TestDeliverMadeForeverToOwner(t *testing.T) {
 		},
 	}
 
-	r.DeliverMaintenance(context.Background(), m)
+	r.notify.DeliverMaintenance(context.Background(), m)
 
 	require.Len(t, s.sent, 1)
 	require.Equal(t, int64(42), s.sent[0].ChatID)
@@ -145,23 +145,23 @@ func TestBackupAlertWhenTheLastBackupIsOld(t *testing.T) {
 		},
 	}
 	r, s := newRouter(svc)
-	r.backupStamp = stamp
+	r.notify.backupStamp = stamp
 	ctx := context.Background()
 
-	r.DeliverMaintenance(ctx, maintenance())
+	r.notify.DeliverMaintenance(ctx, maintenance())
 	require.Empty(t, s.sent, "a fresh backup: quiet")
 
 	old := time.Now().Add(-30 * time.Hour)
 	require.NoError(t, os.Chtimes(stamp, old, old))
-	r.DeliverMaintenance(ctx, maintenance())
-	r.DeliverMaintenance(ctx, maintenance())
+	r.notify.DeliverMaintenance(ctx, maintenance())
+	r.notify.DeliverMaintenance(ctx, maintenance())
 	require.Len(t, s.sent, 1, "one alert while it stays old")
 	require.Contains(t, s.sent[0].Text, "бэкап")
 
 	require.NoError(t, os.Chtimes(stamp, time.Now(), time.Now()))
-	r.DeliverMaintenance(ctx, maintenance())
+	r.notify.DeliverMaintenance(ctx, maintenance())
 	require.NoError(t, os.Remove(stamp))
-	r.DeliverMaintenance(ctx, maintenance())
+	r.notify.DeliverMaintenance(ctx, maintenance())
 	require.Len(t, s.sent, 2, "a missing mark alerts again after a good one")
 }
 
@@ -174,7 +174,7 @@ func TestBackupCheckOffWithoutAPath(t *testing.T) {
 		},
 	})
 
-	r.DeliverMaintenance(context.Background(), maintenance())
+	r.notify.DeliverMaintenance(context.Background(), maintenance())
 	require.Empty(t, s.sent)
 }
 
@@ -195,7 +195,7 @@ func TestServerLoadAlertsGoToAdmins(t *testing.T) {
 			},
 		},
 	})
-	r.load = &fakeLoad{
+	r.notify.load = &fakeLoad{
 		alerts: []sysload.Alert{
 			{
 				Metric:  sysload.Conntrack,
@@ -212,7 +212,7 @@ func TestServerLoadAlertsGoToAdmins(t *testing.T) {
 		err: errors.New("no disk"), // logged; the alerts still go out
 	}
 
-	r.CheckServerLoad(context.Background())
+	r.notify.CheckServerLoad(context.Background())
 
 	require.Len(t, s.sent, 2)
 	require.Equal(t, int64(1), s.sent[0].ChatID)
@@ -232,7 +232,7 @@ func TestNoLoadMonitorNoLoadAlerts(t *testing.T) {
 			},
 		},
 	})
-	r.CheckServerLoad(context.Background())
+	r.notify.CheckServerLoad(context.Background())
 	require.Empty(t, s.sent)
 }
 

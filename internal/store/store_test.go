@@ -493,7 +493,6 @@ func TestPeerListsKeepUnreadableRowsWithoutSecrets(t *testing.T) {
 		}
 	}
 	require.NotNil(t, bad)
-	require.True(t, bad.Unreadable)
 	require.Empty(t, bad.PrivateKey)
 	require.Empty(t, bad.PSK)
 	require.Equal(t, "10.8.1.11", bad.IP)

@@ -660,8 +660,18 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 		fail: map[int64]bool{},
 	}
 	deps := &Deps{
-		Service:         svc,
-		Sender:          s,
+		Users:    svc,
+		Keys:     svc,
+		Billing:  svc,
+		Ops:      svc,
+		Feedback: svc,
+		Sender:   s,
+		Notifier: NewNotifier(
+			&NotifierDeps{
+				Users:  svc,
+				Sender: s,
+			},
+		),
 		Bypass:          &fakeBypass{},
 		MaintenanceFlag: flag,
 	}

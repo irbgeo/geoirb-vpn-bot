@@ -73,7 +73,7 @@ var errPaymentNotFound = errors.New("bot: payment not found")
 // admin handles admin buttons. The role is checked in the DB on every
 // press, so a forged button from a non-admin does nothing.
 func (r *Router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	u, err := r.svc.User(ctx, cq.SenderID())
+	u, err := r.users.User(ctx, cq.SenderID())
 	if err != nil && !errors.Is(err, service.ErrNotFound) {
 		return err
 	}
@@ -156,7 +156,7 @@ func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
 	if err1 != nil || err2 != nil || id <= 0 {
 		return fmt.Errorf("bot: bad issue button %q", a.Arg)
 	}
-	p, err := r.svc.Issue(
+	p, err := r.keys.Issue(
 		ctx,
 		service.IssueInput{
 			UserID: id,
@@ -199,7 +199,7 @@ func (r *Router) adminText(ctx context.Context, m *tgbot.Message) error {
 	if !waiting {
 		return nil
 	}
-	u, err := r.svc.User(ctx, m.From.ID)
+	u, err := r.users.User(ctx, m.From.ID)
 	if err != nil || u.Role != service.RoleAdmin {
 		return nil //nolint:nilerr // not an admin (any more): ignore the text
 	}
@@ -237,7 +237,7 @@ func (r *Router) adminCancel(ctx context.Context, a adminAction) error {
 
 // adminStats sends the overview as a new message, so the menu stays.
 func (r *Router) adminStats(ctx context.Context, a adminAction) error {
-	st, err := r.svc.Stats(ctx)
+	st, err := r.ops.Stats(ctx)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
@@ -256,7 +256,7 @@ func (r *Router) adminStats(ctx context.Context, a adminAction) error {
 func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
 	page, _ := strconv.ParseInt(a.Arg, 10, 64)
 	page = max(page, 0)
-	users, total, err := r.svc.Users(
+	users, total, err := r.users.Users(
 		ctx,
 		service.Page{
 			Skip:  page * adminPageSize,
@@ -286,7 +286,7 @@ func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
 func (r *Router) adminFeedback(ctx context.Context, a adminAction) error {
 	page, _ := strconv.ParseInt(a.Arg, 10, 64)
 	page = max(page, 0)
-	list, total, err := r.svc.Feedbacks(
+	list, total, err := r.feedback.Feedbacks(
 		ctx,
 		service.Page{
 			Skip:  page * adminPageSize,
@@ -318,15 +318,15 @@ func (r *Router) adminUser(ctx context.Context, a adminAction) error {
 	if err != nil {
 		return fmt.Errorf("bot: bad user id in button: %w", err)
 	}
-	u, err := r.svc.User(ctx, id)
+	u, err := r.users.User(ctx, id)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
-	keys, err := r.svc.Access(ctx, id)
+	keys, err := r.keys.Access(ctx, id)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
-	payments, err := r.svc.Payments(ctx, id)
+	payments, err := r.billing.Payments(ctx, id)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
@@ -353,11 +353,11 @@ func (r *Router) adminKeyAction(ctx context.Context, a adminAction) error {
 	var err error
 	switch a.Name {
 	case actDisable:
-		err = r.svc.Disable(ctx, a.Arg)
+		err = r.keys.Disable(ctx, a.Arg)
 	case actEnable:
-		err = r.svc.Enable(ctx, a.Arg)
+		err = r.keys.Enable(ctx, a.Arg)
 	case actExtend:
-		_, err = r.svc.Extend(
+		_, err = r.keys.Extend(
 			ctx,
 			service.ExtendInput{
 				PublicKey: a.Arg,
@@ -375,11 +375,11 @@ func (r *Router) adminKeyAction(ctx context.Context, a adminAction) error {
 
 // adminConfig sends a key's config and QR code to the admin.
 func (r *Router) adminConfig(ctx context.Context, a adminAction) error {
-	p, err := r.svc.Key(ctx, a.Arg)
+	p, err := r.keys.Key(ctx, a.Arg)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
-	conf, err := r.svc.ClientConfig(ctx, a.Arg)
+	conf, err := r.keys.ClientConfig(ctx, a.Arg)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
@@ -397,7 +397,7 @@ func (r *Router) adminConfig(ctx context.Context, a adminAction) error {
 
 // adminDeleteAsk asks to confirm deleting a key.
 func (r *Router) adminDeleteAsk(ctx context.Context, a adminAction) error {
-	p, err := r.svc.Key(ctx, a.Arg)
+	p, err := r.keys.Key(ctx, a.Arg)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
@@ -414,11 +414,11 @@ func (r *Router) adminDeleteAsk(ctx context.Context, a adminAction) error {
 
 // adminDelete deletes a key for good and shows the owner's card.
 func (r *Router) adminDelete(ctx context.Context, a adminAction) error {
-	p, err := r.svc.Key(ctx, a.Arg)
+	p, err := r.keys.Key(ctx, a.Arg)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
-	if err := r.svc.Delete(ctx, a.Arg); err != nil {
+	if err := r.keys.Delete(ctx, a.Arg); err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
 	a.Arg = strconv.FormatInt(p.UserID, 10)
@@ -477,7 +477,7 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 	); err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}
-	if err := r.svc.MarkRefunded(ctx, p.ChargeID); err != nil {
+	if err := r.billing.MarkRefunded(ctx, p.ChargeID); err != nil {
 		log.Printf("bot: stars returned but not recorded for %s: %v", p.ChargeID, err)
 		if err := r.send.Send(
 			ctx,
@@ -503,7 +503,7 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 
 // findPayment finds a user's payment by its short ref.
 func (r *Router) findPayment(ctx context.Context, ref paymentRef) (*service.Payment, error) {
-	ps, err := r.svc.Payments(ctx, ref.UserID)
+	ps, err := r.billing.Payments(ctx, ref.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -517,7 +517,7 @@ func (r *Router) findPayment(ctx context.Context, ref paymentRef) (*service.Paym
 
 // adminOwnerCard redraws the card of the user who owns key a.Arg.
 func (r *Router) adminOwnerCard(ctx context.Context, a adminAction) error {
-	p, err := r.svc.Key(ctx, a.Arg)
+	p, err := r.keys.Key(ctx, a.Arg)
 	if err != nil {
 		return r.reportError(ctx, a.failed(err))
 	}

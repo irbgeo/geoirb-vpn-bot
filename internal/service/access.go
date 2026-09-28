@@ -5,8 +5,6 @@ import (
 	"net/netip"
 	"slices"
 	"time"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 // onlineWindow: a key with a handshake this recent counts as online.
@@ -35,7 +33,7 @@ func (s *Service) UserConfig(ctx context.Context, k UserKey) (*KeyConfig, error)
 		return nil, err
 	}
 	return &KeyConfig{
-		Peer: p,
+		Peer: p.public(),
 		Conf: conf,
 	}, nil
 }
@@ -46,7 +44,7 @@ func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	live := make(map[string]amnezia.PeerStat, len(stats))
+	live := make(map[string]PeerStat, len(stats))
 	for _, st := range stats {
 		live[st.PublicKey] = st
 	}
@@ -57,11 +55,11 @@ func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 		out = append(
 			out,
 			KeyInfo{
-				Peer:          p,
-				Online:        !st.LatestHandshake.IsZero() && now.Sub(st.LatestHandshake) < onlineWindow,
-				LastHandshake: st.LatestHandshake,
-				Sent:          st.RX,
-				Received:      st.TX,
+				Peer:          p.public(),
+				Online:        !st.LastHandshake.IsZero() && now.Sub(st.LastHandshake) < onlineWindow,
+				LastHandshake: st.LastHandshake,
+				Sent:          st.Sent,
+				Received:      st.Received,
 			},
 		)
 	}

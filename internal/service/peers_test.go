@@ -83,23 +83,20 @@ func TestIssue(t *testing.T) {
 
 	p := e.issue(t, 30)
 
-	require.Equal(
-		t,
-		Peer{
-			PublicKey:  "PUB1=",
-			ServerID:   "srv",
-			UserID:     42,
-			Name:       "tg:alice",
-			IP:         "10.8.1.2",
-			PrivateKey: "PRIV1=",
-			PSK:        "PSK1=",
-			Enabled:    true,
-			ExpiresAt:  now.AddDate(0, 0, 30),
-			CreatedAt:  now,
-		},
-		*p,
-	)
-	require.Equal(t, *p, e.peers.m["PUB1="], "saved in the DB")
+	want := Peer{
+		PublicKey:  "PUB1=",
+		ServerID:   "srv",
+		UserID:     42,
+		Name:       "tg:alice",
+		IP:         "10.8.1.2",
+		PrivateKey: "PRIV1=",
+		PSK:        "PSK1=",
+		Enabled:    true,
+		ExpiresAt:  now.AddDate(0, 0, 30),
+		CreatedAt:  now,
+	}
+	require.Equal(t, want, e.peers.m["PUB1="], "saved in the DB")
+	require.Equal(t, *want.public(), *p, "returned without secrets")
 	require.True(t, e.vpn.hasPeer("PUB1="), "added on the server")
 	require.Equal(t, "tg:alice", e.vpn.table["PUB1="], "visible in the Amnezia app")
 }
@@ -132,12 +129,12 @@ func TestIssueDBFailureLeavesServerUntouched(t *testing.T) {
 		},
 	)
 	require.ErrorIs(t, err, errBoom)
-	require.Equal(t, fakeServerConf, e.vpn.conf)
+	require.False(t, e.vpn.hasPeer("PUB1="), "the server is not touched")
 }
 
 func TestIssueSyncFailureRemovesDBRecord(t *testing.T) {
 	e := newEnv()
-	e.vpn.syncErr = errBoom
+	e.vpn.err = errBoom
 
 	_, err := e.svc.Issue(
 		context.Background(),
@@ -154,8 +151,8 @@ func TestIssueSyncFailureRemovesDBRecord(t *testing.T) {
 func TestIssueRollbackSurvivesCancelledContext(t *testing.T) {
 	e := newEnv()
 	ctx, cancel := context.WithCancel(context.Background())
-	e.vpn.syncErr = errBoom
-	e.vpn.onUpdate = cancel // e.g. SIGTERM while syncconf runs
+	e.vpn.err = errBoom
+	e.vpn.onChange = cancel // e.g. SIGTERM while syncconf runs
 
 	_, err := e.svc.Issue(
 		ctx,
@@ -272,22 +269,15 @@ func TestEnableFailsWhenIPTakenOnServer(t *testing.T) {
 	ctx := context.Background()
 	p := e.issue(t, 30)
 	require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
-	e.vpn.conf += "\n[Peer]\nPublicKey = MANUAL2=\nAllowedIPs = 10.8.1.2/32\n"
+	e.vpn.peers["MANUAL2="] = VPNPeer{
+		PublicKey: "MANUAL2=",
+		IP:        "10.8.1.2",
+	}
 
 	err := e.svc.Enable(ctx, p.PublicKey)
 	require.ErrorIs(t, err, ErrIPTaken)
 	require.ErrorContains(t, err, "10.8.1.2")
 	require.False(t, e.peers.m[p.PublicKey].Enabled)
-}
-
-func TestEnableIgnoresSimilarLookingIP(t *testing.T) {
-	e := newEnv()
-	ctx := context.Background()
-	p := e.issue(t, 30)
-	require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
-	e.vpn.conf += "\n[Peer]\nPublicKey = OTHER=\nAllowedIPs = 110.8.1.2/32\n"
-
-	require.NoError(t, e.svc.Enable(ctx, p.PublicKey), "110.8.1.2 is not 10.8.1.2")
 }
 
 func TestDelete(t *testing.T) {
@@ -309,10 +299,8 @@ func TestClientConfig(t *testing.T) {
 	require.Contains(t, conf, "Address = 10.8.1.2/32\n")
 	require.Contains(t, conf, "DNS = 1.1.1.1, 1.0.0.1\n")
 	require.Contains(t, conf, "PrivateKey = PRIV1=\n")
-	require.Contains(t, conf, "I1 = <r 2>\n", "commented server I1 is active for the client")
-	require.Contains(t, conf, "PublicKey = SERVERPUB=\n")
 	require.Contains(t, conf, "PresharedKey = PSK1=\n")
-	require.Contains(t, conf, "Endpoint = vpn.example.com:443\n")
+	require.Contains(t, conf, "Endpoint = vpn.example.com\n")
 }
 
 func TestReconcile(t *testing.T) {
@@ -323,12 +311,11 @@ func TestReconcile(t *testing.T) {
 	disabled := e.issue(t, 30)
 	require.NoError(t, e.svc.Disable(ctx, disabled.PublicKey))
 
-	c, err := e.vpn.ReadConf(ctx)
-	require.NoError(t, err)
-	c.RemovePeer(missing.PublicKey)
-	c.AddPeer(c.Peers[0]) // stand-in for the disabled key still on the server
-	c.Peers[len(c.Peers)-1].PublicKey = disabled.PublicKey
-	e.vpn.conf = c.String()
+	delete(e.vpn.peers, missing.PublicKey)
+	e.vpn.peers[disabled.PublicKey] = VPNPeer{
+		PublicKey: disabled.PublicKey,
+		IP:        disabled.IP,
+	}
 
 	r, err := e.svc.Reconcile(ctx)
 	require.NoError(t, err)

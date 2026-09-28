@@ -36,10 +36,11 @@ func (r *PeerRepo) Get(ctx context.Context, publicKey string) (*service.Peer, er
 }
 
 // Save inserts or replaces the peer. Fails if another peer on the same
-// server already holds the IP. An Unreadable peer has no secrets to write:
-// only its other fields are updated, the stored sealed secrets are kept.
+// server already holds the IP. A peer without a PSK was loaded without its
+// secrets (they could not be read): only its other fields are updated, the
+// stored sealed secrets are kept.
 func (r *PeerRepo) Save(ctx context.Context, p *service.Peer) error {
-	if p.Unreadable {
+	if p.PSK == "" {
 		if _, err := r.coll.UpdateOne(ctx, byID(p.PublicKey), setPeerMeta(peerToStore(p))); err != nil {
 			return fmt.Errorf("store: save peer %s: %w", p.IP, err)
 		}
@@ -111,7 +112,7 @@ func (r *PeerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, er
 // checkKey opens the secrets of up to checkKeySample stored peers, so a
 // wrong DB_SECRET_KEY (e.g. after a restore) stops the bot at startup
 // instead of failing quietly on every key. One bad row among good ones is
-// fine (it is marked Unreadable at runtime); none opening means the key is
+// fine (it is loaded without secrets); none opening means the key is
 // wrong.
 func (r *PeerRepo) checkKey(ctx context.Context) error {
 	cur, err := r.coll.Find(ctx, matchAll(), sample(checkKeySample))
@@ -126,7 +127,7 @@ func (r *PeerRepo) checkKey(ctx context.Context) error {
 		return nil
 	}
 	for i := range docs {
-		if !r.decode(&docs[i]).Unreadable {
+		if _, err := r.open(&docs[i]); err == nil {
 			return nil
 		}
 	}
@@ -157,11 +158,20 @@ func (r *PeerRepo) encode(p *service.Peer) (*peer, error) {
 	return d, nil
 }
 
-// decode converts a document back, decrypting the secrets. A secret
-// that does not open leaves the peer Unreadable with empty secrets
-// (logged): one bad row must not stop expiry, reminders and new keys for
-// the rest.
+// decode converts a document back, decrypting the secrets. Secrets that
+// do not open are left empty (logged): one bad row must not stop expiry,
+// reminders and new keys for the rest.
 func (r *PeerRepo) decode(d *peer) *service.Peer {
+	p, err := r.open(d)
+	if err != nil {
+		log.Printf("store: peer %s secrets unreadable: %v", d.IP, err)
+	}
+	return p
+}
+
+// open decrypts a document's secrets; if they do not open, the error is
+// returned with the peer, its secrets empty.
+func (r *PeerRepo) open(d *peer) (*service.Peer, error) {
 	p := d.toService()
 	priv, err1 := r.box.open(
 		sealInput{
@@ -176,11 +186,9 @@ func (r *PeerRepo) decode(d *peer) *service.Peer {
 		},
 	)
 	if err := errors.Join(err1, err2); err != nil {
-		log.Printf("store: peer %s secrets unreadable: %v", d.IP, err)
-		p.Unreadable = true
 		p.PrivateKey, p.PSK = "", "" // toService copied the sealed text
-		return p
+		return p, err
 	}
 	p.PrivateKey, p.PSK = priv, psk
-	return p
+	return p, nil
 }

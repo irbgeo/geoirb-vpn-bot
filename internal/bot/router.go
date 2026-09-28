@@ -15,32 +15,38 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 )
 
-// Service is what the bot needs from the business logic.
-type Service interface {
-	Register(ctx context.Context, in service.RegisterInput) (*service.User, error)
-	Admins(ctx context.Context) ([]*service.User, error)
-	Reconcile(ctx context.Context) (*service.ReconcileReport, error)
-	CreateKey(ctx context.Context, in service.CreateKeyInput) (*service.Peer, error)
-	CheckCreateKey(ctx context.Context, userID int64) error
-	ClientConfig(ctx context.Context, publicKey string) (string, error)
-	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
-	UserConfig(ctx context.Context, k service.UserKey) (*service.KeyConfig, error)
-	AddFeedback(ctx context.Context, in service.FeedbackInput) error
-	ReissueKey(ctx context.Context, k service.UserKey) (*service.Peer, error)
-	DeleteOwnKey(ctx context.Context, k service.UserKey) error
-	Feedbacks(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error)
+// The bot's needs from the business logic, split by topic so each handler
+// depends only on what it uses. *service.Service implements them all.
 
-	// admin panel
+// Users is who uses the bot.
+type Users interface {
+	Register(ctx context.Context, in service.RegisterInput) (*service.User, error)
 	User(ctx context.Context, id int64) (*service.User, error)
 	Users(ctx context.Context, p service.Page) ([]*service.User, int64, error)
+	Admins(ctx context.Context) ([]*service.User, error)
+}
+
+// Keys are VPN keys: a user's own, and the admin panel's.
+type Keys interface {
+	CreateKey(ctx context.Context, in service.CreateKeyInput) (*service.Peer, error)
+	CheckCreateKey(ctx context.Context, userID int64) error
+	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
+	UserConfig(ctx context.Context, k service.UserKey) (*service.KeyConfig, error)
+	ReissueKey(ctx context.Context, k service.UserKey) (*service.Peer, error)
+	DeleteOwnKey(ctx context.Context, k service.UserKey) error
+
+	// admin panel
 	Key(ctx context.Context, publicKey string) (*service.Peer, error)
+	ClientConfig(ctx context.Context, publicKey string) (string, error)
 	Disable(ctx context.Context, publicKey string) error
 	Enable(ctx context.Context, publicKey string) error
 	Delete(ctx context.Context, publicKey string) error
 	Extend(ctx context.Context, in service.ExtendInput) (*service.Peer, error)
 	Issue(ctx context.Context, in service.IssueInput) (*service.Peer, error)
+}
 
-	// payments
+// Billing is buying access with Stars and refunds.
+type Billing interface {
 	Tariffs() []service.Tariff
 	Invoice(ctx context.Context, in service.PurchaseInput) (*service.Invoice, error)
 	CheckPurchase(ctx context.Context, in service.PaymentInput) error
@@ -48,8 +54,19 @@ type Service interface {
 	MarkRefunded(ctx context.Context, chargeID string) error
 	Payments(ctx context.Context, userID int64) ([]*service.Payment, error)
 	UnfinishedPayments(ctx context.Context) ([]*service.Payment, error)
+}
+
+// Ops is the admins' view of the server as a whole.
+type Ops interface {
+	Reconcile(ctx context.Context) (*service.ReconcileReport, error)
 	Stats(ctx context.Context) (*service.Stats, error)
 	BroadcastRecipients(ctx context.Context) ([]int64, error)
+}
+
+// Feedback is users' reviews and suggestions.
+type Feedback interface {
+	AddFeedback(ctx context.Context, in service.FeedbackInput) error
+	Feedbacks(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error)
 }
 
 // ServerLoad says which server limits were just passed or are back to
@@ -87,13 +104,15 @@ const (
 // Router turns Telegram updates into service calls and replies. Its own
 // state is kept in small types with their own locks (state.go).
 type Router struct {
-	svc     Service
-	send    Sender
-	bypass  Bypass
-	support string // support contact
-	load    ServerLoad
-	// backupStamp is touched by every good backup (see backupAlert).
-	backupStamp string
+	users    Users
+	keys     Keys
+	billing  Billing
+	ops      Ops
+	feedback Feedback
+	send     Sender
+	notify   *Notifier
+	bypass   Bypass
+	support  string // support contact
 
 	// dialogs: what each chat's next input is (a broadcast text, a key
 	// name). In memory only: after a restart the button is pressed again.
@@ -101,10 +120,6 @@ type Router struct {
 	// jobs: the one background mass send; Close waits for it.
 	jobs  *jobs
 	maint *maintFlag
-	// subnetAlert / backupAlert: an alert went out and the condition still
-	// holds; it alerts again only after it cleared and came back.
-	subnetAlerted latch
-	backupAlerted latch
 	// refunds: charge IDs an admin refund is running for.
 	refunds *inFlight
 	// pause between broadcast messages (Telegram allows ~30 per second).
@@ -116,17 +131,20 @@ func New(
 	d *Deps,
 ) *Router {
 	return &Router{
-		svc:         d.Service,
-		send:        d.Sender,
-		bypass:      d.Bypass,
-		support:     d.SupportContact,
-		load:        d.Load,
-		backupStamp: d.BackupStamp,
-		dialogs:     newDialogs(),
-		jobs:        newJobs(),
-		maint:       newMaintFlag(d.MaintenanceFlag),
-		refunds:     newInFlight(),
-		pause:       50 * time.Millisecond,
+		users:    d.Users,
+		keys:     d.Keys,
+		billing:  d.Billing,
+		ops:      d.Ops,
+		feedback: d.Feedback,
+		send:     d.Sender,
+		bypass:   d.Bypass,
+		support:  d.SupportContact,
+		notify:   d.Notifier,
+		dialogs:  newDialogs(),
+		jobs:     newJobs(),
+		maint:    newMaintFlag(d.MaintenanceFlag),
+		refunds:  newInFlight(),
+		pause:    50 * time.Millisecond,
 	}
 }
 
@@ -192,16 +210,16 @@ func (r *Router) Wait() {
 // DB against the server. Problems are logged and sent to admins; nothing
 // is changed.
 func (r *Router) Reconcile(ctx context.Context) {
-	if ps, err := r.svc.UnfinishedPayments(ctx); err != nil {
+	if ps, err := r.billing.UnfinishedPayments(ctx); err != nil {
 		log.Printf("reconcile: unfinished payments: %v", err)
 	} else if len(ps) > 0 {
-		r.NotifyAdmins(ctx, unfinishedPaymentsText(ps))
+		r.notify.NotifyAdmins(ctx, unfinishedPaymentsText(ps))
 	}
 
-	rep, err := r.svc.Reconcile(ctx)
+	rep, err := r.ops.Reconcile(ctx)
 	if err != nil {
 		log.Printf("reconcile: %v", err)
-		r.NotifyAdmins(ctx, reconcileFailedText(err))
+		r.notify.NotifyAdmins(ctx, reconcileFailedText(err))
 		return
 	}
 	log.Printf(
@@ -211,33 +229,7 @@ func (r *Router) Reconcile(ctx context.Context) {
 		rep.Manual,
 	)
 	if !rep.OK() {
-		r.NotifyAdmins(ctx, ReconcileText(rep))
-	}
-}
-
-// NotifyAdmins sends text to every admin. A failed send (e.g. an admin who
-// blocked the bot) is logged and the rest still get it.
-func (r *Router) NotifyAdmins(ctx context.Context, text string) {
-	admins, err := r.svc.Admins(ctx)
-	if err != nil {
-		log.Printf("bot: list admins: %v", err)
-		return
-	}
-	if len(admins) == 0 {
-		log.Printf("bot: no admins in the DB, alert only logged: %s", text)
-		return
-	}
-	for _, a := range admins {
-		err := r.send.Send(
-			ctx,
-			OutMessage{
-				ChatID: a.ID,
-				Text:   text,
-			},
-		)
-		if err != nil {
-			log.Printf("bot: notify admin %d: %v", a.ID, err)
-		}
+		r.notify.NotifyAdmins(ctx, ReconcileText(rep))
 	}
 }
 
@@ -294,7 +286,7 @@ func (r *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error 
 // mainMenu registers the user (or refreshes the username) and builds the
 // menu for their role.
 func (r *Router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, error) {
-	u, err := r.svc.Register(
+	u, err := r.users.Register(
 		ctx,
 		service.RegisterInput{
 			ID:       from.ID,
@@ -444,7 +436,7 @@ func (r *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 // ErrBadKeyName is returned as is (the caller asks again); other known
 // errors are explained to the user.
 func (r *Router) issueKey(ctx context.Context, k keyRequest) error {
-	p, err := r.svc.CreateKey(
+	p, err := r.keys.CreateKey(
 		ctx,
 		service.CreateKeyInput{
 			UserID: k.UserID,
@@ -518,7 +510,7 @@ func (r *Router) commandText(c command) string {
 // store links and "next". It first checks that a key can be given, so no
 // one installs an app to learn their trial is used up.
 func (r *Router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	if err := r.svc.CheckCreateKey(ctx, cq.SenderID()); err != nil {
+	if err := r.keys.CheckCreateKey(ctx, cq.SenderID()); err != nil {
 		text, known := createKeyErrorText(err)
 		return r.replyError(
 			ctx,
@@ -543,7 +535,7 @@ func (r *Router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error
 // deliverKey sends a new key (step 2): config, QR code and how to add it
 // to the app, with "next" to the split-tunneling step.
 func (r *Router) deliverKey(ctx context.Context, d keyDelivery) error {
-	conf, err := r.svc.ClientConfig(ctx, d.Peer.PublicKey)
+	conf, err := r.keys.ClientConfig(ctx, d.Peer.PublicKey)
 	if err != nil {
 		return err
 	}
@@ -572,11 +564,11 @@ func (r *Router) deliverKey(ctx context.Context, d keyDelivery) error {
 // myAccess lists the user's keys with status, end date, last connection
 // and traffic, with a "config again" button per key.
 func (r *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	keys, err := r.svc.Access(ctx, cq.SenderID())
+	keys, err := r.keys.Access(ctx, cq.SenderID())
 	if err != nil {
 		return err
 	}
-	u, err := r.svc.User(ctx, cq.SenderID())
+	u, err := r.users.User(ctx, cq.SenderID())
 	if err != nil {
 		return err
 	}
@@ -607,7 +599,7 @@ func (r *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
 
 // configAgain resends one of the user's own keys.
 func (r *Router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	kc, err := r.svc.UserConfig(
+	kc, err := r.keys.UserConfig(
 		ctx,
 		service.UserKey{
 			UserID:    cq.SenderID(),

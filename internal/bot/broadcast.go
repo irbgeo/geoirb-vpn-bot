@@ -44,7 +44,7 @@ func (r *Router) adminMaintenance(ctx context.Context, a adminAction) error {
 // waits for "send" or "cancel". p is the admin chat, the text and what
 // sending does to the maintenance state.
 func (r *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
-	ids, err := r.svc.BroadcastRecipients(ctx)
+	ids, err := r.ops.BroadcastRecipients(ctx)
 	if err != nil {
 		return r.reportError(
 			ctx,
@@ -152,7 +152,7 @@ func (r *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 			},
 		)
 	}
-	ids, err := r.svc.BroadcastRecipients(ctx)
+	ids, err := r.ops.BroadcastRecipients(ctx)
 	if err == nil && m.Before != nil {
 		err = m.Before()
 	}

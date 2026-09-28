@@ -20,8 +20,8 @@ var ErrIPTaken = errors.New("service: the key's IP is taken on the server by ano
 // ErrBlocked: an admin disabled this key; buying can't turn it back on.
 var ErrBlocked = errors.New("service: key disabled by an admin")
 
-// ErrUnreadable: the key's secrets can't be decrypted, so it can't go
-// back on the server (see Peer.Unreadable).
+// ErrUnreadable: the key has no readable secrets (see Peer.hasSecrets), so
+// it can't go back on the server.
 var ErrUnreadable = errors.New("service: key secrets are unreadable")
 
 // ErrNoPrivateKey: the key was imported from the Amnezia app, so only the

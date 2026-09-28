@@ -361,8 +361,18 @@ func newRouter(svc *fakeService) (*Router, *fakeSender) {
 	}
 	r := New(
 		&Deps{
-			Service:        svc,
-			Sender:         s,
+			Users:    svc,
+			Keys:     svc,
+			Billing:  svc,
+			Ops:      svc,
+			Feedback: svc,
+			Sender:   s,
+			Notifier: NewNotifier(
+				&NotifierDeps{
+					Users:  svc,
+					Sender: s,
+				},
+			),
 			Bypass:         &fakeBypass{},
 			SupportContact: "@help_me",
 		},
@@ -828,7 +838,7 @@ func TestNotifyAdminsReachesEveryAdmin(t *testing.T) {
 	)
 	s.fail[2] = true
 
-	r.NotifyAdmins(context.Background(), "alert")
+	r.notify.NotifyAdmins(context.Background(), "alert")
 
 	require.Equal(
 		t,

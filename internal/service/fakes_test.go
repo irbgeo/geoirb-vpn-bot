@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sort"
 	"time"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 )
 
 // --- repositories: maps, copy on get/save so tests can't alias state ---
@@ -239,115 +238,170 @@ func (f *fakePayments) Since(_ context.Context, t time.Time) ([]*Payment, error)
 
 // --- VPN server: config text in memory ---
 
-const fakeServerConf = `[Interface]
-PrivateKey = SERVERPRIV=
-Address = 10.8.1.0/24
-ListenPort = 443
-Jc = 6
-H1 = 1
-# I1 = <r 2>
-[Peer]
-PublicKey = MANUAL1=
-PresharedKey = MPSK=
-AllowedIPs = 10.8.1.1/32
-`
-
+// fakeVPN is the VPN port in memory. Like the real one, a change either
+// happens or fails with nothing changed. The server starts with one peer
+// made in the Amnezia app: MANUAL1= on 10.8.1.1.
 type fakeVPN struct {
-	updates int // Update calls
-	// appliedErr: Update applies the change, then fails anyway (a docker
-	// timeout after the command already ran in the container).
-	appliedErr error
-	readErr    error  // fails ReadConf called directly (not through Update)
-	onUpdate   func() // runs inside Update, before the sync error
-	stats      []amnezia.PeerStat
-	conf       string
-	table      map[string]string // public key -> client name
-	keys       int
-	syncErr    error
-	tableErr   error
+	peers    map[string]VPNPeer // on the server, by public key
+	table    map[string]string  // public key -> name in the Amnezia app
+	stats    []PeerStat
+	keys     int
+	changes  int    // calls that change the server
+	err      error  // every change fails
+	onChange func() // runs inside a change, before err
+	readErr  error  // PeerKeys and SubnetUsage fail
+	tableErr error  // the app list can't be written (never an error)
 }
 
 func newFakeVPN() *fakeVPN {
 	return &fakeVPN{
-		conf:  fakeServerConf,
+		peers: map[string]VPNPeer{
+			"MANUAL1=": {
+				PublicKey: "MANUAL1=",
+				IP:        "10.8.1.1",
+			},
+		},
 		table: map[string]string{},
 	}
 }
 
-func (f *fakeVPN) GenKeys(context.Context) (amnezia.Keys, error) {
+func (f *fakeVPN) GenKeys(context.Context) (VPNKeys, error) {
 	f.keys++
-	return amnezia.Keys{
+	return VPNKeys{
 		Private: fmt.Sprintf("PRIV%d=", f.keys),
 		Public:  fmt.Sprintf("PUB%d=", f.keys),
 		PSK:     fmt.Sprintf("PSK%d=", f.keys),
 	}, nil
 }
 
-func (f *fakeVPN) ServerPublicKey(context.Context) (string, error) {
-	return "SERVERPUB=", nil
+func (f *fakeVPN) AddPeer(_ context.Context, in *AddPeerInput) error {
+	f.changes++
+	p := *in.Peer
+	p.IP = f.freeIP(in.Reserved)
+	if err := in.Save(p.IP); err != nil {
+		return err
+	}
+	if err := f.fail(); err != nil {
+		return err
+	}
+	f.put(&p)
+	return nil
 }
 
-func (f *fakeVPN) ReadConf(context.Context) (*amnezia.ServerConf, error) {
+func (f *fakeVPN) PutPeer(_ context.Context, p *VPNPeer) error {
+	f.changes++
+	if _, ok := f.peers[p.PublicKey]; ok {
+		return nil
+	}
+	for _, other := range f.peers {
+		if other.IP == p.IP {
+			return fmt.Errorf("%w: %s", ErrIPTaken, p.IP)
+		}
+	}
+	if err := f.fail(); err != nil {
+		return err
+	}
+	f.put(p)
+	return nil
+}
+
+func (f *fakeVPN) RemovePeer(_ context.Context, p *VPNPeer) error {
+	f.changes++
+	if err := f.fail(); err != nil {
+		return err
+	}
+	delete(f.peers, p.PublicKey)
+	delete(f.table, p.PublicKey)
+	return nil
+}
+
+func (f *fakeVPN) ReplacePeer(_ context.Context, in *ReplacePeerInput) error {
+	f.changes++
+	if err := f.fail(); err != nil {
+		return err
+	}
+	delete(f.peers, in.Old.PublicKey)
+	delete(f.table, in.Old.PublicKey)
+	f.put(in.New)
+	return nil
+}
+
+func (f *fakeVPN) PeerKeys(context.Context) ([]string, error) {
 	if f.readErr != nil {
 		return nil, f.readErr
 	}
-	return f.parse()
+	out := make([]string, 0, len(f.peers))
+	for k := range f.peers {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
-func (f *fakeVPN) parse() (*amnezia.ServerConf, error) {
-	return amnezia.ParseServerConf(f.conf)
+func (f *fakeVPN) SubnetUsage(_ context.Context, reserved []netip.Addr) (used, total int, err error) {
+	if f.readErr != nil {
+		return 0, 0, f.readErr
+	}
+	return len(f.taken(reserved)), 254, nil
 }
 
-// Update mirrors amnezia.Server.Update: fn error or a sync error leave the
-// stored config untouched.
-func (f *fakeVPN) Update(_ context.Context, fn func(*amnezia.ServerConf) error) error {
-	f.updates++
-	c, err := f.parse()
-	if err != nil {
-		return err
-	}
-	if err := fn(c); err != nil {
-		return err
-	}
-	if f.onUpdate != nil {
-		f.onUpdate()
-	}
-	if f.syncErr != nil {
-		return f.syncErr
-	}
-	f.conf = c.String()
-	if f.appliedErr != nil {
-		err := f.appliedErr
-		f.appliedErr = nil // only the first call
-		return err
-	}
-	return nil
-}
-
-func (f *fakeVPN) Stats(context.Context) ([]amnezia.PeerStat, error) {
+func (f *fakeVPN) Stats(context.Context) ([]PeerStat, error) {
 	return f.stats, nil
 }
 
-func (f *fakeVPN) SetClient(_ context.Context, e amnezia.ClientEntry) error {
-	if f.tableErr != nil {
-		return f.tableErr
+// ClientConfig renders a stand-in config from the spec.
+func (f *fakeVPN) ClientConfig(_ context.Context, c *ClientSpec) (string, error) {
+	return fmt.Sprintf(
+		"Address = %s/32\nDNS = %s\nPrivateKey = %s\nPresharedKey = %s\nEndpoint = %s\n",
+		c.IP,
+		c.DNS,
+		c.PrivateKey,
+		c.PSK,
+		c.EndpointHost,
+	), nil
+}
+
+// fail runs onChange and returns err: the change is not made.
+func (f *fakeVPN) fail() error {
+	if f.onChange != nil {
+		f.onChange()
 	}
-	f.table[e.PublicKey] = e.Name
-	return nil
+	return f.err
 }
 
-func (f *fakeVPN) RemoveClient(_ context.Context, key string) error {
-	delete(f.table, key)
-	return nil
+func (f *fakeVPN) put(p *VPNPeer) {
+	f.peers[p.PublicKey] = *p
+	if f.tableErr == nil {
+		f.table[p.PublicKey] = p.Name
+	}
 }
 
-// hasPeer reports whether the server config holds this public key.
+// freeIP is the lowest 10.8.1.x not on the server and not reserved.
+func (f *fakeVPN) freeIP(reserved []netip.Addr) string {
+	taken := f.taken(reserved)
+	for i := 1; ; i++ {
+		if ip := fmt.Sprintf("10.8.1.%d", i); !taken[ip] {
+			return ip
+		}
+	}
+}
+
+// taken is the set of IPs on the server or reserved.
+func (f *fakeVPN) taken(reserved []netip.Addr) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range f.peers {
+		out[p.IP] = true
+	}
+	for _, ip := range reserved {
+		out[ip.String()] = true
+	}
+	return out
+}
+
+// hasPeer reports whether the server holds this public key.
 func (f *fakeVPN) hasPeer(key string) bool {
-	c, err := amnezia.ParseServerConf(f.conf)
-	if err != nil {
-		panic(err)
-	}
-	return c.FindPeer(key) != nil
+	_, ok := f.peers[key]
+	return ok
 }
 
 var errBoom = errors.New("boom")

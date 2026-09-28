@@ -27,7 +27,7 @@ func TestReissueKeyGivesNewKeysSameEverythingElse(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotEqual(t, old.PublicKey, p.PublicKey)
-	require.NotEmpty(t, p.PrivateKey, "the caller sends the new config")
+	require.NotEmpty(t, e.peers.m[p.PublicKey].PrivateKey, "the new config can be rendered")
 	require.Equal(t, old.IP, p.IP)
 	require.Equal(t, old.Name, p.Name)
 	require.True(t, old.ExpiresAt.Equal(p.ExpiresAt))
@@ -62,7 +62,7 @@ func TestReissueDisabledKeyStaysDisabled(t *testing.T) {
 func TestReissueFailureKeepsTheOldKey(t *testing.T) {
 	e := newEnv()
 	old := ownKey(t, e)
-	e.vpn.syncErr = errBoom
+	e.vpn.err = errBoom
 
 	_, err := e.svc.ReissueKey(
 		context.Background(),
@@ -72,7 +72,7 @@ func TestReissueFailureKeepsTheOldKey(t *testing.T) {
 		},
 	)
 	require.Error(t, err)
-	e.vpn.syncErr = nil
+	e.vpn.err = nil
 	require.Len(t, e.peers.m, 1)
 	require.Contains(t, e.peers.m, old.PublicKey, "the old record is back")
 	require.True(t, e.vpn.hasPeer(old.PublicKey), "and the old key still works")

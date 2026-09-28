@@ -16,9 +16,13 @@ func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := s.vpn.ReadConf(ctx)
+	onServer, err := s.vpn.PeerKeys(ctx)
 	if err != nil {
 		return nil, err
+	}
+	live := make(map[string]bool, len(onServer))
+	for _, k := range onServer {
+		live[k] = true
 	}
 
 	known := make(map[string]bool, len(ours))
@@ -29,16 +33,15 @@ func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 			counts[p.UserID]++
 		}
 		known[p.PublicKey] = true
-		onServer := c.FindPeer(p.PublicKey) != nil
 		switch {
-		case p.Enabled && !onServer:
+		case p.Enabled && !live[p.PublicKey]:
 			r.MissingOnServer = append(r.MissingOnServer, p)
-		case !p.Enabled && onServer:
+		case !p.Enabled && live[p.PublicKey]:
 			r.DisabledButOnServer = append(r.DisabledButOnServer, p)
 		}
 	}
-	for _, p := range c.Peers {
-		if !known[p.PublicKey] {
+	for _, k := range onServer {
+		if !known[k] {
 			r.Manual++
 		}
 	}
@@ -47,5 +50,7 @@ func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	if err := s.users.SetKeyCounts(ctx, counts); err != nil {
 		log.Printf("service: sync keys counts: %v", err)
 	}
+	r.MissingOnServer = publicAll(r.MissingOnServer)
+	r.DisabledButOnServer = publicAll(r.DisabledButOnServer)
 	return r, nil
 }
