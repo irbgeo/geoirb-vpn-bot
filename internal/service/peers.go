@@ -75,6 +75,12 @@ func (s *Service) Delete(ctx context.Context, publicKey string) error {
 	if err != nil {
 		return err
 	}
+	return s.deletePeer(ctx, p)
+}
+
+// deletePeer removes a loaded key from the server and the DB. The caller
+// holds s.mu.
+func (s *Service) deletePeer(ctx context.Context, p *Peer) error {
 	if p.Enabled {
 		if err := s.removeFromServer(ctx, p); err != nil {
 			return err

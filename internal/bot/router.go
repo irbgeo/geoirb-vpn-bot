@@ -26,6 +26,8 @@ type Service interface {
 	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
 	UserConfig(ctx context.Context, k service.UserKey) (*service.KeyConfig, error)
 	AddFeedback(ctx context.Context, in service.FeedbackInput) error
+	ReissueKey(ctx context.Context, k service.UserKey) (*service.Peer, error)
+	DeleteOwnKey(ctx context.Context, k service.UserKey) error
 	Feedbacks(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error)
 
 	// admin panel
@@ -63,19 +65,23 @@ type Bypass interface {
 
 // Callback data of inline buttons (Telegram allows up to 64 bytes).
 const (
-	cbMenu      = "menu"       // back to the main menu, in the same message
-	cbFeedback  = "feedback"   // reviews and suggestions: asks for the text
-	cbCreateKey = "key:create" // step 1: which app to install
-	cbIssueKey  = "key:issue"  // step 2: ask for the key's name
-	cbKeyNoName = "key:noname" // skip the name: the key and how to add it
-	cbMyAccess  = "my"
-	cbBypass    = "bypass"
-	cbSupport   = "support"
-	cbTerms     = "terms"
-	cbBuy       = "buy"   // tariffs for "my key"
-	cbBuyKey    = "buyk:" // + public key: tariffs for that key
-	cbTariff    = "buy:"  // + days [+ ":" + public key]: send the invoice
-	cbConfig    = "cfg:"  // + public key (44 chars)
+	cbMenu       = "menu"       // back to the main menu, in the same message
+	cbFeedback   = "feedback"   // reviews and suggestions: asks for the text
+	cbCreateKey  = "key:create" // step 1: which app to install
+	cbIssueKey   = "key:issue"  // step 2: ask for the key's name
+	cbKeyNoName  = "key:noname" // skip the name: the key and how to add it
+	cbMyAccess   = "my"
+	cbBypass     = "bypass"
+	cbSupport    = "support"
+	cbTerms      = "terms"
+	cbBuy        = "buy"   // tariffs for "my key"
+	cbBuyKey     = "buyk:" // + public key: tariffs for that key
+	cbTariff     = "buy:"  // + days [+ ":" + public key]: send the invoice
+	cbConfig     = "cfg:"  // + public key (44 chars)
+	cbReissueAsk = "kr?:"  // + public key: confirm reissuing the key
+	cbReissue    = "kr:"   // + public key: reissue it
+	cbDeleteAsk  = "kd?:"  // + public key: confirm deleting the key
+	cbDelete     = "kd:"   // + public key: delete it
 )
 
 // Router turns Telegram updates into service calls and replies. Its own
@@ -318,6 +324,12 @@ func (r *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return r.backToMenu(ctx, cq)
 	case cq.Data == cbFeedback:
 		return r.askFeedback(ctx, cq)
+	case strings.HasPrefix(cq.Data, cbReissueAsk), strings.HasPrefix(cq.Data, cbDeleteAsk):
+		return r.askOwnKeyAction(ctx, cq)
+	case strings.HasPrefix(cq.Data, cbReissue):
+		return r.reissueKey(ctx, cq)
+	case strings.HasPrefix(cq.Data, cbDelete):
+		return r.deleteOwnKey(ctx, cq)
 	case cq.Data == cbCreateKey:
 		return r.keyStepApps(ctx, cq)
 	case cq.Data == cbIssueKey:

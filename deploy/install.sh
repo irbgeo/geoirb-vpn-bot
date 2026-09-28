@@ -33,6 +33,7 @@ install -m 644 "$S"/*.service "$S"/*.timer /etc/systemd/system/
 # VPN host tuning (conntrack size, TCP MSS clamp); no VPN restart needed.
 install -m 644 "$S/99-geoirb-vpn.conf" /etc/sysctl.d/
 install -m 644 "$S/nf_conntrack-modules.conf" /etc/modules-load.d/nf_conntrack.conf
+install -m 644 "$S/amneziawg-modules.conf" /etc/modules-load.d/amneziawg.conf
 install -m 644 "$S/nf_conntrack-modprobe.conf" /etc/modprobe.d/nf_conntrack.conf
 modprobe nf_conntrack
 # the live value follows the shipped file, so both always agree

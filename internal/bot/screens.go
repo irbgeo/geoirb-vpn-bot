@@ -203,7 +203,14 @@ func accessKeyboard(v accessView) *tgbot.InlineKeyboardMarkup {
 		if v.CanBuy {
 			row = append(row, tgbot.Button("💳 Продлить", cbBuyKey+k.Peer.PublicKey))
 		}
-		rows = append(rows, row)
+		rows = append(
+			rows,
+			row,
+			tgbot.Row(
+				tgbot.Button("🔄 Перевыпустить", cbReissueAsk+k.Peer.PublicKey),
+				tgbot.Button("🗑 Удалить", cbDeleteAsk+k.Peer.PublicKey),
+			),
+		)
 	}
 	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
@@ -469,6 +476,35 @@ var (
 func skipKeyNameKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(tgbot.Button("⏭ Пропустить", cbKeyNoName)),
+	)
+}
+
+const (
+	reissuedText = "🔄 Готово: выше новый файл и QR-код. Старый ключ больше не работает — " +
+		"удалите старое подключение в приложении и добавьте новое. Если ключ стоял на нескольких устройствах, обновите на каждом."
+	keyDeletedText   = "🗑 Ключ удалён. Удалите подключение и в приложении — оно больше не работает."
+	ownKeyFailedText = "Не получилось. Попробуйте позже или напишите в /support."
+)
+
+func reissueAskText(p *service.Peer) string {
+	return "🔄 Перевыпустить ключ «" + keyLabel(p) + "»?\n\n" +
+		"Вы получите новый файл и QR-код, а старый ключ сразу перестанет работать — на всех устройствах, где он стоит. " +
+		"Срок и всё остальное останутся прежними. Подходит, если потеряли телефон или файл попал к кому-то ещё."
+}
+
+func deleteAskText(p *service.Peer) string {
+	lost := "Ключ удалится навсегда."
+	if !p.ExpiresAt.IsZero() {
+		lost = "Оставшийся срок (" + keyUntil(p) + ") пропадёт, звёзды не возвращаются."
+	}
+	return "🗑 Удалить ключ «" + keyLabel(p) + "»?\n\n" + lost + " Отменить удаление нельзя."
+}
+
+// confirmKeyboard: "yes" (data) and "◀️ Меню" to cancel.
+func confirmKeyboard(data string) *tgbot.InlineKeyboardMarkup {
+	return tgbot.InlineKeyboard(
+		tgbot.Row(tgbot.Button("✅ Да", data)),
+		menuRow(),
 	)
 }
 

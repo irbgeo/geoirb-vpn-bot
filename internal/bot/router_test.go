@@ -96,6 +96,10 @@ func (f *fakeSender) Send(_ context.Context, m OutMessage) error {
 }
 
 type fakeService struct {
+	reissued      *service.Peer
+	reissuedFor   []service.UserKey
+	deletedOwn    []service.UserKey
+	ownKeyErr     error
 	feedbackList  []*service.Feedback
 	feedback      []service.FeedbackInput
 	feedbackErr   error
@@ -257,6 +261,22 @@ func (f *fakeService) Delete(_ context.Context, key string) error {
 func (f *fakeService) Extend(_ context.Context, in service.ExtendInput) (*service.Peer, error) {
 	f.calls = append(f.calls, fmt.Sprintf("extend %s %d", in.PublicKey, in.Days))
 	return f.Key(context.Background(), in.PublicKey)
+}
+
+func (f *fakeService) ReissueKey(_ context.Context, k service.UserKey) (*service.Peer, error) {
+	if f.ownKeyErr != nil {
+		return nil, f.ownKeyErr
+	}
+	f.reissuedFor = append(f.reissuedFor, k)
+	return f.reissued, nil
+}
+
+func (f *fakeService) DeleteOwnKey(_ context.Context, k service.UserKey) error {
+	if f.ownKeyErr != nil {
+		return f.ownKeyErr
+	}
+	f.deletedOwn = append(f.deletedOwn, k)
+	return nil
 }
 
 func (f *fakeService) Access(context.Context, int64) ([]service.KeyInfo, error) {
@@ -724,7 +744,9 @@ func TestMyAccessListsKeys(t *testing.T) {
 	}
 	kb := s.sent[0].Keyboard.InlineKeyboard
 	require.Equal(t, "cfg:PUB1=", kb[0][0].CallbackData)
-	require.Equal(t, "cfg:PUB2=", kb[1][0].CallbackData)
+	require.Equal(t, "kr?:PUB1=", kb[1][0].CallbackData, "each key: config row, then reissue / delete")
+	require.Equal(t, "kd?:PUB1=", kb[1][1].CallbackData)
+	require.Equal(t, "cfg:PUB2=", kb[2][0].CallbackData)
 }
 
 func TestMyAccessWithoutKeys(t *testing.T) {

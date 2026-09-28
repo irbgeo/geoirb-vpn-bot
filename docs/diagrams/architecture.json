@@ -198,7 +198,7 @@
       "id": "awg",
       "type": "security",
       "label": "amnezia-awg2",
-      "sublabel": "awg0, amneziawg-go",
+      "sublabel": "awg0 в ядре",
       "brand": "docker",
       "pos": [
         1090,
@@ -394,8 +394,8 @@
       "title": "Нагрузка",
       "items": [
         "conntrack 65536, TCP MSS 1340 — большие пакеты не режутся",
-        "Потолок скорости — процессор машины (amneziawg-go)",
-        "План: модуль ядра, MTU 1380 — docs/plan.md"
+        "VPN в ядре (модуль amneziawg): меньше процессора",
+        "План: MTU 1380, бот без docker — docs/plan.md"
       ]
     }
   ]

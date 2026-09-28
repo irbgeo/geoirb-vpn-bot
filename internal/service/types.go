@@ -29,6 +29,12 @@ type CreateKeyInput struct {
 	Name   string
 }
 
+// swapInput is a key and its reissued replacement (same IP, new secrets).
+type swapInput struct {
+	Old *Peer
+	New *Peer
+}
+
 // takeOffInput is a key to take back off the server after a failed
 // change, and the error of that change.
 type takeOffInput struct {

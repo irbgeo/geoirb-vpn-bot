@@ -26,12 +26,9 @@ func (s *Service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 // UserConfig renders a key's config for its owner. Someone else's key is
 // reported as ErrNotFound, so a forged button can't fetch it.
 func (s *Service) UserConfig(ctx context.Context, k UserKey) (*KeyConfig, error) {
-	p, err := s.ourPeer(ctx, k.PublicKey)
+	p, err := s.ownPeer(ctx, k)
 	if err != nil {
 		return nil, err
-	}
-	if p.UserID != k.UserID {
-		return nil, ErrNotFound
 	}
 	conf, err := s.renderConfig(ctx, p)
 	if err != nil {
