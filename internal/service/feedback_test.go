@@ -53,3 +53,32 @@ func TestAddFeedbackRejectsEmptyAndTooLong(t *testing.T) {
 		require.Empty(t, e.feedback.saved)
 	}
 }
+
+func TestFeedbacksPage(t *testing.T) {
+	e := newEnv()
+	for _, text := range []string{
+		"первый",
+		"второй",
+	} {
+		require.NoError(
+			t,
+			e.svc.AddFeedback(
+				context.Background(),
+				FeedbackInput{
+					UserID: 42,
+					Text:   text,
+				},
+			),
+		)
+	}
+
+	list, total, err := e.svc.Feedbacks(
+		context.Background(),
+		Page{
+			Limit: 10,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Equal(t, "второй", list[0].Text, "newest first")
+}

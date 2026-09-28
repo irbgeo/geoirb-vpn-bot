@@ -253,6 +253,20 @@ type Deps struct {
 	MaintenanceFlag string
 }
 
+// feedbackView is one page of reviews and suggestions for admins.
+type feedbackView struct {
+	List  []*service.Feedback
+	Total int64
+	Page  int64 // from 0
+}
+
+// navView is where a list page is: its buttons' prefix, page and total.
+type navView struct {
+	Prefix string // e.g. cbAdminUsers; the page number is appended
+	Page   int64
+	Total  int64
+}
+
 // menuScreen is the main menu: greeting and buttons.
 type menuScreen struct {
 	Text     string

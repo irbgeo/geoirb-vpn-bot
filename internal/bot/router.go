@@ -26,6 +26,7 @@ type Service interface {
 	Access(ctx context.Context, userID int64) ([]service.KeyInfo, error)
 	UserConfig(ctx context.Context, k service.UserKey) (*service.KeyConfig, error)
 	AddFeedback(ctx context.Context, in service.FeedbackInput) error
+	Feedbacks(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error)
 
 	// admin panel
 	User(ctx context.Context, id int64) (*service.User, error)

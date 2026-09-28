@@ -2,7 +2,10 @@ package bot
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
 	"github.com/stretchr/testify/require"
@@ -91,4 +94,67 @@ func containsButton(kb *tgbot.InlineKeyboardMarkup, data string) bool {
 		}
 	}
 	return false
+}
+
+func TestNewFeedbackIsSentToAdmins(t *testing.T) {
+	svc := &fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press(cbFeedback)))
+	require.NoError(t, r.Handle(ctx, startUpdate("Добавьте тариф на неделю")))
+
+	alerts := sentTo(s, 1)
+	require.Len(t, alerts, 1)
+	require.Contains(t, alerts[0].Text, "@alice")
+	require.Contains(t, alerts[0].Text, "Добавьте тариф на неделю")
+}
+
+func TestAdminFeedbackList(t *testing.T) {
+	svc := adminService()
+	for i := range 12 {
+		svc.feedbackList = append(
+			svc.feedbackList,
+			&service.Feedback{
+				UserID:    int64(100 + i),
+				Username:  fmt.Sprintf("u%d", i),
+				Text:      strings.Repeat("я", 400),
+				CreatedAt: time.Date(2026, 9, 28, 7, 0, 0, 0, time.UTC),
+			},
+		)
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("a:fb:0")))
+	page := s.edits[0]
+	require.Contains(t, page.Text, "всего 12")
+	require.Contains(t, page.Text, "@u0")
+	require.Contains(t, page.Text, "28.09.2026 10:00 по Москве")
+	require.LessOrEqual(t, len([]rune(page.Text)), 4096, "a page fits one Telegram message")
+	require.Contains(t, page.Text, "…", "long feedback is cut in the list")
+	require.True(t, containsButton(page.Keyboard, "a:fb:1"), "next page")
+	require.True(t, hasMenuButton(page.Keyboard))
+
+	require.NoError(t, r.Handle(ctx, press("a:fb:1")))
+	require.Contains(t, s.edits[1].Text, "@u10")
+	require.True(t, containsButton(s.edits[1].Keyboard, "a:fb:0"), "previous page")
+}
+
+func TestAdminMenuHasFeedback(t *testing.T) {
+	r, s := newRouter(adminService())
+	require.NoError(t, r.Handle(context.Background(), startUpdate("/menu")))
+	require.True(t, containsButton(s.sent[0].Keyboard, "a:fb:0"))
+}
+
+func TestFeedbackListIsForAdminsOnly(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	require.NoError(t, r.Handle(context.Background(), press("a:fb:0")))
+	require.Empty(t, s.edits)
+	require.Empty(t, s.sent)
 }

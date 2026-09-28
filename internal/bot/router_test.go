@@ -96,6 +96,7 @@ func (f *fakeSender) Send(_ context.Context, m OutMessage) error {
 }
 
 type fakeService struct {
+	feedbackList  []*service.Feedback
 	feedback      []service.FeedbackInput
 	feedbackErr   error
 	recipientsErr error
@@ -137,6 +138,11 @@ func (f *fakeService) AddFeedback(_ context.Context, in service.FeedbackInput) e
 	}
 	f.feedback = append(f.feedback, in)
 	return nil
+}
+
+func (f *fakeService) Feedbacks(_ context.Context, p service.Page) ([]*service.Feedback, int64, error) {
+	end := min(p.Skip+p.Limit, int64(len(f.feedbackList)))
+	return f.feedbackList[min(p.Skip, end):end], int64(len(f.feedbackList)), nil
 }
 
 func (f *fakeService) BroadcastRecipients(context.Context) ([]int64, error) {

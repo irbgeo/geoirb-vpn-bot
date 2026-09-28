@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -623,4 +624,35 @@ func TestFeedbackAdd(t *testing.T) {
 	require.Equal(t, "alice", got[0].Username)
 	require.Equal(t, "Добавьте тариф на неделю", got[0].Text)
 	require.True(t, got[0].CreatedAt.Equal(fb.CreatedAt))
+}
+
+func TestFeedbackListNewestFirst(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for i := range 3 {
+		require.NoError(
+			t,
+			s.Feedback.Add(
+				ctx,
+				&service.Feedback{
+					UserID:    int64(i + 1),
+					Text:      fmt.Sprintf("отзыв %d", i+1),
+					CreatedAt: ts("2026-09-28T10:00:00Z").Add(time.Duration(i) * time.Hour),
+				},
+			),
+		)
+	}
+
+	page, total, err := s.Feedback.List(
+		ctx,
+		service.Page{
+			Skip:  1,
+			Limit: 1,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, page, 1)
+	require.Equal(t, "отзыв 2", page[0].Text, "newest first: 3, 2, 1")
+	require.Equal(t, int64(2), page[0].UserID)
 }

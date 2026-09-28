@@ -163,6 +163,12 @@ func upsertReturnAfter() *options.FindOneAndUpdateOptions {
 	return options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
 }
 
+func pageNewestFirst(p service.Page) *options.FindOptions {
+	return newestFirst().
+		SetSkip(p.Skip).
+		SetLimit(p.Limit)
+}
+
 func newestFirst() *options.FindOptions {
 	return options.Find().SetSort(
 		bson.D{

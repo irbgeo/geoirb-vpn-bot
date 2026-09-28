@@ -182,3 +182,12 @@ func feedbackToStore(f *service.Feedback) *feedback {
 		CreatedAt: f.CreatedAt,
 	}
 }
+
+func (d *feedback) toService() *service.Feedback {
+	return &service.Feedback{
+		UserID:    d.UserID,
+		Username:  d.Username,
+		Text:      d.Text,
+		CreatedAt: d.CreatedAt,
+	}
+}

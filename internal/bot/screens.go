@@ -167,6 +167,7 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 			rows,
 			tgbot.Row(tgbot.Button("👥 Пользователи", cbAdminUsers+"0")),
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
+			tgbot.Row(tgbot.Button("💡 Отзывы", cbAdminFb+"0")),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
 			tgbot.Row(tgbot.Button("🔄 Обновить конфиги", cbAdminCfgs)),
 			tgbot.Row(tgbot.Button(maintButtonText(v.Maintenance), cbAdminMnt)),
@@ -637,18 +638,82 @@ func usersKeyboard(v usersView) *tgbot.InlineKeyboardMarkup {
 		label := fmt.Sprintf("%s · %s", userLabel(u), u.Role)
 		rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminUser+strconv.FormatInt(u.ID, 10))))
 	}
-	var nav []tgbot.InlineKeyboardButton
-	if v.Page > 0 {
-		nav = append(nav, tgbot.Button("◀️", cbAdminUsers+strconv.FormatInt(v.Page-1, 10)))
-	}
-	if v.Page+1 < pages(v.Total) {
-		nav = append(nav, tgbot.Button("▶️", cbAdminUsers+strconv.FormatInt(v.Page+1, 10)))
-	}
-	if len(nav) > 0 {
+	if nav := navRow(
+		navView{
+			Prefix: cbAdminUsers,
+			Page:   v.Page,
+			Total:  v.Total,
+		},
+	); nav != nil {
 		rows = append(rows, nav)
 	}
 	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
+}
+
+// navRow is "◀️ ▶️" for a paged list, or nil when there is one page.
+func navRow(v navView) []tgbot.InlineKeyboardButton {
+	var nav []tgbot.InlineKeyboardButton
+	if v.Page > 0 {
+		nav = append(nav, tgbot.Button("◀️", v.Prefix+strconv.FormatInt(v.Page-1, 10)))
+	}
+	if v.Page+1 < pages(v.Total) {
+		nav = append(nav, tgbot.Button("▶️", v.Prefix+strconv.FormatInt(v.Page+1, 10)))
+	}
+	return nav
+}
+
+// feedbackListCut: how much of one review the list shows, so a page of
+// adminPageSize fits one Telegram message (4096).
+const feedbackListCut = 300
+
+func feedbackListText(v feedbackView) string {
+	if v.Total == 0 {
+		return "💡 Отзывов пока нет."
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "💡 Отзывы: всего %d, страница %d/%d\n", v.Total, v.Page+1, pages(v.Total))
+	for _, f := range v.List {
+		fmt.Fprintf(&b, "\n• %s, %s:\n%s\n", mskTime(f.CreatedAt), feedbackAuthor(f), cut(f.Text))
+	}
+	return b.String()
+}
+
+func feedbackKeyboard(v feedbackView) *tgbot.InlineKeyboardMarkup {
+	var rows [][]tgbot.InlineKeyboardButton
+	if nav := navRow(
+		navView{
+			Prefix: cbAdminFb,
+			Page:   v.Page,
+			Total:  v.Total,
+		},
+	); nav != nil {
+		rows = append(rows, nav)
+	}
+	rows = append(rows, menuRow())
+	return tgbot.InlineKeyboard(rows...)
+}
+
+// feedbackAlertText tells admins about a new review, in full.
+func feedbackAlertText(f *service.Feedback) string {
+	return "💡 Новый отзыв от " + feedbackAuthor(f) + ":\n\n" + f.Text
+}
+
+// feedbackAuthor is "@username (id 42)", or "id 42" without a username.
+func feedbackAuthor(f *service.Feedback) string {
+	if f.Username == "" {
+		return "id " + strconv.FormatInt(f.UserID, 10)
+	}
+	return "@" + f.Username + " (id " + strconv.FormatInt(f.UserID, 10) + ")"
+}
+
+// cut shortens a text to feedbackListCut letters, marking the cut with "…".
+func cut(s string) string {
+	r := []rune(s)
+	if len(r) <= feedbackListCut {
+		return s
+	}
+	return string(r[:feedbackListCut]) + "…"
 }
 
 func pages(total int64) int64 {

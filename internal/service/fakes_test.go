@@ -90,6 +90,16 @@ func (f *fakeFeedback) Add(_ context.Context, fb *Feedback) error {
 	return nil
 }
 
+// List returns the saved feedback newest first (the last added first).
+func (f *fakeFeedback) List(_ context.Context, p Page) ([]*Feedback, int64, error) {
+	all := make([]*Feedback, 0, len(f.saved))
+	for i := len(f.saved) - 1; i >= 0; i-- {
+		all = append(all, &f.saved[i])
+	}
+	end := min(p.Skip+p.Limit, int64(len(all)))
+	return all[min(p.Skip, end):end], int64(len(all)), nil
+}
+
 type fakePeers struct {
 	m       map[string]Peer
 	saveErr error

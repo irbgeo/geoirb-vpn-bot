@@ -52,6 +52,8 @@ type PaymentRepository interface {
 // FeedbackRepository stores users' reviews and suggestions.
 type FeedbackRepository interface {
 	Add(ctx context.Context, f *Feedback) error
+	// List returns one page, newest first, and the total count.
+	List(ctx context.Context, p Page) ([]*Feedback, int64, error)
 }
 
 // VPN is the AmneziaWG server (implemented by *amnezia.Server).

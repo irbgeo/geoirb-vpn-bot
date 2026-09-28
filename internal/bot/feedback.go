@@ -76,6 +76,16 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 		)
 	}
 	r.dialogs.drop(m.Chat.ID)
+	r.NotifyAdmins(
+		ctx,
+		feedbackAlertText(
+			&service.Feedback{
+				UserID:   m.From.ID,
+				Username: m.From.Username,
+				Text:     strings.TrimSpace(m.Text),
+			},
+		),
+	)
 	return r.send.Send(
 		ctx,
 		OutMessage{

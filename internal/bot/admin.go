@@ -32,6 +32,7 @@ const (
 	actBroadcast   = "bc"     // asks for the broadcast text
 	actBroadcastOK = "bcok"   // sends the previewed broadcast
 	actCancel      = "cancel" // drops what the bot waits for (broadcast text)
+	actFeedback    = "fb"     // + page (from 0): reviews and suggestions
 	actConfigs     = "cfgs"   // asks to send every user a fresh config
 	actConfigsOK   = "cfgsok" // confirmed: send them
 	actMaint       = "mnt"    // previews "maintenance started" or, while on, "over"
@@ -55,6 +56,7 @@ const (
 	cbAdminBc    = cbAdmin + actBroadcast
 	cbAdminBcOK  = cbAdmin + actBroadcastOK
 	cbAdminCanc  = cbAdmin + actCancel
+	cbAdminFb    = cbAdmin + actFeedback + ":"
 	cbAdminCfgs  = cbAdmin + actConfigs
 	cbAdminCfgOK = cbAdmin + actConfigsOK
 	cbAdminMnt   = cbAdmin + actMaint
@@ -103,6 +105,8 @@ func (r *Router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return r.adminIssueTerm(ctx, a)
 	case actIssueDays:
 		return r.adminIssue(ctx, a)
+	case actFeedback:
+		return r.adminFeedback(ctx, a)
 	case actStats:
 		return r.adminStats(ctx, a)
 	case actBroadcast:
@@ -274,6 +278,36 @@ func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
 			MessageID: a.MessageID,
 			Text:      usersText(v),
 			Keyboard:  usersKeyboard(v),
+		},
+	)
+}
+
+// adminFeedback shows one page of reviews and suggestions, newest first.
+func (r *Router) adminFeedback(ctx context.Context, a adminAction) error {
+	page, _ := strconv.ParseInt(a.Arg, 10, 64)
+	page = max(page, 0)
+	list, total, err := r.svc.Feedbacks(
+		ctx,
+		service.Page{
+			Skip:  page * adminPageSize,
+			Limit: adminPageSize,
+		},
+	)
+	if err != nil {
+		return r.reportError(ctx, a.failed(err))
+	}
+	v := feedbackView{
+		List:  list,
+		Total: total,
+		Page:  page,
+	}
+	return r.send.Edit(
+		ctx,
+		EditMessage{
+			ChatID:    a.ChatID,
+			MessageID: a.MessageID,
+			Text:      feedbackListText(v),
+			Keyboard:  feedbackKeyboard(v),
 		},
 	)
 }
