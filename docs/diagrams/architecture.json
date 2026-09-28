@@ -9,7 +9,7 @@
       "url": "https://github.com/irbgeo/geoirb-vpn-bot",
       "provider": "github",
       "link_mode": "web",
-      "revision": "3fa9e0dff4988c458a64a05ce803a69a387232d0"
+      "revision": "3920d2bf2c1007c97c63d818be7dba7980b89aaf"
     },
     "viewBox": [
       1290,
@@ -69,7 +69,7 @@
       "id": "router",
       "type": "backend",
       "label": "bot.Router",
-      "sublabel": "меню, админка, оплата",
+      "sublabel": "меню, оплата, отзывы",
       "pos": [
         430,
         260
@@ -126,7 +126,7 @@
       "id": "mongo",
       "type": "database",
       "label": "MongoDB",
-      "sublabel": "users, peers, payments",
+      "sublabel": "ключи, оплаты, отзывы",
       "brand": "mongodb",
       "pos": [
         1090,
@@ -375,8 +375,8 @@
       "dot": "cyan",
       "title": "Внутри приложения бота",
       "items": [
-        "bot.Router — меню, админка, оплата Stars, рассылки",
-        "service — логика; store и vpn/amnezia — адаптеры к базе и VPN",
+        "bot.Router — меню, админка, оплата Stars, рассылки, отзывы",
+        "service — ключи, роли, перевыпуск и удаление ключа пользователем",
         "worker и sysload — таймеры раз в минуту в том же процессе"
       ]
     },

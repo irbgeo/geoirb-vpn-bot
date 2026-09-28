@@ -27,9 +27,7 @@
 - **Откат:** удалить `/etc/modules-load.d/amneziawg.conf`, в контейнере
   `awg-quick down /opt/amnezia/awg/awg0.conf`, `modprobe -r amneziawg`,
   `docker restart amnezia-awg2` — VPN снова пойдёт через `amneziawg-go`.
-- **Попутно найдено:** сломанная запись репозитория Docker
-  (`download.docker.com/linux/debian resolute`) — из-за неё `apt update` выдаёт ошибку.
-  Исправить: заменить `debian` на `ubuntu` в файле источника Docker в `/etc/apt/sources.list.d/`.
+
 
 ### 2.2. MTU 1380 для сервера и клиентов
 - **Зачем:** пакет VPN снаружи ~1492 байт, а сеть GCP пропускает 1460 — большие пакеты
