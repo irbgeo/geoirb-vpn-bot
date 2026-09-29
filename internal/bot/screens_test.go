@@ -37,3 +37,9 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 		return true
 	})
 }
+
+// TestImportTextDefaultVPNFileOnly: DefaultVPN has no QR import, so step 2
+// sends its users to the .conf file.
+func TestImportTextDefaultVPNFileOnly(t *testing.T) {
+	require.Contains(t, importText, "DefaultVPN: только файл .conf")
+}
