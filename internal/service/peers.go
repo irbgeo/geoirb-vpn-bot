@@ -302,6 +302,7 @@ func (s *Service) renderConfig(ctx context.Context, p *Peer) (string, error) {
 			PrivateKey:   p.PrivateKey,
 			PSK:          p.PSK,
 			DNS:          s.cfg.DNS,
+			MTU:          s.cfg.MTU,
 			EndpointHost: s.cfg.EndpointHost,
 		},
 	)

@@ -38,6 +38,7 @@ type ServerConf struct {
 type ClientConf struct {
 	Address         string
 	DNS             string
+	MTU             int // 0 = not written
 	PrivateKey      string
 	Params          []KV
 	ServerPublicKey string

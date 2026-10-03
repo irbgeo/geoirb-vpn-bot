@@ -110,6 +110,7 @@ Telegram-бот, который продаёт доступ к VPN на AmneziaW
    | `TARIFFS` | нет | `дни:звёзды`, по умолчанию `30:150,90:400,365:1500` |
    | `TRIAL_DAYS` | нет | пробный период, 7 |
    | `CLIENT_DNS` | нет | `1.1.1.1, 1.0.0.1` |
+   | `CLIENT_MTU` | нет | пусто (не писать в конфиг); для GCP `1380` |
    | `SERVER_ID`, `AWG_CONTAINER`, `DOCKER_TIMEOUT` | нет | см. `.env.example` |
 
 6. **Деплой:** `make deploy`. Скрипт:

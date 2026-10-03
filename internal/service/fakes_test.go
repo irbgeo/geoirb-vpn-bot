@@ -352,9 +352,10 @@ func (f *fakeVPN) Stats(context.Context) ([]PeerStat, error) {
 // ClientConfig renders a stand-in config from the spec.
 func (f *fakeVPN) ClientConfig(_ context.Context, c *ClientSpec) (string, error) {
 	return fmt.Sprintf(
-		"Address = %s/32\nDNS = %s\nPrivateKey = %s\nPresharedKey = %s\nEndpoint = %s\n",
+		"Address = %s/32\nDNS = %s\nMTU = %d\nPrivateKey = %s\nPresharedKey = %s\nEndpoint = %s\n",
 		c.IP,
 		c.DNS,
+		c.MTU,
 		c.PrivateKey,
 		c.PSK,
 		c.EndpointHost,

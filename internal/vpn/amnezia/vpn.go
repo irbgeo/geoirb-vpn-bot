@@ -203,6 +203,7 @@ func (v *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (strin
 		&ClientConf{
 			Address:         spec.IP + "/32",
 			DNS:             spec.DNS,
+			MTU:             spec.MTU,
 			PrivateKey:      spec.PrivateKey,
 			Params:          c.ClientParams(),
 			ServerPublicKey: serverKey,

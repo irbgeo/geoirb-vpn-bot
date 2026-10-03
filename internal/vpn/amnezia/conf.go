@@ -83,6 +83,9 @@ func RenderClient(in *ClientConf) string {
 	b.WriteString("[Interface]\n")
 	fmt.Fprintf(&b, "Address = %s\n", in.Address)
 	fmt.Fprintf(&b, "DNS = %s\n", in.DNS)
+	if in.MTU > 0 {
+		fmt.Fprintf(&b, "MTU = %d\n", in.MTU)
+	}
 	fmt.Fprintf(&b, "PrivateKey = %s\n", in.PrivateKey)
 	for _, kv := range in.Params {
 		fmt.Fprintf(&b, "%s = %s\n", kv.Key, kv.Value)

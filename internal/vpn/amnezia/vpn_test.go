@@ -331,11 +331,13 @@ func TestClientConfig(t *testing.T) {
 			PrivateKey:   "PRIV2=",
 			PSK:          "PSK2=",
 			DNS:          "1.1.1.1, 1.0.0.1",
+			MTU:          1380,
 			EndpointHost: "vpn.example.com",
 		},
 	)
 	require.NoError(t, err)
 	require.Contains(t, conf, "Address = 10.8.1.2/32\n")
+	require.Contains(t, conf, "MTU = 1380\n")
 	require.Contains(t, conf, "DNS = 1.1.1.1, 1.0.0.1\n")
 	require.Contains(t, conf, "PrivateKey = PRIV2=\n")
 	require.Contains(t, conf, "I1 = <r 2><b 0x8580>\n", "commented server I1 is active for the client")

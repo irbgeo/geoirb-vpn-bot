@@ -54,12 +54,27 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("MONGO_URI", "mongodb://u:p@127.0.0.1:27017/?authSource=geoirb_vpn")
 	t.Setenv("AWG_CONTAINER", "amnezia-awg")
 	t.Setenv("DOCKER_TIMEOUT", "5s")
+	t.Setenv("CLIENT_MTU", "1380")
 
 	c, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "mongodb://u:p@127.0.0.1:27017/?authSource=geoirb_vpn", c.MongoURI)
 	require.Equal(t, "amnezia-awg", c.AWGContainer)
 	require.Equal(t, 5*time.Second, c.DockerTimeout)
+	require.Equal(t, 1380, c.ClientMTU)
+}
+
+func TestLoadClientMTURange(t *testing.T) {
+	for _, mtu := range []string{
+		"-1",
+		"1279",
+		"1501",
+	} {
+		setRequired(t)
+		t.Setenv("CLIENT_MTU", mtu)
+		_, err := Load()
+		require.ErrorContains(t, err, "CLIENT_MTU", mtu)
+	}
 }
 
 func TestLoadRequired(t *testing.T) {

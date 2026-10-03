@@ -67,6 +67,7 @@ func run() error {
 				ServerID:     cfg.ServerID,
 				EndpointHost: cfg.EndpointHost,
 				DNS:          cfg.ClientDNS,
+				MTU:          cfg.ClientMTU,
 				TrialDays:    cfg.TrialDays,
 				Tariffs:      tariffs(cfg.Tariffs),
 			},

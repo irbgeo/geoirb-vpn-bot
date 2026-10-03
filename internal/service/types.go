@@ -183,6 +183,7 @@ type Settings struct {
 	ServerID     string // e.g. "geoirb-vpn"
 	EndpointHost string // domain or IP put into client configs
 	DNS          string // e.g. "1.1.1.1, 1.0.0.1"
+	MTU          int    // client MTU; 0 = not written
 	TrialDays    int    // length of the free trial a RoleUser gets with their first key
 	Tariffs      []Tariff
 }
@@ -347,5 +348,6 @@ type ClientSpec struct {
 	PrivateKey   string
 	PSK          string
 	DNS          string // e.g. "1.1.1.1, 1.0.0.1"
+	MTU          int    // 0 = not written
 	EndpointHost string // domain or IP of the server
 }

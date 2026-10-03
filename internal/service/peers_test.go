@@ -40,6 +40,7 @@ func newEnv() *env {
 				ServerID:     "srv",
 				EndpointHost: "vpn.example.com",
 				DNS:          "1.1.1.1, 1.0.0.1",
+				MTU:          1380,
 				TrialDays:    7,
 				Tariffs: []Tariff{
 					{
@@ -298,6 +299,7 @@ func TestClientConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, conf, "Address = 10.8.1.2/32\n")
 	require.Contains(t, conf, "DNS = 1.1.1.1, 1.0.0.1\n")
+	require.Contains(t, conf, "MTU = 1380\n")
 	require.Contains(t, conf, "PrivateKey = PRIV1=\n")
 	require.Contains(t, conf, "PresharedKey = PSK1=\n")
 	require.Contains(t, conf, "Endpoint = vpn.example.com\n")

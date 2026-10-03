@@ -152,6 +152,18 @@ func TestStripped(t *testing.T) {
 	require.NoError(t, err, "stripped output is still a valid config")
 }
 
+func TestRenderClientMTU(t *testing.T) {
+	got := RenderClient(
+		&ClientConf{
+			Address: "10.8.1.10/32",
+			DNS:     "1.1.1.1",
+			MTU:     1380,
+		},
+	)
+
+	require.Contains(t, got, "DNS = 1.1.1.1\nMTU = 1380\nPrivateKey = ")
+}
+
 func TestRenderClient(t *testing.T) {
 	c, err := ParseServerConf(serverConf)
 	require.NoError(t, err)
@@ -168,6 +180,7 @@ func TestRenderClient(t *testing.T) {
 		},
 	)
 
+	require.NotContains(t, got, "MTU", "no MTU line when it is not set")
 	require.Equal(t, `[Interface]
 Address = 10.8.1.10/32
 DNS = 1.1.1.1, 1.0.0.1
