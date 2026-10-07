@@ -157,3 +157,35 @@ func TestMaintainLeavesPlainUsersKeysAlone(t *testing.T) {
 	require.Empty(t, m.MadeForever)
 	require.Equal(t, now.AddDate(0, 0, 7), e.peers.m[p.PublicKey].ExpiresAt)
 }
+
+func TestMaintainCountsOnlinePeers(t *testing.T) {
+	e := newEnv()
+	e.vpn.stats = []PeerStat{
+		{
+			PublicKey:     "MANUAL1=",
+			LastHandshake: now.Add(-time.Minute),
+		},
+		{
+			PublicKey:     "KEY2=",
+			LastHandshake: now.Add(-10 * time.Minute),
+		},
+		{
+			PublicKey: "KEY3=",
+		},
+	}
+
+	m, err := e.svc.Maintain(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 1, m.Online, "only the recent handshake counts, manual peers too")
+}
+
+func TestMaintainOnlineUnknownWhenStatsFail(t *testing.T) {
+	e := newEnv()
+	expired := seed(t, e, now.Add(-time.Minute))
+	e.vpn.statsErr = errBoom
+
+	m, err := e.svc.Maintain(context.Background())
+	require.NoError(t, err, "the notices must still go out")
+	require.Equal(t, []string{expired.PublicKey}, keysOf(m.Expired))
+	require.Equal(t, -1, m.Online)
+}

@@ -15,6 +15,18 @@ const subnetAlertPercent = 80
 // backupMaxAge: the backup runs daily; older than this means it failed.
 const backupMaxAge = 26 * time.Hour
 
+// Online drop: alert admins when the clients online fall to a quarter of
+// the most seen in the last hour (if that was 5 or more). A server IP
+// blocked in Russia looks like this: new connections fail, open ones live
+// on, so clients drop off one by one over about an hour.
+// ponytail: a quiet night can look the same and alert; add hours or a
+// probe from Russia if it gets noisy.
+const (
+	onlineDropWindow  = time.Hour
+	onlineDropMinPeak = 5
+	onlineDropRatio   = 4
+)
+
 // Notifier sends what the bot says unasked: key notices to owners and
 // alerts to admins (payments, subnet, backups, server load).
 type Notifier struct {
@@ -26,6 +38,7 @@ type Notifier struct {
 	// holds; it alerts again only after it cleared and came back.
 	subnetAlerted latch
 	backupAlerted latch
+	online        onlineWatch
 }
 
 // NewNotifier creates a Notifier.
@@ -41,8 +54,8 @@ func NewNotifier(
 }
 
 // DeliverMaintenance tells owners that their key ended or ends soon (with
-// an "extend" button) and the admins about keys without Telegram and a
-// nearly full subnet.
+// an "extend" button) and the admins about keys without Telegram, a nearly
+// full subnet, an old backup and clients suddenly dropping off.
 func (n *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenance) {
 	for _, g := range []noticeGroup{
 		{
@@ -76,6 +89,7 @@ func (n *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 	}
 	n.subnetAlert(ctx, m)
 	n.backupAlert(ctx)
+	n.onlineDropAlert(ctx, m)
 }
 
 // CheckServerLoad tells admins when a server limit (connection table,
@@ -165,5 +179,17 @@ func (n *Notifier) backupAlert(ctx context.Context) {
 	old := time.Since(last) > backupMaxAge
 	if n.backupAlerted.rise(old) {
 		n.NotifyAdmins(ctx, backupAlertText(last))
+	}
+}
+
+// onlineDropAlert warns admins once when the clients online fall far below
+// the peak of the last hour, and again only after they came back.
+func (n *Notifier) onlineDropAlert(ctx context.Context, m *service.Maintenance) {
+	if m.Online < 0 {
+		return // unknown this run: keep the state as it is
+	}
+	drop, alert := n.online.record(m.Online)
+	if alert {
+		n.NotifyAdmins(ctx, onlineDropText(drop))
 	}
 }

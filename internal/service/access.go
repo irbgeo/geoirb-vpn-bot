@@ -56,7 +56,7 @@ func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 			out,
 			KeyInfo{
 				Peer:          p.public(),
-				Online:        !st.LastHandshake.IsZero() && now.Sub(st.LastHandshake) < onlineWindow,
+				Online:        st.onlineAt(now),
 				LastHandshake: st.LastHandshake,
 				Sent:          st.Sent,
 				Received:      st.Received,
@@ -72,4 +72,26 @@ func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 func parseIP(s string) netip.Addr {
 	ip, _ := netip.ParseAddr(s)
 	return ip
+}
+
+// onlineCount is how many peers on the server (keys and manual ones) had a
+// handshake within onlineWindow.
+func (s *Service) onlineCount(ctx context.Context) (int, error) {
+	stats, err := s.vpn.Stats(ctx)
+	if err != nil {
+		return 0, err
+	}
+	now := s.now()
+	n := 0
+	for _, st := range stats {
+		if st.onlineAt(now) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// onlineAt reports a handshake within onlineWindow before now.
+func (s PeerStat) onlineAt(now time.Time) bool {
+	return !s.LastHandshake.IsZero() && now.Sub(s.LastHandshake) < onlineWindow
 }

@@ -267,6 +267,7 @@ type Maintenance struct {
 	Remind1d    []*Peer // less than 1 day left
 	SubnetUsed  int     // client IPs taken (peers + reserved for disabled keys)
 	SubnetTotal int     // client IPs the subnet holds
+	Online      int     // peers with a handshake within onlineWindow; -1 = unknown
 }
 
 // Stats is the admin overview of this server.

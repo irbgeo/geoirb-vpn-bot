@@ -321,3 +321,16 @@ type configDelivery struct {
 	ChatID int64
 	Key    *service.KeyConfig
 }
+
+// onlineSample is how many clients were online at a maintenance run.
+type onlineSample struct {
+	At     time.Time
+	Online int
+}
+
+// onlineDrop is a fall of clients online: Online now, Peak in the last
+// onlineDropWindow before it.
+type onlineDrop struct {
+	Online int
+	Peak   int
+}

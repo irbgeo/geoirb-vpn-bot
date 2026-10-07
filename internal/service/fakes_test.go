@@ -250,6 +250,7 @@ type fakeVPN struct {
 	err      error  // every change fails
 	onChange func() // runs inside a change, before err
 	readErr  error  // PeerKeys and SubnetUsage fail
+	statsErr error  // Stats fails
 	tableErr error  // the app list can't be written (never an error)
 }
 
@@ -346,7 +347,7 @@ func (f *fakeVPN) SubnetUsage(_ context.Context, reserved []netip.Addr) (used, t
 }
 
 func (f *fakeVPN) Stats(context.Context) ([]PeerStat, error) {
-	return f.stats, nil
+	return f.stats, f.statsErr
 }
 
 // ClientConfig renders a stand-in config from the spec.

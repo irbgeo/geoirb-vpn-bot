@@ -30,6 +30,11 @@ func (s *Service) Maintain(ctx context.Context) (*Maintenance, error) {
 		log.Printf("service: subnet usage: %v", err)
 		m.SubnetUsed, m.SubnetTotal = 0, 0
 	}
+	m.Online, err = s.onlineCount(ctx)
+	if err != nil {
+		log.Printf("service: online count: %v", err)
+		m.Online = -1
+	}
 	m.MadeForever = publicAll(m.MadeForever)
 	m.Expired = publicAll(m.Expired)
 	m.Remind3d = publicAll(m.Remind3d)

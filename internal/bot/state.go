@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"sync"
 	"time"
 )
@@ -187,6 +188,40 @@ func (l *latch) rise(now bool) bool {
 	was := l.up
 	l.up = now
 	return now && !was
+}
+
+// onlineWatch remembers the clients online over the last onlineDropWindow
+// and says once when the count falls far below the peak.
+type onlineWatch struct {
+	mu      sync.Mutex
+	samples []onlineSample
+	low     bool
+}
+
+// record adds the count of now and returns the drop it makes against the
+// peak before it; alert is true only when the drop just began.
+func (s *onlineWatch) record(online int) (drop onlineDrop, alert bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.samples = slices.DeleteFunc(s.samples, func(x onlineSample) bool {
+		return now.Sub(x.At) >= onlineDropWindow
+	})
+	drop = onlineDrop{
+		Online: online,
+	}
+	for _, x := range s.samples {
+		drop.Peak = max(drop.Peak, x.Online)
+	}
+	sample := onlineSample{
+		At:     now,
+		Online: online,
+	}
+	s.samples = append(s.samples, sample)
+	low := drop.Peak >= onlineDropMinPeak && online*onlineDropRatio <= drop.Peak
+	alert = low && !s.low
+	s.low = low
+	return drop, alert
 }
 
 // inFlight is a set of running operations by ID (refunds by charge ID),

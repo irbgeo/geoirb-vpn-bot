@@ -352,6 +352,16 @@ func subnetAlertText(m *service.Maintenance) string {
 	)
 }
 
+func onlineDropText(d onlineDrop) string {
+	return fmt.Sprintf(
+		"⚠️ Клиенты отключаются: сейчас онлайн %d, а за последний час было до %d.\n\n"+
+			"Похоже на блокировку IP сервера в России: открытые соединения живут, новые не проходят. "+
+			"Проверьте из России напрямую, без туннеля: ping до сервера и подключение своим ключом.",
+		d.Online,
+		d.Peak,
+	)
+}
+
 // loadMetricNames name the server limits for admins.
 func loadMetricNames() map[sysload.Metric]string {
 	return map[sysload.Metric]string{
