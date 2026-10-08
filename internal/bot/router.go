@@ -138,11 +138,11 @@ func New(
 		feedback: d.Feedback,
 		send:     d.Sender,
 		bypass:   d.Bypass,
-		support:  d.SupportContact,
+		support:  d.Config.SupportContact,
 		notify:   d.Notifier,
 		dialogs:  newDialogs(),
 		jobs:     newJobs(),
-		maint:    newMaintFlag(d.MaintenanceFlag),
+		maint:    newMaintFlag(d.Config.MaintenanceFlag),
 		refunds:  newInFlight(),
 		pause:    50 * time.Millisecond,
 	}

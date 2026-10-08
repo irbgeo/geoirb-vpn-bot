@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log"
+	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 )
 
 // Sender talks to Telegram. Faked in tests.
@@ -26,6 +30,21 @@ type telegramSender struct {
 }
 
 var _ Sender = (*telegramSender)(nil)
+
+// NewTelegramClient connects to the Bot API. RetryAfter: a 429 "too many
+// requests" waits (≤10 s) and retries once instead of losing the message.
+func NewTelegramClient(
+	cfg *config.Config,
+) (*tgbot.Client, error) {
+	opts := []tgbot.Option{
+		tgbot.WithRetryAfter(10 * time.Second),
+	}
+	if cfg.TelegramTestEnv {
+		opts = append(opts, tgbot.WithTestEnvironment())
+		log.Println("telegram: TEST environment")
+	}
+	return tgbot.NewClient(cfg.BotToken, opts...)
+}
 
 // NewTelegramSender creates a telegramSender.
 func NewTelegramSender(

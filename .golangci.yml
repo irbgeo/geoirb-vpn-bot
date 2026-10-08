@@ -28,6 +28,14 @@ linters:
       enabled-tags:
         - diagnostic
         - performance
+  exclusions:
+    rules:
+      # main holds all wiring; a startup log.Fatalf skips the defers, which
+      # is fine because the process ends anyway.
+      - path: ^cmd/
+        linters:
+          - gocritic
+        text: exitAfterDefer
 
 formatters:
   enable:

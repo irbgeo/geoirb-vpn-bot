@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 )
 
 // fakeDocker writes a shell script that stands in for the docker binary.
@@ -77,5 +79,39 @@ func TestDetectContainer(t *testing.T) {
 
 	bin = fakeDocker(t, `printf 'mongo\n'`)
 	_, err = DetectContainer(context.Background(), bin)
+	require.ErrorContains(t, err, "no amnezia-awg2 or amnezia-awg")
+}
+
+func TestNewDockerRunnerDetectsContainer(t *testing.T) {
+	cfg := &config.Config{
+		DockerBin:     fakeDocker(t, `printf 'amnezia-awg\n'`),
+		DockerTimeout: 5 * time.Second,
+	}
+
+	r, err := NewDockerRunner(context.Background(), cfg)
+	require.NoError(t, err)
+	require.Equal(t, "amnezia-awg", r.Container)
+	require.Equal(t, cfg.DockerBin, r.Bin)
+	require.Equal(t, 5*time.Second, r.Timeout)
+}
+
+func TestNewDockerRunnerUsesSetContainer(t *testing.T) {
+	cfg := &config.Config{
+		AWGContainer:  "my-awg",
+		DockerBin:     fakeDocker(t, `exit 1`), // docker ps is not called
+		DockerTimeout: time.Second,
+	}
+
+	r, err := NewDockerRunner(context.Background(), cfg)
+	require.NoError(t, err)
+	require.Equal(t, "my-awg", r.Container)
+}
+
+func TestNewDockerRunnerNoContainer(t *testing.T) {
+	cfg := &config.Config{
+		DockerBin: fakeDocker(t, `printf 'mongo\n'`),
+	}
+
+	_, err := NewDockerRunner(context.Background(), cfg)
 	require.ErrorContains(t, err, "no amnezia-awg2 or amnezia-awg")
 }

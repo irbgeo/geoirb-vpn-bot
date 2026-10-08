@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -27,9 +28,9 @@ func testStore(t *testing.T) *store {
 
 	s, err := Connect(
 		ctx,
-		ConnectInput{
-			URI:       uri,
-			DBName:    "geoirb_vpn_test",
+		&config.Config{
+			MongoURI:  uri,
+			MongoDB:   "geoirb_vpn_test",
 			SecretKey: testKey,
 		},
 	)
@@ -272,9 +273,9 @@ func TestPeerSecretsEncryptedAtRest(t *testing.T) {
 func TestConnectRejectsBadSecretKey(t *testing.T) {
 	_, err := Connect(
 		context.Background(),
-		ConnectInput{
-			URI:       "mongodb://localhost:1",
-			DBName:    "x",
+		&config.Config{
+			MongoURI:  "mongodb://localhost:1",
+			MongoDB:   "x",
 			SecretKey: []byte("short"),
 		},
 	)
@@ -541,9 +542,9 @@ func TestConnectRefusesAWrongSecretKey(t *testing.T) {
 	}
 	_, err := Connect(
 		context.Background(),
-		ConnectInput{
-			URI:       uri,
-			DBName:    "geoirb_vpn_test",
+		&config.Config{
+			MongoURI:  uri,
+			MongoDB:   "geoirb_vpn_test",
 			SecretKey: bytes.Repeat([]byte{9}, 32),
 		},
 	)

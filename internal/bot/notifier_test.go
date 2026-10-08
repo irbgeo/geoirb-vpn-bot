@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -222,6 +224,41 @@ func TestServerLoadAlertsGoToAdmins(t *testing.T) {
 	require.Contains(t, s.sent[0].Text, "80%")
 	require.Contains(t, s.sent[1].Text, "✅")
 	require.Contains(t, s.sent[1].Text, "процессор")
+}
+
+type countLoad struct {
+	calls atomic.Int32
+}
+
+func (s *countLoad) Check() ([]sysload.Alert, error) {
+	s.calls.Add(1)
+	return nil, nil
+}
+
+func TestWatchServerLoadChecksEveryMinute(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		load := &countLoad{}
+		n := NewNotifier(
+			&NotifierDeps{
+				Users:  &fakeService{},
+				Sender: &fakeSender{},
+				Load:   load,
+			},
+		)
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			n.WatchServerLoad(ctx)
+			close(done)
+		}()
+
+		time.Sleep(150 * time.Second)
+		synctest.Wait()
+		require.Equal(t, int32(2), load.calls.Load())
+
+		cancel()
+		<-done
+	})
 }
 
 func TestNoLoadMonitorNoLoadAlerts(t *testing.T) {

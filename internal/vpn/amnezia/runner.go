@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os/exec"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 )
 
 // containerNames in order of preference: new installs first, old ones second.
@@ -22,6 +25,28 @@ type DockerRunner struct {
 	Bin       string // docker binary, "docker" by default
 	Container string
 	Timeout   time.Duration
+}
+
+// NewDockerRunner creates a DockerRunner for the Amnezia container: the
+// one in AWG_CONTAINER, or the one found by DetectContainer.
+func NewDockerRunner(
+	ctx context.Context,
+	cfg *config.Config,
+) (*DockerRunner, error) {
+	name := cfg.AWGContainer
+	if name == "" {
+		var err error
+		name, err = DetectContainer(ctx, cfg.DockerBin)
+		if err != nil {
+			return nil, err
+		}
+	}
+	log.Printf("vpn: container %s", name)
+	return &DockerRunner{
+		Bin:       cfg.DockerBin,
+		Container: name,
+		Timeout:   cfg.DockerTimeout,
+	}, nil
 }
 
 // Exec runs one command in the container and returns its stdout.

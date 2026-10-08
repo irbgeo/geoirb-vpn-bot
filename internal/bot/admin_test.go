@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -673,8 +674,10 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 				Sender: s,
 			},
 		),
-		Bypass:          &fakeBypass{},
-		MaintenanceFlag: flag,
+		Bypass: &fakeBypass{},
+		Config: &config.Config{
+			MaintenanceFlag: flag,
+		},
 	}
 	r := New(deps)
 	r.pause = 0

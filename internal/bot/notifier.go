@@ -108,6 +108,20 @@ func (s *Notifier) CheckServerLoad(ctx context.Context) {
 	}
 }
 
+// WatchServerLoad runs CheckServerLoad every minute until ctx is done.
+func (s *Notifier) WatchServerLoad(ctx context.Context) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.CheckServerLoad(ctx)
+		}
+	}
+}
+
 // NotifyAdmins sends text to every admin. A failed send (e.g. an admin who
 // blocked the bot) is logged and the rest still get it.
 func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {

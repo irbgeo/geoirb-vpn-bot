@@ -8,6 +8,7 @@ import (
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -250,18 +251,18 @@ type NotifierDeps struct {
 
 // Deps is everything New needs.
 type Deps struct {
-	Users          Users
-	Keys           Keys
-	Billing        Billing
-	Ops            Ops
-	Feedback       Feedback
-	Sender         Sender
-	Bypass         Bypass
-	Notifier       *Notifier
-	SupportContact string // e.g. "@geoirb"
-	// MaintenanceFlag: a file that exists while maintenance is on, so the
-	// state survives a restart. "" = kept in memory only.
-	MaintenanceFlag string
+	Users    Users
+	Keys     Keys
+	Billing  Billing
+	Ops      Ops
+	Feedback Feedback
+	Sender   Sender
+	Bypass   Bypass
+	Notifier *Notifier
+	// Config gives SupportContact (e.g. "@geoirb") and MaintenanceFlag (a
+	// file that exists while maintenance is on, so the state survives a
+	// restart; "" = kept in memory only).
+	Config *config.Config
 }
 
 // feedbackView is one page of reviews and suggestions for admins.

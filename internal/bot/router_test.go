@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -373,8 +374,10 @@ func newRouter(svc *fakeService) (*Router, *fakeSender) {
 					Sender: s,
 				},
 			),
-			Bypass:         &fakeBypass{},
-			SupportContact: "@help_me",
+			Bypass: &fakeBypass{},
+			Config: &config.Config{
+				SupportContact: "@help_me",
+			},
 		},
 	)
 	return r, s

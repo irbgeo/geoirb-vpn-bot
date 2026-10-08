@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -28,25 +29,27 @@ var (
 	_ service.FeedbackRepository = (*feedbackRepo)(nil)
 )
 
-// Connect dials MongoDB, verifies the connection, creates indexes and
-// builds the repositories.
+// Connect dials MongoDB (MongoURI, database MongoDB), verifies the
+// connection, creates indexes and builds the repositories. SecretKey
+// (32 bytes) encrypts peer private keys and PSKs at rest.
 func Connect(
 	ctx context.Context,
-	in ConnectInput,
+	cfg *config.Config,
 ) (*store, error) {
-	box, err := newSealer(in.SecretKey)
+	box, err := newSealer(cfg.SecretKey)
 	if err != nil {
 		return nil, err
 	}
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(in.URI))
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
 	if err != nil {
 		return nil, fmt.Errorf("store: connect: %w", err)
 	}
-	if err := client.Ping(ctx, nil); err != nil {
+	err = client.Ping(ctx, nil)
+	if err != nil {
 		_ = client.Disconnect(context.Background())
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
-	db := client.Database(in.DBName)
+	db := client.Database(cfg.MongoDB)
 	s := &store{
 		client: client,
 		db:     db,
@@ -64,11 +67,13 @@ func Connect(
 			coll: db.Collection("feedback"),
 		},
 	}
-	if err := s.ensureIndexes(ctx); err != nil {
+	err = s.ensureIndexes(ctx)
+	if err != nil {
 		_ = client.Disconnect(context.Background())
 		return nil, err
 	}
-	if err := s.Peers.checkKey(ctx); err != nil {
+	err = s.Peers.checkKey(ctx)
+	if err != nil {
 		_ = client.Disconnect(context.Background())
 		return nil, err
 	}

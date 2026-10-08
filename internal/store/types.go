@@ -9,14 +9,6 @@ import (
 // This file is the storage boundary: MongoDB document types (with bson
 // tags) and converters to/from the tag-free types in internal/service.
 
-// ConnectInput bundles Connect's arguments beyond ctx.
-type ConnectInput struct {
-	URI    string
-	DBName string
-	// SecretKey (32 bytes) encrypts peer private keys and PSKs at rest.
-	SecretKey []byte
-}
-
 // sealInput is a value to seal or open, bound to one record by AAD
 // (associated data: authenticated, not encrypted).
 type sealInput struct {

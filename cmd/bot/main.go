@@ -22,15 +22,9 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatalf("fatal: %v", err)
-	}
-}
-
-func run() error {
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		log.Fatalf("fatal: %v", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -38,198 +32,123 @@ func run() error {
 
 	connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	st, err := store.Connect(
-		connectCtx,
-		store.ConnectInput{
-			URI:       cfg.MongoURI,
-			DBName:    cfg.MongoDB,
-			SecretKey: cfg.SecretKey,
-		},
-	)
+	st, err := store.Connect(connectCtx, cfg)
 	if err != nil {
-		return err
+		log.Fatalf("fatal: %v", err)
 	}
 	defer st.Disconnect(context.Background()) //nolint:errcheck
 
-	vpn, err := openVPN(ctx, cfg)
+	runner, err := amnezia.NewDockerRunner(ctx, cfg)
 	if err != nil {
-		return err
+		log.Fatalf("fatal: %v", err)
 	}
-
-	svc := service.New(
-		&service.Deps{
-			Users:    st.Users,
-			Peers:    st.Peers,
-			Payments: st.Payments,
-			Feedback: st.Feedback,
-			VPN:      amnezia.NewVPN(vpn),
-			Settings: service.Settings{
-				ServerID:     cfg.ServerID,
-				EndpointHost: cfg.EndpointHost,
-				DNS:          cfg.ClientDNS,
-				MTU:          cfg.ClientMTU,
-				TrialDays:    cfg.TrialDays,
-				Tariffs:      tariffs(cfg.Tariffs),
-			},
-		},
-	)
-
-	client, err := newTelegramClient(cfg)
+	server, err := amnezia.Open(ctx, runner)
 	if err != nil {
-		return err
+		log.Fatalf("fatal: %v", err)
+	}
+	vpn := amnezia.NewVPN(server)
+
+	// TARIFFS (days → stars) as a list sorted by days.
+	tariffs := make([]service.Tariff, 0, len(cfg.Tariffs))
+	for days, stars := range cfg.Tariffs {
+		tariff := service.Tariff{
+			Days:  days,
+			Stars: stars,
+		}
+		tariffs = append(tariffs, tariff)
+	}
+	slices.SortFunc(tariffs, func(a, b service.Tariff) int { return a.Days - b.Days })
+
+	serviceDeps := service.Deps{
+		Users:    st.Users,
+		Peers:    st.Peers,
+		Payments: st.Payments,
+		Feedback: st.Feedback,
+		VPN:      vpn,
+		Settings: service.Settings{
+			ServerID:     cfg.ServerID,
+			EndpointHost: cfg.EndpointHost,
+			DNS:          cfg.ClientDNS,
+			MTU:          cfg.ClientMTU,
+			TrialDays:    cfg.TrialDays,
+			Tariffs:      tariffs,
+		},
+	}
+	svc := service.New(&serviceDeps)
+
+	client, err := bot.NewTelegramClient(cfg)
+	if err != nil {
+		log.Fatalf("fatal: %v", err)
 	}
 	sender := bot.NewTelegramSender(client)
-	notifier := bot.NewNotifier(
-		&bot.NotifierDeps{
-			Users:       svc,
-			Sender:      sender,
-			BackupStamp: cfg.BackupStamp,
-			Load:        serverLoad(),
-		},
-	)
-	router := bot.New(
-		&bot.Deps{
-			Users:           svc,
-			Keys:            svc,
-			Billing:         svc,
-			Ops:             svc,
-			Feedback:        svc,
-			Sender:          sender,
-			Notifier:        notifier,
-			SupportContact:  cfg.SupportContact,
-			MaintenanceFlag: cfg.MaintenanceFlag,
-			Bypass:          bypass.Lists{},
-		},
-	)
 
-	return serve(
-		ctx,
-		serveInput{
-			Client:   client,
-			Router:   router,
-			Notifier: notifier,
-			Service:  svc,
-		},
-	)
-}
-
-// openVPN finds the Amnezia container (unless AWG_CONTAINER is set) and
-// detects the config layout inside it.
-func openVPN(ctx context.Context, cfg *config.Config) (*amnezia.Server, error) {
-	name := cfg.AWGContainer
-	if name == "" {
-		var err error
-		if name, err = amnezia.DetectContainer(ctx, cfg.DockerBin); err != nil {
-			return nil, err
-		}
-	}
-	log.Printf("vpn: container %s", name)
-	return amnezia.Open(
-		ctx,
-		&amnezia.DockerRunner{
-			Bin:       cfg.DockerBin,
-			Container: name,
-			Timeout:   cfg.DockerTimeout,
-		},
-	)
-}
-
-// tariffs turns TARIFFS (days → stars) into a list sorted by days.
-func tariffs(m map[int]int) []service.Tariff {
-	out := make([]service.Tariff, 0, len(m))
-	for days, stars := range m {
-		out = append(
-			out,
-			service.Tariff{
-				Days:  days,
-				Stars: stars,
-			},
-		)
-	}
-	slices.SortFunc(out, func(a, b service.Tariff) int { return a.Days - b.Days })
-	return out
-}
-
-// newTelegramClient connects to the Bot API. RetryAfter: a 429 "too many
-// requests" waits (≤10 s) and retries once instead of losing the message.
-func newTelegramClient(cfg *config.Config) (*tgbot.Client, error) {
-	opts := []tgbot.Option{
-		tgbot.WithRetryAfter(10 * time.Second),
-	}
-	if cfg.TelegramTestEnv {
-		opts = append(opts, tgbot.WithTestEnvironment())
-		log.Println("telegram: TEST environment")
-	}
-	return tgbot.NewClient(cfg.BotToken, opts...)
-}
-
-// serverLoad watches this machine's limits; nil (no alerts) off Linux,
-// e.g. when running the bot on a laptop.
-func serverLoad() bot.ServerLoad {
-	if runtime.GOOS != "linux" {
-		return nil
-	}
-	return sysload.New(
-		&sysload.Input{
+	// Server load alerts watch this machine's limits; none off Linux, e.g.
+	// when running the bot on a laptop.
+	var load bot.ServerLoad
+	if runtime.GOOS == "linux" {
+		sysloadInput := sysload.Input{
 			ProcRoot: "/proc",
 			DiskPath: "/",
-		},
-	)
-}
+		}
+		load = sysload.New(&sysloadInput)
+	}
+	notifierDeps := bot.NotifierDeps{
+		Users:       svc,
+		Sender:      sender,
+		BackupStamp: cfg.BackupStamp,
+		Load:        load,
+	}
+	notifier := bot.NewNotifier(&notifierDeps)
+	deps := bot.Deps{
+		Users:    svc,
+		Keys:     svc,
+		Billing:  svc,
+		Ops:      svc,
+		Feedback: svc,
+		Sender:   sender,
+		Notifier: notifier,
+		Bypass:   bypass.Lists{},
+		Config:   cfg,
+	}
+	router := bot.New(&deps)
 
-// serve runs the bot until ctx is done: startup checks, the worker, the
-// load monitor and long polling; then it stops them in order.
-func serve(ctx context.Context, in serveInput) error {
-	if _, err := in.Client.SetMyCommands(ctx, bot.Commands()); err != nil {
+	// Run: startup checks, the worker, the load monitor and long polling;
+	// then stop them in order.
+	_, err = client.SetMyCommands(ctx, bot.Commands())
+	if err != nil {
 		log.Printf("telegram: set commands: %v", err)
 	}
-	in.Router.Reconcile(ctx)
+	router.Reconcile(ctx)
 
-	w := worker.New(
-		&worker.Input{
-			Job:      in.Service,
-			Delivery: in.Notifier,
-			Every:    time.Minute,
-		},
-	)
+	workerInput := worker.Input{
+		Job:      svc,
+		Delivery: notifier,
+		Every:    time.Minute,
+	}
+	w := worker.New(&workerInput)
 	workerDone := make(chan struct{})
 	go func() {
 		w.Run(ctx)
 		close(workerDone)
 	}()
-	go watchServerLoad(ctx, in.Notifier)
+	go notifier.WatchServerLoad(ctx)
 
 	// Dispatcher: chats are handled in parallel (one slow docker exec must
 	// not stall everyone), updates of one chat in order.
 	dispatcher := tgbot.NewDispatcher(
-		in.Router.Handle,
+		router.Handle,
 		func(err error) { log.Printf("handle: %v", err) },
 	)
 	log.Println("bot started (long polling)")
-	err := in.Client.Poll(
-		ctx,
-		tgbot.PollOptions{
-			Timeout: 10, // below go-tgbot's 15s HTTP timeout
-			OnError: func(err error) { log.Printf("poll: %v", err) },
-		},
-		dispatcher.Handle,
-	)
+	pollOptions := tgbot.PollOptions{
+		Timeout: 10, // below go-tgbot's 15s HTTP timeout
+		OnError: func(err error) { log.Printf("poll: %v", err) },
+	}
+	err = client.Poll(ctx, pollOptions, dispatcher.Handle)
 	dispatcher.Shutdown(30 * time.Second)
-	in.Router.Close() // a running broadcast stops and sends its report
-	<-workerDone      // let a running maintenance pass finish
-	return err
-}
-
-// watchServerLoad checks the server limits every minute until ctx is done.
-func watchServerLoad(ctx context.Context, n *bot.Notifier) {
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			n.CheckServerLoad(ctx)
-		}
+	router.Close() // a running broadcast stops and sends its report
+	<-workerDone   // let a running maintenance pass finish
+	if err != nil {
+		log.Fatalf("fatal: %v", err)
 	}
 }
