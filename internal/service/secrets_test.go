@@ -8,17 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// noSecrets fails if a key read from the service carries its private key
-// or PSK: they stay in the service, only a rendered config leaves it.
-func noSecrets(t *testing.T, ps ...*Peer) {
-	t.Helper()
-	for _, p := range ps {
-		require.NotNil(t, p)
-		require.Empty(t, p.PrivateKey, "private key of %s left the service", p.PublicKey)
-		require.Empty(t, p.PSK, "PSK of %s left the service", p.PublicKey)
-	}
-}
-
 func TestReadsDoNotReturnSecrets(t *testing.T) {
 	e := newEnv()
 	ctx := context.Background()
@@ -103,4 +92,15 @@ func TestMaintainAndReconcileDoNotReturnSecrets(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, r.DisabledButOnServer, 1)
 	noSecrets(t, r.DisabledButOnServer...)
+}
+
+// noSecrets fails if a key read from the service carries its private key
+// or PSK: they stay in the service, only a rendered config leaves it.
+func noSecrets(t *testing.T, ps ...*Peer) {
+	t.Helper()
+	for _, p := range ps {
+		require.NotNil(t, p)
+		require.Empty(t, p.PrivateKey, "private key of %s left the service", p.PublicKey)
+		require.Empty(t, p.PSK, "PSK of %s left the service", p.PublicKey)
+	}
 }

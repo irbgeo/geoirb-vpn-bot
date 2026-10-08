@@ -16,12 +16,10 @@ const (
 // subnet use, 30-day revenue and the heaviest keys by traffic. Traffic
 // counters restart when the VPN server restarts.
 func (s *Service) Stats(ctx context.Context) (*Stats, error) {
-	_, users, err := s.users.List(
-		ctx,
-		Page{
-			Limit: 1,
-		},
-	)
+	page := Page{
+		Limit: 1,
+	}
+	_, users, err := s.users.List(ctx, page)
 	if err != nil {
 		return nil, err
 	}
@@ -50,10 +48,12 @@ func (s *Service) Stats(ctx context.Context) (*Stats, error) {
 			st.Online++
 		}
 	}
-	if st.SubnetUsed, st.SubnetTotal, err = s.subnetUsage(ctx); err != nil {
+	st.SubnetUsed, st.SubnetTotal, err = s.subnetUsage(ctx)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.addRevenue(ctx, st); err != nil {
+	err = s.addRevenue(ctx, st)
+	if err != nil {
 		return nil, err
 	}
 	slices.SortFunc(keys, func(a, b KeyInfo) int {

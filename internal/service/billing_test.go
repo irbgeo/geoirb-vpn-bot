@@ -8,13 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func invoice(t *testing.T, e *env, in PurchaseInput) string {
-	t.Helper()
-	payload, err := e.svc.Invoice(context.Background(), in)
-	require.NoError(t, err)
-	return payload.Payload
-}
-
 func TestInvoiceForPlainUserOnly(t *testing.T) {
 	e := newEnv()
 	register(t, e, RoleUser)
@@ -97,29 +90,6 @@ func TestCheckPurchase(t *testing.T) {
 			Stars:   150,
 		},
 	), ErrBadPayload)
-}
-
-func pay(t *testing.T, e *env, charge string) *PayResult {
-	t.Helper()
-	payload := invoice(
-		t,
-		e,
-		PurchaseInput{
-			UserID: 42,
-			Days:   30,
-		},
-	)
-	res, err := e.svc.Pay(
-		context.Background(),
-		PaymentInput{
-			ChargeID: charge,
-			PayerID:  42,
-			Payload:  payload,
-			Stars:    150,
-		},
-	)
-	require.NoError(t, err)
-	return res
 }
 
 func TestPayWithoutKeyIssuesOne(t *testing.T) {
@@ -376,4 +346,34 @@ func TestUnfinishedPayments(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, ps, 1)
 	require.Equal(t, "stuck", ps[0].ChargeID)
+}
+
+func invoice(t *testing.T, e *env, in PurchaseInput) string {
+	t.Helper()
+	payload, err := e.svc.Invoice(context.Background(), in)
+	require.NoError(t, err)
+	return payload.Payload
+}
+
+func pay(t *testing.T, e *env, charge string) *PayResult {
+	t.Helper()
+	payload := invoice(
+		t,
+		e,
+		PurchaseInput{
+			UserID: 42,
+			Days:   30,
+		},
+	)
+	res, err := e.svc.Pay(
+		context.Background(),
+		PaymentInput{
+			ChargeID: charge,
+			PayerID:  42,
+			Payload:  payload,
+			Stars:    150,
+		},
+	)
+	require.NoError(t, err)
+	return res
 }

@@ -125,7 +125,8 @@ func (s *fakePeers) Save(_ context.Context, p *Peer) error {
 }
 
 func (s *fakePeers) Delete(ctx context.Context, key string) error {
-	if err := ctx.Err(); err != nil {
+	err := ctx.Err()
+	if err != nil {
 		return err // like a real DB call on a cancelled context
 	}
 	delete(s.m, key)
@@ -169,7 +170,8 @@ type fakePayments struct {
 }
 
 func (s *fakePayments) Add(_ context.Context, p *Payment) (bool, error) {
-	if _, ok := s.m[p.ChargeID]; ok {
+	_, ok := s.m[p.ChargeID]
+	if ok {
 		return false, nil
 	}
 	s.m[p.ChargeID] = *p
@@ -279,10 +281,12 @@ func (s *fakeVPN) AddPeer(_ context.Context, in *AddPeerInput) error {
 	s.changes++
 	p := *in.Peer
 	p.IP = s.freeIP(in.Reserved)
-	if err := in.Save(p.IP); err != nil {
+	err := in.Save(p.IP)
+	if err != nil {
 		return err
 	}
-	if err := s.fail(); err != nil {
+	err = s.fail()
+	if err != nil {
 		return err
 	}
 	s.put(&p)
@@ -291,7 +295,8 @@ func (s *fakeVPN) AddPeer(_ context.Context, in *AddPeerInput) error {
 
 func (s *fakeVPN) PutPeer(_ context.Context, p *VPNPeer) error {
 	s.changes++
-	if _, ok := s.peers[p.PublicKey]; ok {
+	_, ok := s.peers[p.PublicKey]
+	if ok {
 		return nil
 	}
 	for _, other := range s.peers {
@@ -299,7 +304,8 @@ func (s *fakeVPN) PutPeer(_ context.Context, p *VPNPeer) error {
 			return fmt.Errorf("%w: %s", ErrIPTaken, p.IP)
 		}
 	}
-	if err := s.fail(); err != nil {
+	err := s.fail()
+	if err != nil {
 		return err
 	}
 	s.put(p)
@@ -308,7 +314,8 @@ func (s *fakeVPN) PutPeer(_ context.Context, p *VPNPeer) error {
 
 func (s *fakeVPN) RemovePeer(_ context.Context, p *VPNPeer) error {
 	s.changes++
-	if err := s.fail(); err != nil {
+	err := s.fail()
+	if err != nil {
 		return err
 	}
 	delete(s.peers, p.PublicKey)
@@ -318,7 +325,8 @@ func (s *fakeVPN) RemovePeer(_ context.Context, p *VPNPeer) error {
 
 func (s *fakeVPN) ReplacePeer(_ context.Context, in *ReplacePeerInput) error {
 	s.changes++
-	if err := s.fail(); err != nil {
+	err := s.fail()
+	if err != nil {
 		return err
 	}
 	delete(s.peers, in.Old.PublicKey)
@@ -382,7 +390,8 @@ func (s *fakeVPN) put(p *VPNPeer) {
 func (s *fakeVPN) freeIP(reserved []netip.Addr) string {
 	taken := s.taken(reserved)
 	for i := 1; ; i++ {
-		if ip := fmt.Sprintf("10.8.1.%d", i); !taken[ip] {
+		ip := fmt.Sprintf("10.8.1.%d", i)
+		if !taken[ip] {
 			return ip
 		}
 	}

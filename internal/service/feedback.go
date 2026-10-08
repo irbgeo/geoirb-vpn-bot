@@ -25,13 +25,11 @@ func (s *Service) AddFeedback(ctx context.Context, in FeedbackInput) error {
 	if text == "" || utf8.RuneCountInString(text) > MaxFeedbackLen {
 		return ErrBadFeedback
 	}
-	return s.feedback.Add(
-		ctx,
-		&Feedback{
-			UserID:    in.UserID,
-			Username:  in.Username,
-			Text:      text,
-			CreatedAt: s.now(),
-		},
-	)
+	feedback := &Feedback{
+		UserID:    in.UserID,
+		Username:  in.Username,
+		Text:      text,
+		CreatedAt: s.now(),
+	}
+	return s.feedback.Add(ctx, feedback)
 }

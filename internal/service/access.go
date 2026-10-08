@@ -52,16 +52,14 @@ func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 	out := make([]KeyInfo, 0, len(ps))
 	for _, p := range ps {
 		st := live[p.PublicKey]
-		out = append(
-			out,
-			KeyInfo{
-				Peer:          p.public(),
-				Online:        st.onlineAt(now),
-				LastHandshake: st.LastHandshake,
-				Sent:          st.Sent,
-				Received:      st.Received,
-			},
-		)
+		keyInfo := KeyInfo{
+			Peer:          p.public(),
+			Online:        st.onlineAt(now),
+			LastHandshake: st.LastHandshake,
+			Sent:          st.Sent,
+			Received:      st.Received,
+		}
+		out = append(out, keyInfo)
 	}
 	slices.SortFunc(out, func(a, b KeyInfo) int {
 		return parseIP(a.Peer.IP).Compare(parseIP(b.Peer.IP))

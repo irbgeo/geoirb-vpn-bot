@@ -26,7 +26,8 @@ func (s *Service) Maintain(ctx context.Context) (*Maintenance, error) {
 	if err != nil {
 		return nil, err
 	}
-	if m.SubnetUsed, m.SubnetTotal, err = s.subnetUsage(ctx); err != nil {
+	m.SubnetUsed, m.SubnetTotal, err = s.subnetUsage(ctx)
+	if err != nil {
 		log.Printf("service: subnet usage: %v", err)
 		m.SubnetUsed, m.SubnetTotal = 0, 0
 	}
@@ -65,7 +66,8 @@ keys:
 				s.savePeer(ctx, p)
 				continue
 			}
-			if err := s.makeForever(ctx, p); err != nil {
+			err = s.makeForever(ctx, p)
+			if err != nil {
 				log.Printf("service: make %s forever: %v", p.IP, err)
 				if errors.Is(err, ErrIPTaken) || errors.Is(err, ErrUnreadable) {
 					continue // only this key can't go back on: the rest go on
@@ -81,7 +83,8 @@ keys:
 		left := p.ExpiresAt.Sub(now)
 		switch {
 		case left <= 0:
-			if err := s.disablePeer(ctx, p); err != nil {
+			err = s.disablePeer(ctx, p)
+			if err != nil {
 				// The server is likely down: stop instead of waiting a
 				// docker timeout per key; the next run retries.
 				log.Printf("service: expire %s: %v", p.IP, err)
@@ -141,7 +144,8 @@ func dropEnd(p *Peer) {
 // savePeer saves a reminder mark; false (logged) if it failed, so the
 // reminder is not sent and is tried again next run.
 func (s *Service) savePeer(ctx context.Context, p *Peer) bool {
-	if err := s.peers.Save(ctx, p); err != nil {
+	err := s.peers.Save(ctx, p)
+	if err != nil {
 		log.Printf("service: save reminder for %s: %v", p.IP, err)
 		return false
 	}

@@ -65,20 +65,6 @@ func newEnv() *env {
 	}
 }
 
-func (s *env) issue(t *testing.T, days int) *Peer {
-	t.Helper()
-	p, err := s.svc.Issue(
-		context.Background(),
-		IssueInput{
-			UserID: 42,
-			Name:   "tg:alice",
-			Days:   days,
-		},
-	)
-	require.NoError(t, err)
-	return p
-}
-
 func TestIssue(t *testing.T) {
 	e := newEnv()
 
@@ -329,16 +315,30 @@ func TestReconcile(t *testing.T) {
 	require.True(t, e.vpn.hasPeer(disabled.PublicKey))
 }
 
+func TestReconcileReportOK(t *testing.T) {
+	require.True(t, (&ReconcileReport{Manual: 3}).OK(), "manual peers are not a difference")
+	require.False(t, (&ReconcileReport{MissingOnServer: []*Peer{{}}}).OK())
+	require.False(t, (&ReconcileReport{DisabledButOnServer: []*Peer{{}}}).OK())
+}
+
+func (s *env) issue(t *testing.T, days int) *Peer {
+	t.Helper()
+	p, err := s.svc.Issue(
+		context.Background(),
+		IssueInput{
+			UserID: 42,
+			Name:   "tg:alice",
+			Days:   days,
+		},
+	)
+	require.NoError(t, err)
+	return p
+}
+
 func keys(ps []*Peer) []string {
 	out := make([]string, 0, len(ps))
 	for _, p := range ps {
 		out = append(out, p.PublicKey)
 	}
 	return out
-}
-
-func TestReconcileReportOK(t *testing.T) {
-	require.True(t, (&ReconcileReport{Manual: 3}).OK(), "manual peers are not a difference")
-	require.False(t, (&ReconcileReport{MissingOnServer: []*Peer{{}}}).OK())
-	require.False(t, (&ReconcileReport{DisabledButOnServer: []*Peer{{}}}).OK())
 }

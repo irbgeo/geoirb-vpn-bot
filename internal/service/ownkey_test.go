@@ -7,13 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ownKey registers user 42 (plain) with a paid-looking key that ends in 10 days.
-func ownKey(t *testing.T, e *env) *Peer {
-	t.Helper()
-	register(t, e, RoleUser)
-	return seed(t, e, now.AddDate(0, 0, 10))
-}
-
 func TestReissueKeyGivesNewKeysSameEverythingElse(t *testing.T) {
 	e := newEnv()
 	old := ownKey(t, e)
@@ -125,4 +118,11 @@ func TestDeleteOwnKeyKeepsTheKeyWhenTheServerFails(t *testing.T) {
 	)
 	require.ErrorIs(t, err, errBoom)
 	require.Contains(t, e.peers.m, old.PublicKey)
+}
+
+// ownKey registers user 42 (plain) with a paid-looking key that ends in 10 days.
+func ownKey(t *testing.T, e *env) *Peer {
+	t.Helper()
+	register(t, e, RoleUser)
+	return seed(t, e, now.AddDate(0, 0, 10))
 }

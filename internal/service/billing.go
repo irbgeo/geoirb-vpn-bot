@@ -37,7 +37,8 @@ func (s *Service) Invoice(ctx context.Context, in PurchaseInput) (*Invoice, erro
 	if !ok {
 		return nil, ErrNoTariff
 	}
-	if err := s.checkBuyer(ctx, in); err != nil {
+	err := s.checkBuyer(ctx, in)
+	if err != nil {
 		return nil, err
 	}
 	return &Invoice{
@@ -104,7 +105,8 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.pickKey(ctx, pu); err != nil {
+	err = s.pickKey(ctx, pu)
+	if err != nil {
 		return nil, err
 	}
 	if pay == nil {
@@ -119,7 +121,8 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 			Days:      pu.Days,
 			CreatedAt: s.now(),
 		}
-		if _, err := s.payments.Add(ctx, pay); err != nil {
+		_, err = s.payments.Add(ctx, pay)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -133,11 +136,13 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		ChargeID: in.ChargeID,
 		PeerKey:  res.Peer.PublicKey,
 	}
-	if err := s.payments.MarkApplied(ctx, mark); err != nil {
+	err = s.payments.MarkApplied(ctx, mark)
+	if err != nil {
 		// The days are given: no refund. One more try on a context that a
 		// shutdown can't cancel; if that fails too, the record stays
 		// unapplied and UnfinishedPayments shows it to the admins.
-		if err := s.payments.MarkApplied(context.WithoutCancel(ctx), mark); err != nil {
+		err = s.payments.MarkApplied(context.WithoutCancel(ctx), mark)
+		if err != nil {
 			log.Printf("service: payment %s applied but not marked: %v", in.ChargeID, err)
 		}
 	}
@@ -170,13 +175,11 @@ func (s *Service) Payments(ctx context.Context, userID int64) ([]*Payment, error
 // MarkRefunded records that the Stars of a charge were returned. A charge
 // that never got a record (refused before saving) is fine.
 func (s *Service) MarkRefunded(ctx context.Context, chargeID string) error {
-	return s.payments.MarkRefunded(
-		ctx,
-		PaymentMark{
-			ChargeID: chargeID,
-			At:       s.now(),
-		},
-	)
+	paymentMark := PaymentMark{
+		ChargeID: chargeID,
+		At:       s.now(),
+	}
+	return s.payments.MarkRefunded(ctx, paymentMark)
 }
 
 func (s *Service) tariff(days int) (Tariff, bool) {
@@ -255,7 +258,8 @@ func (s *Service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 	if userID != in.PayerID {
 		return nil, ErrWrongPayer
 	}
-	if t, ok := s.tariff(days); !ok || t.Stars != stars || stars != in.Stars {
+	t, ok := s.tariff(days)
+	if !ok || t.Stars != stars || stars != in.Stars {
 		return nil, ErrPriceChanged
 	}
 	pu := &PurchaseInput{
@@ -263,7 +267,8 @@ func (s *Service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 		Days:      days,
 		PublicKey: f[4],
 	}
-	if err := s.checkBuyer(ctx, *pu); err != nil {
+	err := s.checkBuyer(ctx, *pu)
+	if err != nil {
 		return nil, err
 	}
 	return pu, nil
@@ -279,7 +284,8 @@ func (s *Service) pickKey(ctx context.Context, pu *PurchaseInput) error {
 	if err != nil {
 		return err
 	}
-	if p := firstTimed(keys); p != nil {
+	p := firstTimed(keys)
+	if p != nil {
 		pu.PublicKey = p.PublicKey
 	}
 	return nil
@@ -294,22 +300,18 @@ func (s *Service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayRes
 	res := &PayResult{}
 	var err error
 	if key != "" {
-		res.Peer, err = s.extend(
-			ctx,
-			ExtendInput{
-				PublicKey: key,
-				Days:      pu.Days,
-			},
-		)
+		extendInput := ExtendInput{
+			PublicKey: key,
+			Days:      pu.Days,
+		}
+		res.Peer, err = s.extend(ctx, extendInput)
 	} else {
 		res.NewKey = true
-		res.Peer, err = s.issue(
-			ctx,
-			IssueInput{
-				UserID: pu.UserID,
-				Days:   pu.Days,
-			},
-		)
+		issueInput := IssueInput{
+			UserID: pu.UserID,
+			Days:   pu.Days,
+		}
+		res.Peer, err = s.issue(ctx, issueInput)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("service: apply purchase: %w", err)
@@ -321,7 +323,8 @@ func (s *Service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayRes
 // markTrialUsed: after a purchase there is no free trial any more. A
 // failure only means a later trial check still sees the key.
 func (s *Service) markTrialUsed(ctx context.Context, userID int64) {
-	if err := s.users.SetTrialUsed(ctx, userID); err != nil {
+	err := s.users.SetTrialUsed(ctx, userID)
+	if err != nil {
 		log.Printf("service: mark trial used for %d: %v", userID, err)
 	}
 }

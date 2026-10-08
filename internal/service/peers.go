@@ -73,27 +73,6 @@ func (s *Service) Delete(ctx context.Context, publicKey string) error {
 	return s.deletePeer(ctx, p)
 }
 
-// deletePeer removes a loaded key from the server and the DB. The caller
-// holds s.mu.
-func (s *Service) deletePeer(ctx context.Context, p *Peer) error {
-	if p.Enabled {
-		if err := s.vpn.RemovePeer(ctx, p.vpnPeer()); err != nil {
-			return err
-		}
-	}
-	if err := s.peers.Delete(ctx, p.PublicKey); err != nil {
-		return err
-	}
-	s.countKeys(
-		ctx,
-		KeysDelta{
-			UserID: p.UserID,
-			Delta:  -1,
-		},
-	)
-	return nil
-}
-
 // ClientConfig renders the .conf file for a key.
 func (s *Service) ClientConfig(ctx context.Context, publicKey string) (string, error) {
 	p, err := s.ourPeer(ctx, publicKey)
@@ -138,44 +117,30 @@ func (s *Service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 		p.ExpiresAt = now.AddDate(0, 0, in.Days)
 	}
 
-	err = s.vpn.AddPeer(
-		ctx,
-		&AddPeerInput{
-			Peer:     p.vpnPeer(),
-			Reserved: reserved,
-			Save: func(ip string) error {
-				p.IP = ip
-				return s.peers.Save(ctx, p)
-			},
+	addPeerInput := &AddPeerInput{
+		Peer:     p.vpnPeer(),
+		Reserved: reserved,
+		Save: func(ip string) error {
+			p.IP = ip
+			return s.peers.Save(ctx, p)
 		},
-	)
+	}
+	err = s.vpn.AddPeer(ctx, addPeerInput)
 	if err != nil {
 		// WithoutCancel: the rollback must run even when the failure was
 		// ctx itself being cancelled (e.g. SIGTERM during syncconf).
-		if delErr := s.peers.Delete(context.WithoutCancel(ctx), p.PublicKey); delErr != nil {
+		delErr := s.peers.Delete(context.WithoutCancel(ctx), p.PublicKey)
+		if delErr != nil {
 			log.Printf("service: issue rollback for %s: %v", p.IP, delErr)
 		}
 		return nil, err
 	}
-	s.countKeys(
-		ctx,
-		KeysDelta{
-			UserID: p.UserID,
-			Delta:  1,
-		},
-	)
+	keysDelta := KeysDelta{
+		UserID: p.UserID,
+		Delta:  1,
+	}
+	s.countKeys(ctx, keysDelta)
 	return p, nil
-}
-
-// countKeys updates the owner's KeysCount. A failure is only logged: the
-// count is fixed at the next start (Reconcile), and limits never read it.
-func (s *Service) countKeys(ctx context.Context, d KeysDelta) {
-	if d.UserID == 0 {
-		return
-	}
-	if err := s.users.AddKeys(ctx, d); err != nil {
-		log.Printf("service: keys count of %d: %v", d.UserID, err)
-	}
 }
 
 // reservedIPs are the IPs of every DB key on this server, enabled or not:
@@ -187,7 +152,8 @@ func (s *Service) reservedIPs(ctx context.Context) ([]netip.Addr, error) {
 	}
 	out := make([]netip.Addr, 0, len(ips))
 	for _, v := range ips {
-		if ip, err := netip.ParseAddr(v); err == nil {
+		ip, err := netip.ParseAddr(v)
+		if err == nil {
 			out = append(out, ip)
 		}
 	}
@@ -207,6 +173,18 @@ func (s *Service) keyName(ctx context.Context, in IssueInput) (string, error) {
 	return "tg:" + displayName(u), nil
 }
 
+// countKeys updates the owner's KeysCount. A failure is only logged: the
+// count is fixed at the next start (Reconcile), and limits never read it.
+func (s *Service) countKeys(ctx context.Context, d KeysDelta) {
+	if d.UserID == 0 {
+		return
+	}
+	err := s.users.AddKeys(ctx, d)
+	if err != nil {
+		log.Printf("service: keys count of %d: %v", d.UserID, err)
+	}
+}
+
 // extend is Extend without the lock, for callers that already hold it.
 func (s *Service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	p, err := s.ourPeer(ctx, in.PublicKey)
@@ -215,7 +193,8 @@ func (s *Service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	}
 	if !p.ExpiresAt.IsZero() {
 		from := p.ExpiresAt
-		if now := s.now(); from.Before(now) {
+		now := s.now()
+		if from.Before(now) {
 			from = now
 		}
 		p.ExpiresAt = from.AddDate(0, 0, in.Days)
@@ -223,7 +202,8 @@ func (s *Service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	p.Reminded3d = false
 	p.Reminded1d = false
 	p.Blocked = false // only admins and paying users get here; checkBuyer stops a blocked buyer
-	if err := s.enableAndSave(ctx, p); err != nil {
+	err = s.enableAndSave(ctx, p)
+	if err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -248,12 +228,14 @@ func (s *Service) ourPeer(ctx context.Context, publicKey string) (*Peer, error) 
 func (s *Service) enableAndSave(ctx context.Context, p *Peer) error {
 	wasEnabled := p.Enabled
 	if !wasEnabled {
-		if err := s.addToServer(ctx, p); err != nil {
+		err := s.addToServer(ctx, p)
+		if err != nil {
 			return err
 		}
 		p.Enabled = true
 	}
-	if err := s.peers.Save(ctx, p); err != nil {
+	err := s.peers.Save(ctx, p)
+	if err != nil {
 		if !wasEnabled {
 			p.Enabled = false
 			s.undoEnable(ctx, p)
@@ -261,14 +243,6 @@ func (s *Service) enableAndSave(ctx context.Context, p *Peer) error {
 		return err
 	}
 	return nil
-}
-
-// undoEnable takes a key back off when its enabled state could not be
-// saved, even when ctx is cancelled (the failure may be ctx itself).
-func (s *Service) undoEnable(ctx context.Context, p *Peer) {
-	if err := s.vpn.RemovePeer(context.WithoutCancel(ctx), p.vpnPeer()); err != nil {
-		log.Printf("service: roll back %s on the server: %v", p.IP, err)
-	}
 }
 
 // addToServer adds the key's peer back, unless its IP was taken meanwhile
@@ -280,14 +254,45 @@ func (s *Service) addToServer(ctx context.Context, p *Peer) error {
 	return s.vpn.PutPeer(ctx, p.vpnPeer())
 }
 
+// undoEnable takes a key back off when its enabled state could not be
+// saved, even when ctx is cancelled (the failure may be ctx itself).
+func (s *Service) undoEnable(ctx context.Context, p *Peer) {
+	err := s.vpn.RemovePeer(context.WithoutCancel(ctx), p.vpnPeer())
+	if err != nil {
+		log.Printf("service: roll back %s on the server: %v", p.IP, err)
+	}
+}
+
 // disablePeer removes an enabled key from the server and marks it
 // disabled. The caller holds s.mu.
 func (s *Service) disablePeer(ctx context.Context, p *Peer) error {
-	if err := s.vpn.RemovePeer(ctx, p.vpnPeer()); err != nil {
+	err := s.vpn.RemovePeer(ctx, p.vpnPeer())
+	if err != nil {
 		return err
 	}
 	p.Enabled = false
 	return s.peers.Save(ctx, p)
+}
+
+// deletePeer removes a loaded key from the server and the DB. The caller
+// holds s.mu.
+func (s *Service) deletePeer(ctx context.Context, p *Peer) error {
+	if p.Enabled {
+		err := s.vpn.RemovePeer(ctx, p.vpnPeer())
+		if err != nil {
+			return err
+		}
+	}
+	err := s.peers.Delete(ctx, p.PublicKey)
+	if err != nil {
+		return err
+	}
+	keysDelta := KeysDelta{
+		UserID: p.UserID,
+		Delta:  -1,
+	}
+	s.countKeys(ctx, keysDelta)
+	return nil
 }
 
 // renderConfig builds the .conf text for a loaded key.
@@ -295,15 +300,13 @@ func (s *Service) renderConfig(ctx context.Context, p *Peer) (string, error) {
 	if p.PrivateKey == "" {
 		return "", ErrNoPrivateKey
 	}
-	return s.vpn.ClientConfig(
-		ctx,
-		&ClientSpec{
-			IP:           p.IP,
-			PrivateKey:   p.PrivateKey,
-			PSK:          p.PSK,
-			DNS:          s.cfg.DNS,
-			MTU:          s.cfg.MTU,
-			EndpointHost: s.cfg.EndpointHost,
-		},
-	)
+	clientSpec := &ClientSpec{
+		IP:           p.IP,
+		PrivateKey:   p.PrivateKey,
+		PSK:          p.PSK,
+		DNS:          s.cfg.DNS,
+		MTU:          s.cfg.MTU,
+		EndpointHost: s.cfg.EndpointHost,
+	}
+	return s.vpn.ClientConfig(ctx, clientSpec)
 }

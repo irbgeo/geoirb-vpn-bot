@@ -47,7 +47,8 @@ func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	}
 	// ponytail: counts from this server only; with several servers, sum
 	// them across servers before setting.
-	if err := s.users.SetKeyCounts(ctx, counts); err != nil {
+	err = s.users.SetKeyCounts(ctx, counts)
+	if err != nil {
 		log.Printf("service: sync keys counts: %v", err)
 	}
 	r.MissingOnServer = publicAll(r.MissingOnServer)

@@ -33,15 +33,13 @@ var (
 // Register creates the user on first /start (as RoleUser) or refreshes the
 // username. The role is never changed here: it is set by hand in the DB.
 func (s *Service) Register(ctx context.Context, in RegisterInput) (*User, error) {
-	return s.users.Register(
-		ctx,
-		&User{
-			ID:        in.ID,
-			Username:  in.Username,
-			Role:      RoleUser,
-			CreatedAt: s.now(),
-		},
-	)
+	user := &User{
+		ID:        in.ID,
+		Username:  in.Username,
+		Role:      RoleUser,
+		CreatedAt: s.now(),
+	}
+	return s.users.Register(ctx, user)
 }
 
 // User returns the user, or ErrNotFound.
@@ -94,34 +92,30 @@ func (s *Service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	if err != nil {
 		return nil, err
 	}
-	if err := canCreate(
-		keyQuota{
-			User: u,
-			Keys: len(have),
-		},
-	); err != nil {
+	keyQuota := keyQuota{
+		User: u,
+		Keys: len(have),
+	}
+	err = canCreate(keyQuota)
+	if err != nil {
 		return nil, err
 	}
 	if u.Role == RoleUnlimited || u.Role == RoleAdmin {
 		if name == "" {
 			name = fmt.Sprintf("tg:%s #%d", displayName(u), len(have)+1)
 		}
-		p, err := s.issue(
-			ctx,
-			IssueInput{
-				UserID: userID,
-				Name:   name,
-			},
-		)
+		issueInput := IssueInput{
+			UserID: userID,
+			Name:   name,
+		}
+		p, err := s.issue(ctx, issueInput)
 		return p.public(), err
 	}
-	p, err := s.startTrial(
-		ctx,
-		trialInput{
-			User: u,
-			Name: name,
-		},
-	)
+	trialInput := trialInput{
+		User: u,
+		Name: name,
+	}
+	p, err := s.startTrial(ctx, trialInput)
 	return p.public(), err
 }
 
@@ -137,12 +131,25 @@ func (s *Service) CheckCreateKey(ctx context.Context, userID int64) error {
 	if err != nil {
 		return err
 	}
-	return canCreate(
-		keyQuota{
-			User: u,
-			Keys: len(have),
-		},
-	)
+	keyQuota := keyQuota{
+		User: u,
+		Keys: len(have),
+	}
+	return canCreate(keyQuota)
+}
+
+// cleanKeyName trims the name and squeezes inner spaces; "" stays "" (the
+// old naming). A name over MaxKeyNameLen letters or with control
+// characters (line breaks, tabs) is ErrBadKeyName.
+func cleanKeyName(name string) (string, error) {
+	if strings.IndexFunc(name, func(r rune) bool { return r != ' ' && unicode.IsControl(r) }) >= 0 {
+		return "", ErrBadKeyName
+	}
+	name = strings.Join(strings.Fields(name), " ")
+	if utf8.RuneCountInString(name) > MaxKeyNameLen {
+		return "", ErrBadKeyName
+	}
+	return name, nil
 }
 
 // canCreate holds CreateKey's rules: admin without a limit, unlimited up
@@ -166,6 +173,14 @@ func canCreate(q keyQuota) error {
 	return nil
 }
 
+// displayName is the username, or the Telegram ID when there is none.
+func displayName(u *User) string {
+	if u.Username != "" {
+		return u.Username
+	}
+	return strconv.FormatInt(u.ID, 10)
+}
+
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the
 // trial as used. The caller holds s.mu.
 func (s *Service) startTrial(ctx context.Context, in trialInput) (*Peer, error) {
@@ -173,40 +188,16 @@ func (s *Service) startTrial(ctx context.Context, in trialInput) (*Peer, error) 
 	if u.TrialUsed {
 		return nil, ErrTrialUsed
 	}
-	p, err := s.issue(
-		ctx,
-		IssueInput{
-			UserID: u.ID,
-			Name:   in.Name,
-			Days:   s.cfg.TrialDays,
-		},
-	)
+	issueInput := IssueInput{
+		UserID: u.ID,
+		Name:   in.Name,
+		Days:   s.cfg.TrialDays,
+	}
+	p, err := s.issue(ctx, issueInput)
 	if err != nil {
 		return nil, err
 	}
 	// Best effort: the key exists, so ErrHasKey still blocks a second trial.
 	s.markTrialUsed(ctx, u.ID)
 	return p, nil
-}
-
-// cleanKeyName trims the name and squeezes inner spaces; "" stays "" (the
-// old naming). A name over MaxKeyNameLen letters or with control
-// characters (line breaks, tabs) is ErrBadKeyName.
-func cleanKeyName(name string) (string, error) {
-	if strings.IndexFunc(name, func(r rune) bool { return r != ' ' && unicode.IsControl(r) }) >= 0 {
-		return "", ErrBadKeyName
-	}
-	name = strings.Join(strings.Fields(name), " ")
-	if utf8.RuneCountInString(name) > MaxKeyNameLen {
-		return "", ErrBadKeyName
-	}
-	return name, nil
-}
-
-// displayName is the username, or the Telegram ID when there is none.
-func displayName(u *User) string {
-	if u.Username != "" {
-		return u.Username
-	}
-	return strconv.FormatInt(u.ID, 10)
 }

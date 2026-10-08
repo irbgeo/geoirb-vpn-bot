@@ -9,17 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func (s *env) users() *fakeUsers {
-	return s.svc.users.(*fakeUsers)
-}
-
-func (s *env) setRole(t *testing.T, id int64, r Role) {
-	t.Helper()
-	u := s.users().m[id]
-	u.Role = r
-	s.users().m[id] = u
-}
-
 func TestRegisterNewUserIsPlainUser(t *testing.T) {
 	e := newEnv()
 
@@ -184,19 +173,6 @@ func TestKey(t *testing.T) {
 
 	_, err = e.svc.Key(ctx, "MANUAL1=")
 	require.ErrorIs(t, err, ErrNotFound)
-}
-
-func register(t *testing.T, e *env, r Role) {
-	t.Helper()
-	_, err := e.svc.Register(
-		context.Background(),
-		RegisterInput{
-			ID:       42,
-			Username: "bob",
-		},
-	)
-	require.NoError(t, err)
-	e.setRole(t, 42, r)
 }
 
 func TestCreateKeyUserStartsTrial(t *testing.T) {
@@ -459,4 +435,28 @@ func TestCreateKeyNameAtTheLimitIsFine(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+}
+
+func (s *env) users() *fakeUsers {
+	return s.svc.users.(*fakeUsers)
+}
+
+func (s *env) setRole(t *testing.T, id int64, r Role) {
+	t.Helper()
+	u := s.users().m[id]
+	u.Role = r
+	s.users().m[id] = u
+}
+
+func register(t *testing.T, e *env, r Role) {
+	t.Helper()
+	_, err := e.svc.Register(
+		context.Background(),
+		RegisterInput{
+			ID:       42,
+			Username: "bob",
+		},
+	)
+	require.NoError(t, err)
+	e.setRole(t, 42, r)
 }

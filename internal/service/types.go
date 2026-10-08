@@ -83,47 +83,6 @@ type Peer struct {
 	CreatedAt time.Time
 }
 
-// hasSecrets: every working key has a PSK. A key without one (its stored
-// secrets could not be read) still expires and is counted, but can't be
-// put back on the server.
-func (s *Peer) hasSecrets() bool {
-	return s.PSK != ""
-}
-
-// vpnPeer is the key as the VPN server needs it.
-func (s *Peer) vpnPeer() *VPNPeer {
-	return &VPNPeer{
-		PublicKey: s.PublicKey,
-		PSK:       s.PSK,
-		IP:        s.IP,
-		Name:      s.Name,
-		CreatedAt: s.CreatedAt,
-	}
-}
-
-// public is a copy without the private key and PSK: they never leave the
-// service, only a rendered config does. nil stays nil.
-func (s *Peer) public() *Peer {
-	if s == nil {
-		return nil
-	}
-	c := *s
-	c.PrivateKey, c.PSK = "", ""
-	return &c
-}
-
-// publicAll is public for a list.
-func publicAll(ps []*Peer) []*Peer {
-	if ps == nil {
-		return nil
-	}
-	out := make([]*Peer, 0, len(ps))
-	for _, p := range ps {
-		out = append(out, p.public())
-	}
-	return out
-}
-
 // Payment is one successful Telegram Stars payment.
 type Payment struct {
 	ChargeID string // telegram_payment_charge_id, unique
@@ -295,11 +254,6 @@ type ReconcileReport struct {
 	Manual int
 }
 
-// OK reports whether the database and the server agree.
-func (s *ReconcileReport) OK() bool {
-	return len(s.MissingOnServer) == 0 && len(s.DisabledButOnServer) == 0
-}
-
 // VPNKeys is a fresh key set from the VPN server.
 type VPNKeys struct {
 	Private string
@@ -351,4 +305,50 @@ type ClientSpec struct {
 	DNS          string // e.g. "1.1.1.1, 1.0.0.1"
 	MTU          int    // 0 = not written
 	EndpointHost string // domain or IP of the server
+}
+
+// OK reports whether the database and the server agree.
+func (s *ReconcileReport) OK() bool {
+	return len(s.MissingOnServer) == 0 && len(s.DisabledButOnServer) == 0
+}
+
+// hasSecrets: every working key has a PSK. A key without one (its stored
+// secrets could not be read) still expires and is counted, but can't be
+// put back on the server.
+func (s *Peer) hasSecrets() bool {
+	return s.PSK != ""
+}
+
+// vpnPeer is the key as the VPN server needs it.
+func (s *Peer) vpnPeer() *VPNPeer {
+	return &VPNPeer{
+		PublicKey: s.PublicKey,
+		PSK:       s.PSK,
+		IP:        s.IP,
+		Name:      s.Name,
+		CreatedAt: s.CreatedAt,
+	}
+}
+
+// publicAll is public for a list.
+func publicAll(ps []*Peer) []*Peer {
+	if ps == nil {
+		return nil
+	}
+	out := make([]*Peer, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.public())
+	}
+	return out
+}
+
+// public is a copy without the private key and PSK: they never leave the
+// service, only a rendered config does. nil stays nil.
+func (s *Peer) public() *Peer {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	c.PrivateKey, c.PSK = "", ""
+	return &c
 }

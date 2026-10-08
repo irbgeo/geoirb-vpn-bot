@@ -8,17 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// expiredKey issues a key and lets Maintain disable it: a disabled key
-// whose term ended, ready to be extended.
-func expiredKey(t *testing.T, e *env) *Peer {
-	t.Helper()
-	p := seed(t, e, now.Add(-time.Minute))
-	_, err := e.svc.Maintain(context.Background())
-	require.NoError(t, err)
-	require.False(t, e.vpn.hasPeer(p.PublicKey))
-	return p
-}
-
 func TestExtendFailureOnTheServerKeepsTheKeyDisabled(t *testing.T) {
 	e := newEnv()
 	p := expiredKey(t, e)
@@ -232,4 +221,15 @@ func TestForeverKeepsAnAdminBlock(t *testing.T) {
 	require.False(t, got.Enabled, "but the block stays")
 	require.False(t, e.vpn.hasPeer(p.PublicKey))
 	require.Empty(t, m.MadeForever, "a blocked user is not told their access is forever")
+}
+
+// expiredKey issues a key and lets Maintain disable it: a disabled key
+// whose term ended, ready to be extended.
+func expiredKey(t *testing.T, e *env) *Peer {
+	t.Helper()
+	p := seed(t, e, now.Add(-time.Minute))
+	_, err := e.svc.Maintain(context.Background())
+	require.NoError(t, err)
+	require.False(t, e.vpn.hasPeer(p.PublicKey))
+	return p
 }

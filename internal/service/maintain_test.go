@@ -8,24 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// seed issues a key for user 42 that ends at `ends` (zero = never).
-func seed(t *testing.T, e *env, ends time.Time) *Peer {
-	t.Helper()
-	p := e.issue(t, 30)
-	stored := e.peers.m[p.PublicKey]
-	stored.ExpiresAt = ends
-	e.peers.m[p.PublicKey] = stored
-	return &stored
-}
-
-func keysOf(ps []*Peer) []string {
-	out := make([]string, 0, len(ps))
-	for _, p := range ps {
-		out = append(out, p.PublicKey)
-	}
-	return out
-}
-
 func TestMaintainExpiresAndDisables(t *testing.T) {
 	e := newEnv()
 	expired := seed(t, e, now.Add(-time.Minute))
@@ -188,4 +170,22 @@ func TestMaintainOnlineUnknownWhenStatsFail(t *testing.T) {
 	require.NoError(t, err, "the notices must still go out")
 	require.Equal(t, []string{expired.PublicKey}, keysOf(m.Expired))
 	require.Equal(t, -1, m.Online)
+}
+
+// seed issues a key for user 42 that ends at `ends` (zero = never).
+func seed(t *testing.T, e *env, ends time.Time) *Peer {
+	t.Helper()
+	p := e.issue(t, 30)
+	stored := e.peers.m[p.PublicKey]
+	stored.ExpiresAt = ends
+	e.peers.m[p.PublicKey] = stored
+	return &stored
+}
+
+func keysOf(ps []*Peer) []string {
+	out := make([]string, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.PublicKey)
+	}
+	return out
 }
