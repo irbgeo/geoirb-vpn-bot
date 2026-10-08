@@ -120,29 +120,28 @@ func (s *Server) Update(ctx context.Context, fn func(*serverConf) error) error {
 	if err != nil {
 		return err
 	}
-	if err := fn(c); err != nil {
+	err = fn(c)
+	if err != nil {
 		return err
 	}
 	// s.mu covers this process only. The Amnezia app or a second bot can
 	// write the file too: both steps run only if it is still what we read.
 	read := sha256Hex(text)
-	if err := s.syncLive(
-		ctx,
-		liveSync{
-			Conf:   c,
-			Expect: read,
-		},
-	); err != nil {
+	liveSync := liveSync{
+		Conf:   c,
+		Expect: read,
+	}
+	err = s.syncLive(ctx, liveSync)
+	if err != nil {
 		return err
 	}
-	if err := s.persist(
-		ctx,
-		persistInput{
-			Path:    s.confPath,
-			Content: c.String(),
-			Expect:  read,
-		},
-	); err != nil {
+	persistInput := persistInput{
+		Path:    s.confPath,
+		Content: c.String(),
+		Expect:  read,
+	}
+	err = s.persist(ctx, persistInput)
+	if err != nil {
 		return fmt.Errorf("%w: %w", ErrNotPersisted, err)
 	}
 	return nil
@@ -166,6 +165,11 @@ func cmd(args ...string) execInput {
 func (s *Server) exec(ctx context.Context, in execInput) (string, error) {
 	out, err := s.run.Exec(ctx, in)
 	return strings.TrimSpace(out), err
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 // syncLive applies the stripped config with `awg syncconf`: it adds and
@@ -197,6 +201,18 @@ func (s *Server) persist(ctx context.Context, in persistInput) error {
 	run.Stdin = in.Content
 	_, err := s.run.Exec(ctx, run)
 	return err
+}
+
+// unchangedCheck is a shell step that fails (exit 3) when the file "$f"
+// no longer has the sha256 expect; empty expect = no check.
+func unchangedCheck(expect string) string {
+	if expect == "" {
+		return ""
+	}
+	return fmt.Sprintf(
+		`[ "$(sha256sum "$f" | cut -d' ' -f1)" = %q ] || { echo "amnezia: $f was changed by another writer, try again" >&2; exit 3; };`,
+		expect,
+	)
 }
 
 // parseDump reads `awg show <iface> dump`. The first line is the interface
@@ -231,21 +247,4 @@ func parseDump(out string) ([]peerStat, error) {
 		stats = append(stats, st)
 	}
 	return stats, nil
-}
-
-// unchangedCheck is a shell step that fails (exit 3) when the file "$f"
-// no longer has the sha256 expect; empty expect = no check.
-func unchangedCheck(expect string) string {
-	if expect == "" {
-		return ""
-	}
-	return fmt.Sprintf(
-		`[ "$(sha256sum "$f" | cut -d' ' -f1)" = %q ] || { echo "amnezia: $f was changed by another writer, try again" >&2; exit 3; };`,
-		expect,
-	)
-}
-
-func sha256Hex(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])
 }

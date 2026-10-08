@@ -22,7 +22,8 @@ func (s *fakeRunner) Exec(ctx context.Context, in execInput) (string, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, in)
 	s.mu.Unlock()
-	if err := ctx.Err(); err != nil {
+	err := ctx.Err()
+	if err != nil {
 		return "", err // like docker: a cancelled call does not run
 	}
 	return s.handler(in)

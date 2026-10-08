@@ -23,17 +23,15 @@ func (s *Server) SetClient(ctx context.Context, e clientEntry) error {
 				return list, true
 			}
 		}
-		return append(
-			list,
-			tableEntry{
-				ClientID: e.PublicKey,
-				UserData: map[string]any{
-					"clientName":   e.Name,
-					"allowed_ips":  e.AllowedIPs,
-					"creationDate": e.CreatedAt.Format(creationDateLayout),
-				},
+		tableEntry := tableEntry{
+			ClientID: e.PublicKey,
+			UserData: map[string]any{
+				"clientName":   e.Name,
+				"allowed_ips":  e.AllowedIPs,
+				"creationDate": e.CreatedAt.Format(creationDateLayout),
 			},
-		), true
+		}
+		return append(list, tableEntry), true
 	})
 }
 
@@ -62,7 +60,8 @@ func (s *Server) updateTable(ctx context.Context, fn func([]tableEntry) ([]table
 	}
 	var list []tableEntry
 	if strings.TrimSpace(text) != "" {
-		if err := json.Unmarshal([]byte(text), &list); err != nil {
+		err = json.Unmarshal([]byte(text), &list)
+		if err != nil {
 			return fmt.Errorf("amnezia: bad clientsTable: %w", err)
 		}
 	}
@@ -80,14 +79,12 @@ func (s *Server) updateTable(ctx context.Context, fn func([]tableEntry) ([]table
 	if err != nil {
 		return err
 	}
-	return s.persist(
-		ctx,
-		persistInput{
-			Path:    p,
-			Content: out,
-			Expect:  sha256Hex(text),
-		},
-	)
+	persistInput := persistInput{
+		Path:    p,
+		Content: out,
+		Expect:  sha256Hex(text),
+	}
+	return s.persist(ctx, persistInput)
 }
 
 // marshalTable writes JSON the way the app does: 4-space indent, no HTML
@@ -100,7 +97,8 @@ func marshalTable(list []tableEntry) (string, error) {
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "    ")
-	if err := enc.Encode(list); err != nil {
+	err := enc.Encode(list)
+	if err != nil {
 		return "", fmt.Errorf("amnezia: encode clientsTable: %w", err)
 	}
 	return b.String(), nil

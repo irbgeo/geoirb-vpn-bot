@@ -34,7 +34,8 @@ func fileContainer(files map[string]string) *fakeRunner {
 		if in.Args[0] == "cat" {
 			return files[in.Args[1]], nil
 		}
-		if m := persistPath.FindStringSubmatch(strings.Join(in.Args, " ")); m != nil {
+		m := persistPath.FindStringSubmatch(strings.Join(in.Args, " "))
+		if m != nil {
 			files[m[1]] = in.Stdin
 		}
 		return "", nil

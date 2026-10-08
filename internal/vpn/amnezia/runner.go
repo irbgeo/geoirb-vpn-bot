@@ -49,6 +49,24 @@ func NewDockerRunner(
 	}, nil
 }
 
+// DetectContainer finds the running Amnezia AWG container via `docker ps`.
+func DetectContainer(ctx context.Context, bin string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, bin, "ps", "--format", "{{.Names}}").Output()
+	if err != nil {
+		return "", fmt.Errorf("amnezia: docker ps: %w", err)
+	}
+	running := strings.Fields(string(out))
+	for _, want := range containerNames {
+		if slices.Contains(running, want) {
+			return want, nil
+		}
+	}
+	return "", errors.New("amnezia: no amnezia-awg2 or amnezia-awg container is running")
+}
+
 // Exec runs one command in the container and returns its stdout.
 // Errors carry the command and stderr, never stdin (it may hold secrets).
 func (s *DockerRunner) Exec(ctx context.Context, in execInput) (string, error) {
@@ -79,24 +97,6 @@ func (s *DockerRunner) Exec(ctx context.Context, in execInput) (string, error) {
 		return "", fmt.Errorf("amnezia: %s: %w: %s", strings.Join(in.Args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
-}
-
-// DetectContainer finds the running Amnezia AWG container via `docker ps`.
-func DetectContainer(ctx context.Context, bin string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	out, err := exec.CommandContext(ctx, bin, "ps", "--format", "{{.Names}}").Output()
-	if err != nil {
-		return "", fmt.Errorf("amnezia: docker ps: %w", err)
-	}
-	running := strings.Fields(string(out))
-	for _, want := range containerNames {
-		if slices.Contains(running, want) {
-			return want, nil
-		}
-	}
-	return "", errors.New("amnezia: no amnezia-awg2 or amnezia-awg container is running")
 }
 
 func (s *DockerRunner) bin() string {

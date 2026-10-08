@@ -103,7 +103,8 @@ func RenderClient(in *clientConf) string {
 // Get returns the value of an active [Interface] key, or "".
 func (s *serverConf) Get(key string) string {
 	for _, line := range s.Interface {
-		if k, v, ok := splitKV(line); ok && strings.EqualFold(k, key) {
+		k, v, ok := splitKV(line)
+		if ok && strings.EqualFold(k, key) {
 			return v
 		}
 	}
@@ -131,7 +132,8 @@ func (s *serverConf) Stripped() string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	for _, line := range s.Interface {
-		if k, _, ok := splitKV(line); ok && !stripKeys[strings.ToLower(k)] {
+		k, _, ok := splitKV(line)
+		if ok && !stripKeys[strings.ToLower(k)] {
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
@@ -148,15 +150,14 @@ func (s *serverConf) Stripped() string {
 func (s *serverConf) ClientParams() []kv {
 	var out []kv
 	for _, line := range s.Interface {
-		if k, v, ok := splitKV(line); ok {
+		k, v, ok := splitKV(line)
+		if ok {
 			if !serverOnlyKeys[strings.ToLower(k)] {
-				out = append(
-					out,
-					kv{
-						Key:   k,
-						Value: v,
-					},
-				)
+				kv := kv{
+					Key:   k,
+					Value: v,
+				}
+				out = append(out, kv)
 			}
 			continue
 		}
@@ -164,14 +165,13 @@ func (s *serverConf) ClientParams() []kv {
 		if !isComment {
 			continue
 		}
-		if k, v, ok := splitKV(strings.TrimSpace(body)); ok && commentedClientKeys[strings.ToLower(k)] {
-			out = append(
-				out,
-				kv{
-					Key:   k,
-					Value: v,
-				},
-			)
+		k, v, ok = splitKV(strings.TrimSpace(body))
+		if ok && commentedClientKeys[strings.ToLower(k)] {
+			kv := kv{
+				Key:   k,
+				Value: v,
+			}
+			out = append(out, kv)
 		}
 	}
 	return out

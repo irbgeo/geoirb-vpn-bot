@@ -58,8 +58,9 @@ func (s *serverConf) addresses(reserved []netip.Addr) (netip.Prefix, map[netip.A
 		server.Addr(): true,
 	}
 	for _, p := range s.Peers {
-		for _, s := range strings.Split(p.AllowedIPs, ",") {
-			if pr, err := netip.ParsePrefix(strings.TrimSpace(s)); err == nil {
+		for _, allowed := range strings.Split(p.AllowedIPs, ",") {
+			pr, parseErr := netip.ParsePrefix(strings.TrimSpace(allowed))
+			if parseErr == nil {
 				taken[pr.Addr()] = true
 			}
 		}

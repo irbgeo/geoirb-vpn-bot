@@ -53,23 +53,47 @@ func (s *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 			return err
 		}
 		p.IP = ip.String()
-		if err := in.Save(p.IP); err != nil {
+		err = in.Save(p.IP)
+		if err != nil {
 			return err
 		}
 		c.AddPeer(serverPeer(&p))
 		return nil
 	})
 	if err != nil {
-		s.undo(
-			ctx,
-			&takeOffInput{
-				Peer:  &p,
-				Cause: err,
-			},
-		)
+		takeOffInput := &takeOffInput{
+			Peer:  &p,
+			Cause: err,
+		}
+		s.undo(ctx, takeOffInput)
 		return err
 	}
 	s.showInApp(ctx, &p)
+	return nil
+}
+
+// ReplacePeer swaps in.Old for in.New in one config update. On failure
+// the new peer is taken off and the old one put back.
+func (s *VPN) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) error {
+	err := s.srv.Update(ctx, func(c *serverConf) error {
+		c.RemovePeer(in.Old.PublicKey)
+		c.AddPeer(serverPeer(in.New))
+		return nil
+	})
+	if err != nil {
+		takeOffInput := &takeOffInput{
+			Peer:  in.New,
+			Cause: err,
+		}
+		s.undo(ctx, takeOffInput)
+		putErr := s.PutPeer(context.WithoutCancel(ctx), in.Old)
+		if putErr != nil {
+			log.Printf("amnezia: put %s back: %v", in.Old.IP, putErr)
+		}
+		return err
+	}
+	s.hideInApp(ctx, in.Old)
+	s.showInApp(ctx, in.New)
 	return nil
 }
 
@@ -92,13 +116,11 @@ func (s *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 		return err // nothing was changed
 	}
 	if err != nil {
-		s.undo(
-			ctx,
-			&takeOffInput{
-				Peer:  p,
-				Cause: err,
-			},
-		)
+		takeOffInput := &takeOffInput{
+			Peer:  p,
+			Cause: err,
+		}
+		s.undo(ctx, takeOffInput)
 		return err
 	}
 	s.showInApp(ctx, p)
@@ -115,32 +137,6 @@ func (s *VPN) RemovePeer(ctx context.Context, p *service.VPNPeer) error {
 		return err
 	}
 	s.hideInApp(ctx, p)
-	return nil
-}
-
-// ReplacePeer swaps in.Old for in.New in one config update. On failure
-// the new peer is taken off and the old one put back.
-func (s *VPN) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) error {
-	err := s.srv.Update(ctx, func(c *serverConf) error {
-		c.RemovePeer(in.Old.PublicKey)
-		c.AddPeer(serverPeer(in.New))
-		return nil
-	})
-	if err != nil {
-		s.undo(
-			ctx,
-			&takeOffInput{
-				Peer:  in.New,
-				Cause: err,
-			},
-		)
-		if err := s.PutPeer(context.WithoutCancel(ctx), in.Old); err != nil {
-			log.Printf("amnezia: put %s back: %v", in.Old.IP, err)
-		}
-		return err
-	}
-	s.hideInApp(ctx, in.Old)
-	s.showInApp(ctx, in.New)
 	return nil
 }
 
@@ -175,15 +171,13 @@ func (s *VPN) Stats(ctx context.Context) ([]service.PeerStat, error) {
 	}
 	out := make([]service.PeerStat, 0, len(stats))
 	for _, st := range stats {
-		out = append(
-			out,
-			service.PeerStat{
-				PublicKey:     st.PublicKey,
-				LastHandshake: st.LatestHandshake,
-				Sent:          st.RX,
-				Received:      st.TX,
-			},
-		)
+		peerStat := service.PeerStat{
+			PublicKey:     st.PublicKey,
+			LastHandshake: st.LatestHandshake,
+			Sent:          st.RX,
+			Received:      st.TX,
+		}
+		out = append(out, peerStat)
 	}
 	return out, nil
 }
@@ -199,18 +193,25 @@ func (s *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (strin
 	if err != nil {
 		return "", err
 	}
-	return RenderClient(
-		&clientConf{
-			Address:         spec.IP + "/32",
-			DNS:             spec.DNS,
-			MTU:             spec.MTU,
-			PrivateKey:      spec.PrivateKey,
-			Params:          c.ClientParams(),
-			ServerPublicKey: serverKey,
-			PresharedKey:    spec.PSK,
-			Endpoint:        net.JoinHostPort(spec.EndpointHost, c.Get("ListenPort")),
-		},
-	), nil
+	clientConf := &clientConf{
+		Address:         spec.IP + "/32",
+		DNS:             spec.DNS,
+		MTU:             spec.MTU,
+		PrivateKey:      spec.PrivateKey,
+		Params:          c.ClientParams(),
+		ServerPublicKey: serverKey,
+		PresharedKey:    spec.PSK,
+		Endpoint:        net.JoinHostPort(spec.EndpointHost, c.Get("ListenPort")),
+	}
+	return RenderClient(clientConf), nil
+}
+
+func serverPeer(p *service.VPNPeer) peer {
+	return peer{
+		PublicKey:    p.PublicKey,
+		PresharedKey: p.PSK,
+		AllowedIPs:   p.IP + "/32",
+	}
 }
 
 // undo takes a peer back off after a failed change. A docker timeout can
@@ -219,7 +220,8 @@ func (s *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (strin
 // itself); errors are logged, this is an error path already.
 func (s *VPN) undo(ctx context.Context, in *takeOffInput) {
 	ctx = context.WithoutCancel(ctx)
-	if err := s.takeOff(ctx, in); err != nil {
+	err := s.takeOff(ctx, in)
+	if err != nil {
 		log.Printf("amnezia: roll back %s: %v", in.Peer.IP, err)
 	}
 	s.hideInApp(ctx, in.Peer)
@@ -242,35 +244,26 @@ func (s *VPN) takeOff(ctx context.Context, in *takeOffInput) error {
 	})
 }
 
-// showInApp lists the key in the Amnezia app. Failing here is not fatal:
-// the key works, it is only missing from the app's list.
-func (s *VPN) showInApp(ctx context.Context, p *service.VPNPeer) {
-	err := s.srv.SetClient(
-		ctx,
-		clientEntry{
-			PublicKey:  p.PublicKey,
-			Name:       p.Name,
-			AllowedIPs: p.IP + "/32",
-			CreatedAt:  p.CreatedAt,
-		},
-	)
-	if err != nil {
-		log.Printf("amnezia: clientsTable set %s: %v", p.IP, err)
-	}
-}
-
 // hideInApp drops the key from the Amnezia app's list; a failure is logged.
 func (s *VPN) hideInApp(ctx context.Context, p *service.VPNPeer) {
-	if err := s.srv.RemoveClient(ctx, p.PublicKey); err != nil {
+	err := s.srv.RemoveClient(ctx, p.PublicKey)
+	if err != nil {
 		log.Printf("amnezia: clientsTable remove %s: %v", p.IP, err)
 	}
 }
 
-func serverPeer(p *service.VPNPeer) peer {
-	return peer{
-		PublicKey:    p.PublicKey,
-		PresharedKey: p.PSK,
-		AllowedIPs:   p.IP + "/32",
+// showInApp lists the key in the Amnezia app. Failing here is not fatal:
+// the key works, it is only missing from the app's list.
+func (s *VPN) showInApp(ctx context.Context, p *service.VPNPeer) {
+	clientEntry := clientEntry{
+		PublicKey:  p.PublicKey,
+		Name:       p.Name,
+		AllowedIPs: p.IP + "/32",
+		CreatedAt:  p.CreatedAt,
+	}
+	err := s.srv.SetClient(ctx, clientEntry)
+	if err != nil {
+		log.Printf("amnezia: clientsTable set %s: %v", p.IP, err)
 	}
 }
 
