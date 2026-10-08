@@ -4,7 +4,7 @@
 #     dev docker wrapper, local Mongo settings);
 #   - MONGO_URI for the geoirb_vpn_bot user on 127.0.0.1, with the password
 #     from ../server-infra/secret/database.yaml — the source of truth for
-#     Mongo users (server-infra/scripts/remote-provision-user.sh writes it).
+#     Mongo users (server-infra/scripts/add-user.sh writes it).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT/.env}"
