@@ -130,6 +130,10 @@ type Router struct {
 func New(
 	d *Deps,
 ) *Router {
+	dialogs := newDialogs()
+	jobs := newJobs()
+	maint := newMaintFlag(d.Config.MaintenanceFlag)
+	refunds := newInFlight()
 	return &Router{
 		users:    d.Users,
 		keys:     d.Keys,
@@ -140,10 +144,10 @@ func New(
 		bypass:   d.Bypass,
 		support:  d.Config.SupportContact,
 		notify:   d.Notifier,
-		dialogs:  newDialogs(),
-		jobs:     newJobs(),
-		maint:    newMaintFlag(d.Config.MaintenanceFlag),
-		refunds:  newInFlight(),
+		dialogs:  dialogs,
+		jobs:     jobs,
+		maint:    maint,
+		refunds:  refunds,
 		pause:    50 * time.Millisecond,
 	}
 }
@@ -165,26 +169,25 @@ func (s *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 	if upd.Message == nil || upd.Message.From == nil || !private(upd.Message) {
 		return nil
 	}
-	if cmd, ok := upd.Command(); ok {
+	cmd, ok := upd.Command()
+	if ok {
 		// /start: Telegram sends it on the first "Start"; /menu is the name
 		// users see in the command list and texts.
 		if cmd == "start" || cmd == "menu" {
 			return s.start(ctx, upd.Message)
 		}
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: upd.ChatID(),
-				Text: s.commandText(
-					command{
-						Name:   cmd,
-						UserID: upd.Message.From.ID,
-					},
-				),
-			},
-		)
+		command := command{
+			Name:   cmd,
+			UserID: upd.Message.From.ID,
+		}
+		outMessage := outMessage{
+			ChatID: upd.ChatID(),
+			Text:   s.commandText(command),
+		}
+		return s.send.Send(ctx, outMessage)
 	}
-	if p, ok := s.dialogs.peek(upd.Message.Chat.ID); ok {
+	p, ok := s.dialogs.peek(upd.Message.Chat.ID)
+	if ok {
 		switch p.Kind {
 		case pendingKeyName:
 			return s.keyNamed(ctx, upd.Message)
@@ -210,7 +213,8 @@ func (s *Router) Wait() {
 // DB against the server. Problems are logged and sent to admins; nothing
 // is changed.
 func (s *Router) Reconcile(ctx context.Context) {
-	if ps, err := s.billing.UnfinishedPayments(ctx); err != nil {
+	ps, err := s.billing.UnfinishedPayments(ctx)
+	if err != nil {
 		log.Printf("reconcile: unfinished payments: %v", err)
 	} else if len(ps) > 0 {
 		s.notify.NotifyAdmins(ctx, unfinishedPaymentsText(ps))
@@ -233,82 +237,15 @@ func (s *Router) Reconcile(ctx context.Context) {
 	}
 }
 
-// start registers the user (first /start adds them to the bot) and sends
-// the main menu. /start and /menu are a way out of any prompt.
-func (s *Router) start(ctx context.Context, m *tgbot.Message) error {
-	s.dialogs.drop(m.Chat.ID)
-	menu, err := s.mainMenu(ctx, m.From)
-	if err != nil {
-		return err
-	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   m.Chat.ID,
-			Text:     menu.Text,
-			Keyboard: menu.Keyboard,
-		},
-	)
-}
-
-// backToMenu is the "◀️ Меню" button: it turns the same message back into
-// the main menu, so the chat does not fill up with menus. If Telegram does
-// not let the bot edit it (e.g. too old), the menu comes as a new message.
-func (s *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	s.dialogs.drop(cq.ChatID())
-	menu, err := s.mainMenu(ctx, &cq.From)
-	if err != nil {
-		return err
-	}
-	err = s.send.Edit(
-		ctx,
-		editMessage{
-			ChatID:    cq.ChatID(),
-			MessageID: cq.MessageID(),
-			Text:      menu.Text,
-			Keyboard:  menu.Keyboard,
-		},
-	)
-	if err == nil {
-		return nil
-	}
-	log.Printf("bot: menu in place: %v", err)
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   cq.ChatID(),
-			Text:     menu.Text,
-			Keyboard: menu.Keyboard,
-		},
-	)
-}
-
-// mainMenu registers the user (or refreshes the username) and builds the
-// menu for their role.
-func (s *Router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, error) {
-	u, err := s.users.Register(
-		ctx,
-		service.RegisterInput{
-			ID:       from.ID,
-			Username: from.Username,
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &menuScreen{
-		Text: greeting(u),
-		Keyboard: mainKeyboard(
-			menuView{
-				Role:        u.Role,
-				Maintenance: u.Role == service.RoleAdmin && s.maint.on(),
-			},
-		),
-	}, nil
+// private reports whether m is in a private chat. Keys, configs and the
+// admin panel are never posted to groups, even if the bot is added to one.
+func private(m *tgbot.Message) bool {
+	return m != nil && m.Chat.Type == "private"
 }
 
 func (s *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	if err := s.send.Answer(ctx, cq.ID); err != nil {
+	err := s.send.Answer(ctx, cq.ID)
+	if err != nil {
 		log.Printf("bot: answer callback: %v", err)
 	}
 	switch {
@@ -328,31 +265,26 @@ func (s *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.askKeyName(ctx, cq)
 	case cq.Data == cbKeyNoName:
 		s.dialogs.drop(cq.ChatID())
-		return s.issueKey(
-			ctx,
-			keyRequest{
-				ChatID: cq.ChatID(),
-				UserID: cq.SenderID(),
-			},
-		)
+		keyRequest := keyRequest{
+			ChatID: cq.ChatID(),
+			UserID: cq.SenderID(),
+		}
+		return s.issueKey(ctx, keyRequest)
 	case cq.Data == cbMyAccess:
 		return s.myAccess(ctx, cq)
 	case cq.Data == cbBypass:
 		return s.sendBypass(ctx, cq.ChatID())
 	case cq.Data == cbSupport, cq.Data == cbTerms:
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: cq.ChatID(),
-				Text: s.commandText(
-					command{
-						Name:   cq.Data,
-						UserID: cq.SenderID(),
-					},
-				),
-				Keyboard: menuKeyboard(),
-			},
-		)
+		command := command{
+			Name:   cq.Data,
+			UserID: cq.SenderID(),
+		}
+		outMessage := outMessage{
+			ChatID:   cq.ChatID(),
+			Text:     s.commandText(command),
+			Keyboard: menuKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
 	case cq.Data == cbBuy:
 		return s.buyMenu(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbBuyKey):
@@ -367,385 +299,76 @@ func (s *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	return nil
 }
 
-// askKeyName is step 2: it waits for the key's name, with a "skip" button.
-func (s *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	s.dialogs.set(
-		pendingInput{
-			ChatID: cq.ChatID(),
-			UserID: cq.SenderID(),
-			Kind:   pendingKeyName,
-		},
-	)
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   cq.ChatID(),
-			Text:     askKeyNameText,
-			Keyboard: skipKeyNameKeyboard(),
-		},
-	)
-}
-
-// keyNamed creates the key with the name the user sent. A bad name asks
-// again and keeps waiting; anything else ends the question. Only the user
-// who asked answers.
-func (s *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
-	if p, _ := s.dialogs.peek(m.Chat.ID); p.UserID != m.From.ID {
+// backToMenu is the "◀️ Меню" button: it turns the same message back into
+// the main menu, so the chat does not fill up with menus. If Telegram does
+// not let the bot edit it (e.g. too old), the menu comes as a new message.
+func (s *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	s.dialogs.drop(cq.ChatID())
+	menu, err := s.mainMenu(ctx, &cq.From)
+	if err != nil {
+		return err
+	}
+	editMessage := editMessage{
+		ChatID:    cq.ChatID(),
+		MessageID: cq.MessageID(),
+		Text:      menu.Text,
+		Keyboard:  menu.Keyboard,
+	}
+	err = s.send.Edit(ctx, editMessage)
+	if err == nil {
 		return nil
 	}
-	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID:   m.Chat.ID,
-				Text:     askKeyNameText,
-				Keyboard: skipKeyNameKeyboard(),
-			},
-		)
+	log.Printf("bot: menu in place: %v", err)
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     menu.Text,
+		Keyboard: menu.Keyboard,
 	}
-	s.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
-	err := s.issueKey(
-		ctx,
-		keyRequest{
-			ChatID: m.Chat.ID,
-			UserID: m.From.ID,
-			Name:   m.Text,
-		},
-	)
-	if !errors.Is(err, service.ErrBadKeyName) {
-		return err
-	}
-	s.dialogs.set(
-		pendingInput{
-			ChatID: m.Chat.ID,
-			UserID: m.From.ID,
-			Kind:   pendingKeyName,
-		},
-	)
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   m.Chat.ID,
-			Text:     badKeyNameText,
-			Keyboard: skipKeyNameKeyboard(),
-		},
-	)
+	return s.send.Send(ctx, outMessage)
 }
 
-// issueKey creates the user's key and sends it with the import steps.
-// ErrBadKeyName is returned as is (the caller asks again); other known
-// errors are explained to the user.
-func (s *Router) issueKey(ctx context.Context, k keyRequest) error {
-	p, err := s.keys.CreateKey(
-		ctx,
-		service.CreateKeyInput{
-			UserID: k.UserID,
-			Name:   k.Name,
-		},
-	)
-	if errors.Is(err, service.ErrBadKeyName) {
-		return err
+// mainMenu registers the user (or refreshes the username) and builds the
+// menu for their role.
+func (s *Router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, error) {
+	registerInput := service.RegisterInput{
+		ID:       from.ID,
+		Username: from.Username,
 	}
+	u, err := s.users.Register(ctx, registerInput)
 	if err != nil {
-		text, known := createKeyErrorText(err)
-		return s.replyError(
-			ctx,
-			userError{
-				ChatID: k.ChatID,
-				Err:    err,
-				Text:   text,
-				Known:  known,
-			},
-		)
+		return nil, err
 	}
-	if err := s.deliverKey(
-		ctx,
-		keyDelivery{
-			ChatID: k.ChatID,
-			Peer:   p,
-		},
-	); err != nil {
-		// The key exists: say where it is, or a second press makes another.
-		if sendErr := s.send.Send(
-			ctx,
-			outMessage{
-				ChatID:   k.ChatID,
-				Text:     keyDeliveryFailedText,
-				Keyboard: myAccessKeyboard(),
-			},
-		); sendErr != nil {
-			log.Printf("bot: %v", sendErr)
-		}
-		return err
+	menuView := menuView{
+		Role:        u.Role,
+		Maintenance: u.Role == service.RoleAdmin && s.maint.on(),
 	}
-	return nil
-}
-
-// private reports whether m is in a private chat. Keys, configs and the
-// admin panel are never posted to groups, even if the bot is added to one.
-func private(m *tgbot.Message) bool {
-	return m != nil && m.Chat.Type == "private"
-}
-
-// commandText answers /terms, /support, /paysupport (Telegram requires the
-// first and the last for bots that take Stars) and any unknown command.
-func (s *Router) commandText(c command) string {
-	switch c.Name {
-	case cbTerms:
-		return termsText(s.support)
-	case cbSupport:
-		return supportText(
-			supportView{
-				Contact: s.support,
-				UserID:  c.UserID,
-			},
-		)
-	case "paysupport":
-		return paySupportText(s.support)
-	}
-	return unknownCommandText
+	return &menuScreen{
+		Text:     greeting(u),
+		Keyboard: mainKeyboard(menuView),
+	}, nil
 }
 
 // keyStepApps is step 1 of getting a key: which app to install, with
 // store links and "next". It first checks that a key can be given, so no
 // one installs an app to learn their trial is used up.
 func (s *Router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	if err := s.keys.CheckCreateKey(ctx, cq.SenderID()); err != nil {
+	err := s.keys.CheckCreateKey(ctx, cq.SenderID())
+	if err != nil {
 		text, known := createKeyErrorText(err)
-		return s.replyError(
-			ctx,
-			userError{
-				ChatID: cq.ChatID(),
-				Err:    err,
-				Text:   text,
-				Known:  known,
-			},
-		)
-	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   cq.ChatID(),
-			Text:     appsText,
-			Keyboard: appsKeyboard(),
-		},
-	)
-}
-
-// deliverKey sends a new key (step 2): config, QR code and how to add it
-// to the app, with "next" to the split-tunneling step.
-func (s *Router) deliverKey(ctx context.Context, d keyDelivery) error {
-	conf, err := s.keys.ClientConfig(ctx, d.Peer.PublicKey)
-	if err != nil {
-		return err
-	}
-	if err := s.sendConfig(
-		ctx,
-		configDelivery{
-			ChatID: d.ChatID,
-			Key: &service.KeyConfig{
-				Peer: d.Peer,
-				Conf: conf,
-			},
-		},
-	); err != nil {
-		return err
-	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   d.ChatID,
-			Text:     importText,
-			Keyboard: bypassNextKeyboard(),
-		},
-	)
-}
-
-// myAccess lists the user's keys with status, end date, last connection
-// and traffic, with a "config again" button per key.
-func (s *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	keys, err := s.keys.Access(ctx, cq.SenderID())
-	if err != nil {
-		return err
-	}
-	u, err := s.users.User(ctx, cq.SenderID())
-	if err != nil {
-		return err
-	}
-	if len(keys) == 0 {
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID:   cq.ChatID(),
-				Text:     noKeysText,
-				Keyboard: createKeyKeyboard(),
-			},
-		)
-	}
-	return s.send.Send(
-		ctx,
-		outMessage{
+		userError := userError{
 			ChatID: cq.ChatID(),
-			Text:   accessText(keys),
-			Keyboard: accessKeyboard(
-				accessView{
-					Keys:   keys,
-					CanBuy: u.Role == service.RoleUser,
-				},
-			),
-		},
-	)
-}
-
-// configAgain resends one of the user's own keys.
-func (s *Router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	kc, err := s.keys.UserConfig(
-		ctx,
-		service.UserKey{
-			UserID:    cq.SenderID(),
-			PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
-		},
-	)
-	if err != nil {
-		text, known := configErrorText(err)
-		return s.replyError(
-			ctx,
-			userError{
-				ChatID: cq.ChatID(),
-				Err:    err,
-				Text:   text,
-				Known:  known,
-			},
-		)
-	}
-	return s.sendConfig(
-		ctx,
-		configDelivery{
-			ChatID: cq.ChatID(),
-			Key:    kc,
-		},
-	)
-}
-
-// sendConfig sends the .conf file and its QR code. A config too long for a
-// QR code only gets a note: the file alone is enough.
-func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
-	err := s.send.SendDocument(
-		ctx,
-		outFile{
-			ChatID:  d.ChatID,
-			Name:    configFileName(d.Key.Peer),
-			Data:    []byte(d.Key.Conf),
-			Caption: keyCaption(d.Key.Peer),
-		},
-	)
-	if err != nil {
-		return err
-	}
-	return s.sendQR(
-		ctx,
-		outFile{
-			ChatID: d.ChatID,
-			Data:   []byte(d.Key.Conf),
-		},
-	)
-}
-
-// sendQR sends the config (in.Data) as a QR code, or a note when it
-// doesn't fit into one.
-func (s *Router) sendQR(ctx context.Context, in outFile) error {
-	png, err := qrcode.Encode(string(in.Data), qrcode.Low, 768)
-	if err != nil {
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: in.ChatID,
-				Text:   qrTooLongText,
-			},
-		)
-	}
-	return s.send.SendPhoto(
-		ctx,
-		outFile{
-			ChatID:  in.ChatID,
-			Name:    "qr.png",
-			Data:    png,
-			Caption: qrCaption,
-		},
-	)
-}
-
-// sendBypass is the split-tunneling step: how to set it up in AmneziaVPN,
-// then the lists of Russian sites/networks that must not use the VPN. If
-// the lists can't be downloaded the user gets a note instead.
-func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
-	files, err := s.bypass.Files(ctx)
-	if err != nil {
-		log.Printf("bot: bypass lists: %v", err)
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: chatID,
-				Text:   bypassDownText,
-			},
-		)
-	}
-	if err := s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   chatID,
-			Text:     bypassHowToText,
-			Keyboard: menuKeyboard(),
-		},
-	); err != nil {
-		return err
-	}
-	for _, f := range files {
-		err := s.send.SendDocument(
-			ctx,
-			outFile{
-				ChatID:  chatID,
-				Name:    f.Name,
-				Data:    f.Data,
-				Caption: bypassCaption(f.Name),
-			},
-		)
-		if err != nil {
-			return err
+			Err:    err,
+			Text:   text,
+			Known:  known,
 		}
+		return s.replyError(ctx, userError)
 	}
-	return nil
-}
-
-// replyError tells the user what went wrong. An expected error (Known)
-// ends there; an unexpected one is also returned, for the log. A failed
-// send is logged.
-func (s *Router) replyError(ctx context.Context, e userError) error {
-	err := s.send.Send(
-		ctx,
-		outMessage{
-			ChatID: e.ChatID,
-			Text:   e.Text,
-		},
-	)
-	if err != nil {
-		log.Printf("bot: %v", err)
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     appsText,
+		Keyboard: appsKeyboard(),
 	}
-	if e.Known {
-		return nil
-	}
-	return e.Err
-}
-
-// configErrorText explains why a key's config can't be sent again.
-func configErrorText(err error) (text string, known bool) {
-	switch {
-	case errors.Is(err, service.ErrNotFound):
-		return keyNotFoundText, true
-	case errors.Is(err, service.ErrNoPrivateKey):
-		return noPrivateKeyText, true
-	}
-	return configFailedText, false
+	return s.send.Send(ctx, outMessage)
 }
 
 // createKeyErrorText explains expected CreateKey errors to the user.
@@ -760,4 +383,324 @@ func createKeyErrorText(err error) (text string, known bool) {
 		return keyLimitText, true
 	}
 	return internalErrorText, false
+}
+
+// replyError tells the user what went wrong. An expected error (Known)
+// ends there; an unexpected one is also returned, for the log. A failed
+// send is logged.
+func (s *Router) replyError(ctx context.Context, e userError) error {
+	outMessage := outMessage{
+		ChatID: e.ChatID,
+		Text:   e.Text,
+	}
+	err := s.send.Send(ctx, outMessage)
+	if err != nil {
+		log.Printf("bot: %v", err)
+	}
+	if e.Known {
+		return nil
+	}
+	return e.Err
+}
+
+// askKeyName is step 2: it waits for the key's name, with a "skip" button.
+func (s *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	pendingInput := pendingInput{
+		ChatID: cq.ChatID(),
+		UserID: cq.SenderID(),
+		Kind:   pendingKeyName,
+	}
+	s.dialogs.set(pendingInput)
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     askKeyNameText,
+		Keyboard: skipKeyNameKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
+// issueKey creates the user's key and sends it with the import steps.
+// ErrBadKeyName is returned as is (the caller asks again); other known
+// errors are explained to the user.
+func (s *Router) issueKey(ctx context.Context, k keyRequest) error {
+	createKeyInput := service.CreateKeyInput{
+		UserID: k.UserID,
+		Name:   k.Name,
+	}
+	p, err := s.keys.CreateKey(ctx, createKeyInput)
+	if errors.Is(err, service.ErrBadKeyName) {
+		return err
+	}
+	if err != nil {
+		text, known := createKeyErrorText(err)
+		userError := userError{
+			ChatID: k.ChatID,
+			Err:    err,
+			Text:   text,
+			Known:  known,
+		}
+		return s.replyError(ctx, userError)
+	}
+	keyDelivery := keyDelivery{
+		ChatID: k.ChatID,
+		Peer:   p,
+	}
+	err = s.deliverKey(ctx, keyDelivery)
+	if err != nil {
+		// The key exists: say where it is, or a second press makes another.
+		outMessage := outMessage{
+			ChatID:   k.ChatID,
+			Text:     keyDeliveryFailedText,
+			Keyboard: myAccessKeyboard(),
+		}
+		sendErr := s.send.Send(ctx, outMessage)
+		if sendErr != nil {
+			log.Printf("bot: %v", sendErr)
+		}
+		return err
+	}
+	return nil
+}
+
+// deliverKey sends a new key (step 2): config, QR code and how to add it
+// to the app, with "next" to the split-tunneling step.
+func (s *Router) deliverKey(ctx context.Context, d keyDelivery) error {
+	conf, err := s.keys.ClientConfig(ctx, d.Peer.PublicKey)
+	if err != nil {
+		return err
+	}
+	configDelivery := configDelivery{
+		ChatID: d.ChatID,
+		Key: &service.KeyConfig{
+			Peer: d.Peer,
+			Conf: conf,
+		},
+	}
+	err = s.sendConfig(ctx, configDelivery)
+	if err != nil {
+		return err
+	}
+	outMessage := outMessage{
+		ChatID:   d.ChatID,
+		Text:     importText,
+		Keyboard: bypassNextKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
+// sendConfig sends the .conf file and its QR code. A config too long for a
+// QR code only gets a note: the file alone is enough.
+func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
+	confFile := outFile{
+		ChatID:  d.ChatID,
+		Name:    configFileName(d.Key.Peer),
+		Data:    []byte(d.Key.Conf),
+		Caption: keyCaption(d.Key.Peer),
+	}
+	err := s.send.SendDocument(ctx, confFile)
+	if err != nil {
+		return err
+	}
+	qrFile := outFile{
+		ChatID: d.ChatID,
+		Data:   []byte(d.Key.Conf),
+	}
+	return s.sendQR(ctx, qrFile)
+}
+
+// sendQR sends the config (in.Data) as a QR code, or a note when it
+// doesn't fit into one.
+func (s *Router) sendQR(ctx context.Context, in outFile) error {
+	png, err := qrcode.Encode(string(in.Data), qrcode.Low, 768)
+	if err != nil {
+		outMessage := outMessage{
+			ChatID: in.ChatID,
+			Text:   qrTooLongText,
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	outFile := outFile{
+		ChatID:  in.ChatID,
+		Name:    "qr.png",
+		Data:    png,
+		Caption: qrCaption,
+	}
+	return s.send.SendPhoto(ctx, outFile)
+}
+
+// myAccess lists the user's keys with status, end date, last connection
+// and traffic, with a "config again" button per key.
+func (s *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	keys, err := s.keys.Access(ctx, cq.SenderID())
+	if err != nil {
+		return err
+	}
+	u, err := s.users.User(ctx, cq.SenderID())
+	if err != nil {
+		return err
+	}
+	if len(keys) == 0 {
+		outMessage := outMessage{
+			ChatID:   cq.ChatID(),
+			Text:     noKeysText,
+			Keyboard: createKeyKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	accessView := accessView{
+		Keys:   keys,
+		CanBuy: u.Role == service.RoleUser,
+	}
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     accessText(keys),
+		Keyboard: accessKeyboard(accessView),
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
+// sendBypass is the split-tunneling step: how to set it up in AmneziaVPN,
+// then the lists of Russian sites/networks that must not use the VPN. If
+// the lists can't be downloaded the user gets a note instead.
+func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
+	files, err := s.bypass.Files(ctx)
+	if err != nil {
+		log.Printf("bot: bypass lists: %v", err)
+		outMessage := outMessage{
+			ChatID: chatID,
+			Text:   bypassDownText,
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	outMessage := outMessage{
+		ChatID:   chatID,
+		Text:     bypassHowToText,
+		Keyboard: menuKeyboard(),
+	}
+	err = s.send.Send(ctx, outMessage)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		outFile := outFile{
+			ChatID:  chatID,
+			Name:    f.Name,
+			Data:    f.Data,
+			Caption: bypassCaption(f.Name),
+		}
+		err = s.send.SendDocument(ctx, outFile)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// commandText answers /terms, /support, /paysupport (Telegram requires the
+// first and the last for bots that take Stars) and any unknown command.
+func (s *Router) commandText(c command) string {
+	switch c.Name {
+	case cbTerms:
+		return termsText(s.support)
+	case cbSupport:
+		supportView := supportView{
+			Contact: s.support,
+			UserID:  c.UserID,
+		}
+		return supportText(supportView)
+	case "paysupport":
+		return paySupportText(s.support)
+	}
+	return unknownCommandText
+}
+
+// configAgain resends one of the user's own keys.
+func (s *Router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	userKey := service.UserKey{
+		UserID:    cq.SenderID(),
+		PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
+	}
+	kc, err := s.keys.UserConfig(ctx, userKey)
+	if err != nil {
+		text, known := configErrorText(err)
+		userError := userError{
+			ChatID: cq.ChatID(),
+			Err:    err,
+			Text:   text,
+			Known:  known,
+		}
+		return s.replyError(ctx, userError)
+	}
+	configDelivery := configDelivery{
+		ChatID: cq.ChatID(),
+		Key:    kc,
+	}
+	return s.sendConfig(ctx, configDelivery)
+}
+
+// configErrorText explains why a key's config can't be sent again.
+func configErrorText(err error) (text string, known bool) {
+	switch {
+	case errors.Is(err, service.ErrNotFound):
+		return keyNotFoundText, true
+	case errors.Is(err, service.ErrNoPrivateKey):
+		return noPrivateKeyText, true
+	}
+	return configFailedText, false
+}
+
+// start registers the user (first /start adds them to the bot) and sends
+// the main menu. /start and /menu are a way out of any prompt.
+func (s *Router) start(ctx context.Context, m *tgbot.Message) error {
+	s.dialogs.drop(m.Chat.ID)
+	menu, err := s.mainMenu(ctx, m.From)
+	if err != nil {
+		return err
+	}
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     menu.Text,
+		Keyboard: menu.Keyboard,
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
+// keyNamed creates the key with the name the user sent. A bad name asks
+// again and keeps waiting; anything else ends the question. Only the user
+// who asked answers.
+func (s *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
+	p, _ := s.dialogs.peek(m.Chat.ID)
+	if p.UserID != m.From.ID {
+		return nil
+	}
+	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     askKeyNameText,
+			Keyboard: skipKeyNameKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	s.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
+	keyRequest := keyRequest{
+		ChatID: m.Chat.ID,
+		UserID: m.From.ID,
+		Name:   m.Text,
+	}
+	err := s.issueKey(ctx, keyRequest)
+	if !errors.Is(err, service.ErrBadKeyName) {
+		return err
+	}
+	pendingInput := pendingInput{
+		ChatID: m.Chat.ID,
+		UserID: m.From.ID,
+		Kind:   pendingKeyName,
+	}
+	s.dialogs.set(pendingInput)
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     badKeyNameText,
+		Keyboard: skipKeyNameKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }

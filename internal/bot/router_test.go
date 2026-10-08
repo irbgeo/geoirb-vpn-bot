@@ -48,7 +48,8 @@ func (s *fakeSender) AnswerPreCheckout(_ context.Context, a preCheckoutAnswer) e
 func (s *fakeSender) Refund(ctx context.Context, in refundInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := ctx.Err(); err != nil {
+	err := ctx.Err()
+	if err != nil {
 		return err // like a real API call on a cancelled context
 	}
 	s.refunds = append(s.refunds, in)
