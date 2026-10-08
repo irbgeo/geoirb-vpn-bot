@@ -41,15 +41,19 @@ type notifier struct {
 	online        onlineWatch
 }
 
-// NewNotifier creates a notifier.
+// NewNotifier creates a notifier. backupStamp is the file touched by each
+// good backup ("" = no check); load nil = no server load alerts.
 func NewNotifier(
-	d *NotifierDeps,
+	users Users,
+	sender Sender,
+	backupStamp string,
+	load ServerLoad,
 ) *notifier {
 	return &notifier{
-		users:       d.Users,
-		send:        d.Sender,
-		load:        d.Load,
-		backupStamp: d.BackupStamp,
+		users:       users,
+		send:        sender,
+		load:        load,
+		backupStamp: backupStamp,
 	}
 }
 

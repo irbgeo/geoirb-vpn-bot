@@ -370,10 +370,10 @@ func newRouter(svc *fakeService) (*router, *fakeSender) {
 			Feedback: svc,
 			Sender:   s,
 			Notifier: NewNotifier(
-				&NotifierDeps{
-					Users:  svc,
-					Sender: s,
-				},
+				svc,
+				s,
+				"",
+				nil,
 			),
 			Bypass: &fakeBypass{},
 			Config: &config.Config{

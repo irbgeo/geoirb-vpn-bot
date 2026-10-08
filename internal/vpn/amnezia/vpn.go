@@ -13,7 +13,7 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// vpn is service.vpn on an Amnezia server. It keeps the config file, the
+// vpn is service.VPN on an Amnezia server. It keeps the config file, the
 // live interface and the app's client list (clientsTable) together, and
 // undoes a change that failed half way before returning its error.
 type vpn struct {

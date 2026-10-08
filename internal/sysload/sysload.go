@@ -26,13 +26,14 @@ type monitor struct {
 	alerted map[Metric]bool
 }
 
-// New creates a monitor.
+// New creates a monitor. procRoot is "/proc"; diskPath "" = no disk check.
 func New(
-	in *Input,
+	procRoot string,
+	diskPath string,
 ) *monitor {
 	return &monitor{
-		proc:    in.ProcRoot,
-		disk:    in.DiskPath,
+		proc:    procRoot,
+		disk:    diskPath,
 		hot:     map[Metric]int{},
 		alerted: map[Metric]bool{},
 	}

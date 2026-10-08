@@ -2,7 +2,6 @@ package worker
 
 import (
 	"context"
-	"time"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
@@ -15,11 +14,4 @@ type Job interface {
 // Delivery sends what a run found (implemented by the value bot.New returns).
 type Delivery interface {
 	DeliverMaintenance(ctx context.Context, m *service.Maintenance)
-}
-
-// Input configures New.
-type Input struct {
-	Job      Job
-	Delivery Delivery
-	Every    time.Duration
 }

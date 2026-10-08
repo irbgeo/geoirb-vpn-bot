@@ -86,19 +86,17 @@ func main() {
 	// when running the bot on a laptop.
 	var load bot.ServerLoad
 	if runtime.GOOS == "linux" {
-		sysloadInput := sysload.Input{
-			ProcRoot: "/proc",
-			DiskPath: "/",
-		}
-		load = sysload.New(&sysloadInput)
+		load = sysload.New(
+			"/proc",
+			"/",
+		)
 	}
-	notifierDeps := bot.NotifierDeps{
-		Users:       svc,
-		Sender:      sender,
-		BackupStamp: cfg.BackupStamp,
-		Load:        load,
-	}
-	notifier := bot.NewNotifier(&notifierDeps)
+	notifier := bot.NewNotifier(
+		svc,
+		sender,
+		cfg.BackupStamp,
+		load,
+	)
 	lists := bypass.New()
 	deps := bot.Deps{
 		Users:    svc,
@@ -121,12 +119,11 @@ func main() {
 	}
 	router.Reconcile(ctx)
 
-	workerInput := worker.Input{
-		Job:      svc,
-		Delivery: notifier,
-		Every:    time.Minute,
-	}
-	w := worker.New(&workerInput)
+	w := worker.New(
+		svc,
+		notifier,
+		time.Minute,
+	)
 	workerDone := make(chan struct{})
 	go func() {
 		w.Run(ctx)

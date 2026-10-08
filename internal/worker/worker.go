@@ -28,12 +28,14 @@ type worker struct {
 
 // New creates a worker.
 func New(
-	in *Input,
+	job Job,
+	delivery Delivery,
+	every time.Duration,
 ) *worker {
 	return &worker{
-		job:           in.Job,
-		delivery:      in.Delivery,
-		every:         in.Every,
+		job:           job,
+		delivery:      delivery,
+		every:         every,
 		maintainLimit: maintainLimit,
 		deliverLimit:  deliverLimit,
 	}

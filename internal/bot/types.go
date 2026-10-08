@@ -240,14 +240,6 @@ type outFile struct {
 	Caption string
 }
 
-// NotifierDeps is everything NewNotifier needs.
-type NotifierDeps struct {
-	Users       Users
-	Sender      Sender
-	BackupStamp string     // file touched by each good backup; "" = no check
-	Load        ServerLoad // nil = no server load alerts
-}
-
 // Deps is everything New needs.
 type Deps struct {
 	Users    Users

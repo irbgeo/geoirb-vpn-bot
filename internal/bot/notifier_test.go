@@ -232,11 +232,10 @@ func TestWatchServerLoadChecksEveryMinute(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		load := &countLoad{}
 		n := NewNotifier(
-			&NotifierDeps{
-				Users:  &fakeService{},
-				Sender: &fakeSender{},
-				Load:   load,
-			},
+			&fakeService{},
+			&fakeSender{},
+			"",
+			load,
 		)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})

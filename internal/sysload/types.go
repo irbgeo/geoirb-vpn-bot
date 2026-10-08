@@ -19,12 +19,6 @@ type Alert struct {
 	Recovered bool // back under Limit - recoverGap
 }
 
-// Input configures a monitor.
-type Input struct {
-	ProcRoot string // "/proc"
-	DiskPath string // "" = no disk check
-}
-
 // limit is when a metric alerts: Percent or more for Checks checks in a row.
 type limit struct {
 	Metric  Metric

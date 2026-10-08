@@ -33,11 +33,9 @@ func (s *fakeJob) DeliverMaintenance(context.Context, *service.Maintenance) {
 func TestRunStartsAtOnceThenTicks(t *testing.T) {
 	job := &fakeJob{}
 	w := New(
-		&Input{
-			Job:      job,
-			Delivery: job,
-			Every:    10 * time.Millisecond,
-		},
+		job,
+		job,
+		10*time.Millisecond,
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Millisecond)
 	defer cancel()
@@ -53,11 +51,9 @@ func TestRunKeepsGoingAfterErrors(t *testing.T) {
 		fail: true,
 	}
 	w := New(
-		&Input{
-			Job:      job,
-			Delivery: job,
-			Every:    10 * time.Millisecond,
-		},
+		job,
+		job,
+		10*time.Millisecond,
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Millisecond)
 	defer cancel()
@@ -89,11 +85,9 @@ func TestRunFinishesTheCurrentRunOnShutdown(t *testing.T) {
 		started: make(chan struct{}),
 	}
 	w := New(
-		&Input{
-			Job:      job,
-			Delivery: job,
-			Every:    time.Hour,
-		},
+		job,
+		job,
+		time.Hour,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	finished := make(chan struct{})
@@ -122,11 +116,9 @@ func (s *deadlineJob) Maintain(ctx context.Context) (*service.Maintenance, error
 func TestRunHasATimeLimit(t *testing.T) {
 	job := &deadlineJob{}
 	w := New(
-		&Input{
-			Job:      job,
-			Delivery: job,
-			Every:    time.Hour,
-		},
+		job,
+		job,
+		time.Hour,
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -152,11 +144,9 @@ func (s *limitJob) DeliverMaintenance(ctx context.Context, _ *service.Maintenanc
 func TestDeliveryGetsItsOwnTimeLimit(t *testing.T) {
 	job := &limitJob{}
 	w := New(
-		&Input{
-			Job:      job,
-			Delivery: job,
-			Every:    time.Hour,
-		},
+		job,
+		job,
+		time.Hour,
 	)
 	w.maintainLimit = 20 * time.Millisecond
 

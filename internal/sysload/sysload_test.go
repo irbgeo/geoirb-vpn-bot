@@ -76,9 +76,8 @@ func (s *fakeProc) cpu(busy int) {
 
 func newMonitor(p *fakeProc) *monitor {
 	return New(
-		&Input{
-			ProcRoot: p.root,
-		},
+		p.root,
+		"",
 	)
 }
 
@@ -200,10 +199,8 @@ func TestCPUShortPeakDoesNotAlert(t *testing.T) {
 func TestDiskIsRead(t *testing.T) {
 	p := newFakeProc(t)
 	u, err := New(
-		&Input{
-			ProcRoot: p.root,
-			DiskPath: t.TempDir(),
-		},
+		p.root,
+		t.TempDir(),
 	).usage()
 	require.NoError(t, err)
 	require.Contains(t, u, Disk)

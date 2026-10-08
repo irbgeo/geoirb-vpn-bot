@@ -85,10 +85,10 @@ func onlineNotifier() (*fakeSender, func(n int)) {
 		},
 	}
 	n := NewNotifier(
-		&NotifierDeps{
-			Users:  svc,
-			Sender: s,
-		},
+		svc,
+		s,
+		"",
+		nil,
 	)
 	deliver := func(online int) {
 		m := maintenance()

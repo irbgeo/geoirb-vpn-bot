@@ -669,10 +669,10 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 		Feedback: svc,
 		Sender:   s,
 		Notifier: NewNotifier(
-			&NotifierDeps{
-				Users:  svc,
-				Sender: s,
-			},
+			svc,
+			s,
+			"",
+			nil,
 		),
 		Bypass: &fakeBypass{},
 		Config: &config.Config{
