@@ -18,17 +18,17 @@ const (
 //go:embed lists/*.json
 var lists embed.FS
 
-// Lists serves the built-in lists.
-type Lists struct{}
+// builtinLists serves the built-in lists.
+type builtinLists struct{}
 
-// New creates Lists.
-func New() Lists {
-	return Lists{}
+// New creates the built-in lists.
+func New() builtinLists {
+	return builtinLists{}
 }
 
 // Files returns the lists, the computer one first. ReadFile copies, so each
 // call gets its own bytes.
-func (s Lists) Files(context.Context) ([]File, error) {
+func (s builtinLists) Files(context.Context) ([]File, error) {
 	out := make([]File, 0, 2)
 	for _, name := range []string{
 		ComputerList,
@@ -38,13 +38,11 @@ func (s Lists) Files(context.Context) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(
-			out,
-			File{
-				Name: name,
-				Data: data,
-			},
-		)
+		file := File{
+			Name: name,
+			Data: data,
+		}
+		out = append(out, file)
 	}
 	return out, nil
 }

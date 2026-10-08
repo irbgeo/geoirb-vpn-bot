@@ -8,7 +8,7 @@ import (
 )
 
 // adminBroadcastAsk waits for the broadcast text.
-func (s *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
+func (s *router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
 	pendingInput := pendingInput{
 		ChatID: a.ChatID,
 		Kind:   pendingBroadcast,
@@ -25,7 +25,7 @@ func (s *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
 // adminMaintenance is one toggle button: it previews "maintenance
 // started", or "maintenance is over" while it is on. The state flips only
 // when the admin presses "send" (the usual broadcast confirm).
-func (s *Router) adminMaintenance(ctx context.Context, a adminAction) error {
+func (s *router) adminMaintenance(ctx context.Context, a adminAction) error {
 	p := pendingInput{
 		ChatID: a.ChatID,
 		Text:   maintenanceText,
@@ -40,7 +40,7 @@ func (s *Router) adminMaintenance(ctx context.Context, a adminAction) error {
 // adminBroadcastPreview shows the text and how many users get it, and
 // waits for "send" or "cancel". p is the admin chat, the text and what
 // sending does to the maintenance state.
-func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
+func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
 	ids, err := s.ops.BroadcastRecipients(ctx)
 	if err != nil {
 		errorReport := errorReport{
@@ -70,7 +70,7 @@ func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 // (pendingTTL) or a maintenance change someone already made is not sent.
 // When it can't start (another mass send runs, recipients fail) the
 // preview stays, so "send" can be pressed again.
-func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
+func (s *router) adminBroadcast(ctx context.Context, a adminAction) error {
 	dialogTake := dialogTake{
 		ChatID: a.ChatID,
 		Kind:   readyBroadcast,
@@ -127,7 +127,7 @@ func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 // runs m.Before and starts m.Deliver for each recipient. started is false
 // when it did not start: another mass send is running (the admin is told)
 // or a step failed (the error is reported in the admin chat and returned).
-func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, err error) {
+func (s *router) startMassSend(ctx context.Context, m massSend) (started bool, err error) {
 	if !s.jobs.reserve() {
 		outMessage := outMessage{
 			ChatID: m.AdminChat,
@@ -167,7 +167,7 @@ func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 // runBroadcast runs job.Deliver for each recipient with a pause, then
 // reports how many got it. On shutdown (ctx done) it stops and reports
 // what went out.
-func (s *Router) runBroadcast(ctx context.Context, job broadcastJob) {
+func (s *router) runBroadcast(ctx context.Context, job broadcastJob) {
 	res := broadcastResult{}
 send:
 	for i, id := range job.Recipients {

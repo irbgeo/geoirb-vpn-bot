@@ -74,7 +74,7 @@ func (s *fakeProc) cpu(busy int) {
 	})
 }
 
-func newMonitor(p *fakeProc) *Monitor {
+func newMonitor(p *fakeProc) *monitor {
 	return New(
 		&Input{
 			ProcRoot: p.root,

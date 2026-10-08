@@ -14,7 +14,7 @@ import (
 )
 
 // buyMenu shows the tariffs; "buyk:<key>" makes them extend that key.
-func (s *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	key := ""
 	if strings.HasPrefix(cq.Data, cbBuyKey) {
 		key = strings.TrimPrefix(cq.Data, cbBuyKey)
@@ -32,7 +32,7 @@ func (s *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 }
 
 // invoice sends a Stars invoice for "buy:<days>[:<key>]".
-func (s *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	daysText, key, _ := strings.Cut(strings.TrimPrefix(cq.Data, cbTariff), ":")
 	days, err := strconv.Atoi(daysText)
 	if err != nil {
@@ -67,7 +67,7 @@ func (s *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 
 // preCheckout accepts the payment only if the purchase still holds;
 // otherwise Telegram charges nothing. Must answer within 10 seconds.
-func (s *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) error {
+func (s *router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) error {
 	paymentInput := service.PaymentInput{
 		PayerID: q.From.ID,
 		Payload: q.InvoicePayload,
@@ -87,7 +87,7 @@ func (s *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) err
 
 // paid applies a successful payment. If it can't be applied, the Stars
 // go back: a user is never charged for nothing.
-func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
+func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 	sp := m.SuccessfulPayment
 	paymentInput := service.PaymentInput{
 		ChargeID: sp.TelegramPaymentChargeID,
@@ -152,7 +152,7 @@ func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
 // the user and the admins, and returns the cause for the log. It runs on
 // a context that can't be cancelled: Telegram won't deliver the payment
 // again, so a refund skipped at shutdown would be lost.
-func (s *Router) refund(ctx context.Context, f failedPayment) error {
+func (s *router) refund(ctx context.Context, f failedPayment) error {
 	ctx = context.WithoutCancel(ctx)
 	m := f.Message
 	a := refundAlert{

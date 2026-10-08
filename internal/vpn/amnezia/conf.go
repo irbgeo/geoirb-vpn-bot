@@ -56,7 +56,8 @@ func ParseServerConf(text string) (*serverConf, error) {
 			section = "interface"
 		case strings.EqualFold(line, "[Peer]"):
 			section = "peer"
-			c.Peers = append(c.Peers, peer{})
+			var p peer
+			c.Peers = append(c.Peers, p)
 		case line == "":
 		case section == "interface":
 			c.Interface = append(c.Interface, line)

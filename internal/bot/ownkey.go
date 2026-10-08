@@ -12,7 +12,7 @@ import (
 
 // askOwnKeyAction confirms "reissue" or "delete" for one of the user's
 // keys, saying what it means for that key.
-func (s *Router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	reissue := strings.HasPrefix(cq.Data, cbReissueAsk)
 	pub := strings.TrimPrefix(strings.TrimPrefix(cq.Data, cbReissueAsk), cbDeleteAsk)
 	keys, err := s.keys.Access(ctx, cq.SenderID())
@@ -37,7 +37,7 @@ func (s *Router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) e
 }
 
 // reissueKey gives the key new secrets and sends its new config.
-func (s *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	userKey := service.UserKey{
 		UserID:    cq.SenderID(),
 		PublicKey: strings.TrimPrefix(cq.Data, cbReissue),
@@ -79,7 +79,7 @@ func (s *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error 
 }
 
 // deleteOwnKey deletes one of the user's keys for good.
-func (s *Router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	userKey := service.UserKey{
 		UserID:    cq.SenderID(),
 		PublicKey: strings.TrimPrefix(cq.Data, cbDelete),
@@ -102,7 +102,7 @@ func (s *Router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) erro
 
 // ownKeyFailed explains a failed reissue or delete; a key that is gone (a
 // second press, another user's key) is not an error.
-func (s *Router) ownKeyFailed(ctx context.Context, in ownKeyFailedInput) error {
+func (s *router) ownKeyFailed(ctx context.Context, in ownKeyFailedInput) error {
 	text, known := keyNotFoundText, errors.Is(in.Err, service.ErrNotFound)
 	if !known {
 		text = ownKeyFailedText

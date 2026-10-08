@@ -624,7 +624,7 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:bcok")))
 	r.Wait()
-	require.Contains(t, strings.ToLower(sentTo(s, 7)[0].Text), "технические работы")
+	require.Contains(t, strings.ToLower(s.sentTo(7)[0].Text), "технические работы")
 	require.Equal(t, "✅ Закончить техработы", menuButton().Text)
 
 	// end: same button, the "over" text
@@ -632,7 +632,7 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 	require.Contains(t, strings.ToLower(s.sent[len(s.sent)-1].Text), "работы закончены")
 	require.NoError(t, r.Handle(ctx, press("a:bcok")))
 	r.Wait()
-	require.Contains(t, strings.ToLower(sentTo(s, 7)[1].Text), "работы закончены")
+	require.Contains(t, strings.ToLower(s.sentTo(7)[1].Text), "работы закончены")
 	require.Equal(t, "🛠 Техработы", menuButton().Text)
 }
 
@@ -649,7 +649,7 @@ func TestMaintenanceCancelKeepsTheState(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press("a:bcok")))
 	r.Wait()
 	require.False(t, r.maint.on())
-	require.Empty(t, sentTo(s, 7))
+	require.Empty(t, s.sentTo(7))
 }
 
 func TestMaintenanceStateSurvivesARestart(t *testing.T) {
@@ -691,7 +691,7 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 }
 
 // sentTo returns the messages sent to one chat.
-func sentTo(s *fakeSender, chatID int64) []outMessage {
+func (s *fakeSender) sentTo(chatID int64) []outMessage {
 	var out []outMessage
 	for _, m := range s.sent {
 		if m.ChatID == chatID {
@@ -766,7 +766,7 @@ func TestAdminRefundTellsWhenTheRecordFailed(t *testing.T) {
 
 	require.Len(t, s.refunds, 1)
 	var told bool
-	for _, m := range sentTo(s, 42) {
+	for _, m := range s.sentTo(42) {
 		told = told || strings.Contains(m.Text, "не записан")
 	}
 	require.True(t, told, "the admin knows the Stars went back but the record did not change")

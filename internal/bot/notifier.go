@@ -27,9 +27,9 @@ const (
 	onlineDropRatio   = 4
 )
 
-// Notifier sends what the bot says unasked: key notices to owners and
+// notifier sends what the bot says unasked: key notices to owners and
 // alerts to admins (payments, subnet, backups, server load).
-type Notifier struct {
+type notifier struct {
 	users       Users
 	send        Sender
 	load        ServerLoad
@@ -41,11 +41,11 @@ type Notifier struct {
 	online        onlineWatch
 }
 
-// NewNotifier creates a Notifier.
+// NewNotifier creates a notifier.
 func NewNotifier(
 	d *NotifierDeps,
-) *Notifier {
-	return &Notifier{
+) *notifier {
+	return &notifier{
 		users:       d.Users,
 		send:        d.Sender,
 		load:        d.Load,
@@ -56,7 +56,7 @@ func NewNotifier(
 // DeliverMaintenance tells owners that their key ended or ends soon (with
 // an "extend" button) and the admins about keys without Telegram, a nearly
 // full subnet, an old backup and clients suddenly dropping off.
-func (s *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenance) {
+func (s *notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenance) {
 	for _, g := range []noticeGroup{
 		{
 			Peers:   m.MadeForever,
@@ -91,7 +91,7 @@ func (s *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 }
 
 // WatchServerLoad runs CheckServerLoad every minute until ctx is done.
-func (s *Notifier) WatchServerLoad(ctx context.Context) {
+func (s *notifier) WatchServerLoad(ctx context.Context) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {
@@ -107,7 +107,7 @@ func (s *Notifier) WatchServerLoad(ctx context.Context) {
 // CheckServerLoad tells admins when a server limit (connection table,
 // memory, disk, CPU) is passed or back to normal. It runs on its own
 // timer, not with maintenance: a server out of memory can fail that one.
-func (s *Notifier) CheckServerLoad(ctx context.Context) {
+func (s *notifier) CheckServerLoad(ctx context.Context) {
 	if s.load == nil {
 		return
 	}
@@ -122,7 +122,7 @@ func (s *Notifier) CheckServerLoad(ctx context.Context) {
 
 // NotifyAdmins sends text to every admin. A failed send (e.g. an admin who
 // blocked the bot) is logged and the rest still get it.
-func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {
+func (s *notifier) NotifyAdmins(ctx context.Context, text string) {
 	admins, err := s.users.Admins(ctx)
 	if err != nil {
 		log.Printf("bot: list admins: %v", err)
@@ -146,7 +146,7 @@ func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {
 
 // sendKeyNotice sends kn to the key's owner. A failed send (e.g. the user
 // blocked the bot) and a key without an owner are logged.
-func (s *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
+func (s *notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 	if kn.Peer.UserID == 0 {
 		log.Printf("bot: key %s has no owner, notice not sent: %s", kn.Peer.IP, kn.Text)
 		return
@@ -166,7 +166,7 @@ func (s *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 
 // subnetAlert warns admins once when the subnet passes subnetAlertPercent,
 // and again only after it has dropped below and risen once more.
-func (s *Notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
+func (s *notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
 	if m.SubnetTotal == 0 {
 		return // unknown this run: keep the alert state as it is
 	}
@@ -178,7 +178,7 @@ func (s *Notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
 
 // backupAlert warns admins once when the last good backup is older than
 // backupMaxAge (or never happened), and again only after a fresh one.
-func (s *Notifier) backupAlert(ctx context.Context) {
+func (s *notifier) backupAlert(ctx context.Context) {
 	if s.backupStamp == "" {
 		return
 	}
@@ -195,7 +195,7 @@ func (s *Notifier) backupAlert(ctx context.Context) {
 
 // onlineDropAlert warns admins once when the clients online fall far below
 // the peak of the last hour, and again only after they came back.
-func (s *Notifier) onlineDropAlert(ctx context.Context, m *service.Maintenance) {
+func (s *notifier) onlineDropAlert(ctx context.Context, m *service.Maintenance) {
 	if m.Online < 0 {
 		return // unknown this run: keep the state as it is
 	}

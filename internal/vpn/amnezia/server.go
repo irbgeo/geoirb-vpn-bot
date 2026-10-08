@@ -20,8 +20,8 @@ type Runner interface {
 	Exec(ctx context.Context, in execInput) (string, error)
 }
 
-// Server manages the AmneziaWG interface inside the container.
-type Server struct {
+// server manages the AmneziaWG interface inside the container.
+type server struct {
 	run      Runner
 	confPath string // /opt/amnezia/awg/awg0.conf (or wg0.conf)
 	iface    string // awg0 (or wg0)
@@ -35,7 +35,7 @@ type Server struct {
 func Open(
 	ctx context.Context,
 	run Runner,
-) (*Server, error) {
+) (*server, error) {
 	files, err := run.Exec(ctx, cmd("ls", confDir))
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func Open(
 		return nil, fmt.Errorf("amnezia: neither awg nor wg found: %w", err)
 	}
 
-	return &Server{
+	return &server{
 		run:      run,
 		confPath: path.Join(confDir, conf),
 		iface:    strings.TrimSuffix(conf, ".conf"),
@@ -68,7 +68,7 @@ func Open(
 }
 
 // GenKeys generates a client private key, its public key and a preshared key.
-func (s *Server) GenKeys(ctx context.Context) (keys, error) {
+func (s *server) GenKeys(ctx context.Context) (keys, error) {
 	priv, err := s.exec(ctx, cmd(s.tool, "genkey"))
 	if err != nil {
 		return keys{}, err
@@ -91,12 +91,12 @@ func (s *Server) GenKeys(ctx context.Context) (keys, error) {
 }
 
 // ServerPublicKey returns the interface public key for client configs.
-func (s *Server) ServerPublicKey(ctx context.Context) (string, error) {
+func (s *server) ServerPublicKey(ctx context.Context) (string, error) {
 	return s.exec(ctx, cmd(s.tool, "show", s.iface, "public-key"))
 }
 
 // ReadConf returns the current server config.
-func (s *Server) ReadConf(ctx context.Context) (*serverConf, error) {
+func (s *server) ReadConf(ctx context.Context) (*serverConf, error) {
 	text, err := s.run.Exec(ctx, cmd("cat", s.confPath))
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *Server) ReadConf(ctx context.Context) (*serverConf, error) {
 // live interface without a restart, then saves it to disk.
 // If fn fails nothing is written. If the live apply fails the file is not
 // touched, so disk and interface stay in sync.
-func (s *Server) Update(ctx context.Context, fn func(*serverConf) error) error {
+func (s *server) Update(ctx context.Context, fn func(*serverConf) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -148,7 +148,7 @@ func (s *Server) Update(ctx context.Context, fn func(*serverConf) error) error {
 }
 
 // Stats returns live handshake and traffic data for every peer.
-func (s *Server) Stats(ctx context.Context) ([]peerStat, error) {
+func (s *server) Stats(ctx context.Context) ([]peerStat, error) {
 	out, err := s.run.Exec(ctx, cmd(s.tool, "show", s.iface, "dump"))
 	if err != nil {
 		return nil, err
@@ -162,7 +162,7 @@ func cmd(args ...string) execInput {
 	}
 }
 
-func (s *Server) exec(ctx context.Context, in execInput) (string, error) {
+func (s *server) exec(ctx context.Context, in execInput) (string, error) {
 	out, err := s.run.Exec(ctx, in)
 	return strings.TrimSpace(out), err
 }
@@ -174,7 +174,7 @@ func sha256Hex(s string) string {
 
 // syncLive applies the stripped config with `awg syncconf`: it adds and
 // removes only the changed peers, other clients stay connected.
-func (s *Server) syncLive(ctx context.Context, l liveSync) error {
+func (s *server) syncLive(ctx context.Context, l liveSync) error {
 	script := fmt.Sprintf(
 		`set -e; f=%q; %s t=$(mktemp); trap 'rm -f "$t"' EXIT; cat > "$t"; %s syncconf %s "$t"`,
 		s.confPath,
@@ -190,7 +190,7 @@ func (s *Server) syncLive(ctx context.Context, l liveSync) error {
 
 // persist saves a file: backup to .bak, write .tmp with the same owner
 // and mode as the original, then an atomic mv.
-func (s *Server) persist(ctx context.Context, in persistInput) error {
+func (s *server) persist(ctx context.Context, in persistInput) error {
 	script := fmt.Sprintf(
 		`set -e; f=%q; %s cp -p "$f" "$f.bak"; cat > "$f.tmp"; `+
 			`chown "$(stat -c %%u:%%g "$f")" "$f.tmp"; chmod "$(stat -c %%a "$f")" "$f.tmp"; mv "$f.tmp" "$f"`,

@@ -16,9 +16,9 @@ import (
 // limit, so a value going up and down around it doesn't alert every minute.
 const recoverGap = 10
 
-// Monitor keeps what it needs between checks: the last CPU counters and
+// monitor keeps what it needs between checks: the last CPU counters and
 // which metrics are high. Not safe for concurrent use (one worker calls it).
-type Monitor struct {
+type monitor struct {
 	proc    string
 	disk    string
 	prevCPU *cpuTimes
@@ -26,11 +26,11 @@ type Monitor struct {
 	alerted map[Metric]bool
 }
 
-// New creates a Monitor.
+// New creates a monitor.
 func New(
 	in *Input,
-) *Monitor {
-	return &Monitor{
+) *monitor {
+	return &monitor{
 		proc:    in.ProcRoot,
 		disk:    in.DiskPath,
 		hot:     map[Metric]int{},
@@ -42,7 +42,7 @@ func New(
 // limit or just came back to normal. A metric that can't be read is
 // skipped (its state kept) and reported in the error; the others still
 // work.
-func (s *Monitor) Check() ([]Alert, error) {
+func (s *monitor) Check() ([]Alert, error) {
 	u, err := s.usage()
 	var out []Alert
 	for _, l := range limits() {
@@ -74,7 +74,7 @@ func (s *Monitor) Check() ([]Alert, error) {
 }
 
 // usage reads every metric it can, in percent.
-func (s *Monitor) usage() (map[Metric]int, error) {
+func (s *monitor) usage() (map[Metric]int, error) {
 	u := map[Metric]int{}
 	var errs []error
 	p, err := s.conntrack()
@@ -106,7 +106,7 @@ func (s *Monitor) usage() (map[Metric]int, error) {
 	return u, errors.Join(errs...)
 }
 
-func (s *Monitor) conntrack() (int, error) {
+func (s *monitor) conntrack() (int, error) {
 	count, err := s.readInt("sys/net/netfilter/nf_conntrack_count")
 	if err != nil {
 		return 0, err
@@ -121,7 +121,7 @@ func (s *Monitor) conntrack() (int, error) {
 	}.percent(), nil
 }
 
-func (s *Monitor) readInt(name string) (uint64, error) {
+func (s *monitor) readInt(name string) (uint64, error) {
 	b, err := os.ReadFile(filepath.Join(s.proc, name))
 	if err != nil {
 		return 0, fmt.Errorf("sysload: %w", err)
@@ -133,7 +133,7 @@ func (s *Monitor) readInt(name string) (uint64, error) {
 	return n, nil
 }
 
-func (s *Monitor) memory() (int, error) {
+func (s *monitor) memory() (int, error) {
 	b, err := os.ReadFile(filepath.Join(s.proc, "meminfo"))
 	if err != nil {
 		return 0, fmt.Errorf("sysload: %w", err)
@@ -177,7 +177,7 @@ func diskUsed(path string) (int, error) {
 }
 
 // cpu is the busy share since the last call; ok is false on the first call.
-func (s *Monitor) cpu() (p int, ok bool, err error) {
+func (s *monitor) cpu() (p int, ok bool, err error) {
 	now, err := s.cpuTimes()
 	if err != nil {
 		return 0, false, err
@@ -196,7 +196,7 @@ func (s *Monitor) cpu() (p int, ok bool, err error) {
 // cpuTimes reads the first line of /proc/stat: "cpu user nice system idle
 // iowait irq softirq steal guest guest_nice". Guest time is already inside
 // user and nice, so it is not added again.
-func (s *Monitor) cpuTimes() (cpuTimes, error) {
+func (s *monitor) cpuTimes() (cpuTimes, error) {
 	b, err := os.ReadFile(filepath.Join(s.proc, "stat"))
 	if err != nil {
 		return cpuTimes{}, fmt.Errorf("sysload: %w", err)

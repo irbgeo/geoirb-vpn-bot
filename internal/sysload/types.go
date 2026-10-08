@@ -19,7 +19,7 @@ type Alert struct {
 	Recovered bool // back under Limit - recoverGap
 }
 
-// Input configures a Monitor.
+// Input configures a monitor.
 type Input struct {
 	ProcRoot string // "/proc"
 	DiskPath string // "" = no disk check

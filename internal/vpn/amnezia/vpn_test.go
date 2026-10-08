@@ -30,7 +30,7 @@ type box struct {
 	confErr     error
 	confWritten bool
 	dump        string
-	vpn         *VPN
+	vpn         *vpn
 }
 
 func newBox(t *testing.T) *box {

@@ -14,7 +14,7 @@ const creationDateLayout = "Mon Jan 2 15:04:05 2006"
 
 // SetClient adds a client to clientsTable, or renames it if present
 // (creation date and app-written stats are kept).
-func (s *Server) SetClient(ctx context.Context, e clientEntry) error {
+func (s *server) SetClient(ctx context.Context, e clientEntry) error {
 	return s.updateTable(ctx, func(list []tableEntry) ([]tableEntry, bool) {
 		for i := range list {
 			if list[i].ClientID == e.PublicKey {
@@ -36,7 +36,7 @@ func (s *Server) SetClient(ctx context.Context, e clientEntry) error {
 }
 
 // RemoveClient deletes a client from clientsTable; unknown keys are a no-op.
-func (s *Server) RemoveClient(ctx context.Context, publicKey string) error {
+func (s *server) RemoveClient(ctx context.Context, publicKey string) error {
 	return s.updateTable(ctx, func(list []tableEntry) ([]tableEntry, bool) {
 		for i := range list {
 			if list[i].ClientID == publicKey {
@@ -49,7 +49,7 @@ func (s *Server) RemoveClient(ctx context.Context, publicKey string) error {
 
 // updateTable reads clientsTable, applies fn and saves the result when fn
 // reports a change.
-func (s *Server) updateTable(ctx context.Context, fn func([]tableEntry) ([]tableEntry, bool)) error {
+func (s *server) updateTable(ctx context.Context, fn func([]tableEntry) ([]tableEntry, bool)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

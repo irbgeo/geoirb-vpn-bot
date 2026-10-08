@@ -257,7 +257,7 @@ type Deps struct {
 	Feedback Feedback
 	Sender   Sender
 	Bypass   Bypass
-	Notifier *Notifier
+	Notifier *notifier
 	// Config gives SupportContact (e.g. "@geoirb") and MaintenanceFlag (a
 	// file that exists while maintenance is on, so the state survives a
 	// restart; "" = kept in memory only).

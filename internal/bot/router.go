@@ -16,7 +16,7 @@ import (
 )
 
 // The bot's needs from the business logic, split by topic so each handler
-// depends only on what it uses. *service.Service implements them all.
+// depends only on what it uses. The value service.New returns implements them all.
 
 // Users is who uses the bot.
 type Users interface {
@@ -70,7 +70,7 @@ type Feedback interface {
 }
 
 // ServerLoad says which server limits were just passed or are back to
-// normal (sysload.Monitor).
+// normal (the sysload monitor).
 type ServerLoad interface {
 	Check() ([]sysload.Alert, error)
 }
@@ -101,16 +101,16 @@ const (
 	cbDelete     = "kd:"   // + public key: delete it
 )
 
-// Router turns Telegram updates into service calls and replies. Its own
+// router turns Telegram updates into service calls and replies. Its own
 // state is kept in small types with their own locks (state.go).
-type Router struct {
+type router struct {
 	users    Users
 	keys     Keys
 	billing  Billing
 	ops      Ops
 	feedback Feedback
 	send     Sender
-	notify   *Notifier
+	notify   *notifier
 	bypass   Bypass
 	support  string // support contact
 
@@ -126,15 +126,15 @@ type Router struct {
 	pause time.Duration
 }
 
-// New creates a Router.
+// New creates a router.
 func New(
 	d *Deps,
-) *Router {
+) *router {
 	dialogs := newDialogs()
 	jobs := newJobs()
 	maint := newMaintFlag(d.Config.MaintenanceFlag)
 	refunds := newInFlight()
-	return &Router{
+	return &router{
 		users:    d.Users,
 		keys:     d.Keys,
 		billing:  d.Billing,
@@ -153,7 +153,7 @@ func New(
 }
 
 // Handle processes one update. Updates it doesn't know are ignored.
-func (s *Router) Handle(ctx context.Context, upd tgbot.Update) error {
+func (s *router) Handle(ctx context.Context, upd tgbot.Update) error {
 	if upd.PreCheckoutQuery != nil {
 		return s.preCheckout(ctx, upd.PreCheckoutQuery)
 	}
@@ -200,19 +200,19 @@ func (s *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 
 // Close stops background work (a running broadcast stops and sends its
 // report) and waits for it. Call it on shutdown, after the updates stopped.
-func (s *Router) Close() {
+func (s *router) Close() {
 	s.jobs.close()
 }
 
 // Wait blocks until background work is done.
-func (s *Router) Wait() {
+func (s *router) Wait() {
 	s.jobs.wait()
 }
 
 // Reconcile runs at startup: payments left half-done by a stop, then the
 // DB against the server. Problems are logged and sent to admins; nothing
 // is changed.
-func (s *Router) Reconcile(ctx context.Context) {
+func (s *router) Reconcile(ctx context.Context) {
 	ps, err := s.billing.UnfinishedPayments(ctx)
 	if err != nil {
 		log.Printf("reconcile: unfinished payments: %v", err)
@@ -243,7 +243,7 @@ func private(m *tgbot.Message) bool {
 	return m != nil && m.Chat.Type == "private"
 }
 
-func (s *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	err := s.send.Answer(ctx, cq.ID)
 	if err != nil {
 		log.Printf("bot: answer callback: %v", err)
@@ -302,7 +302,7 @@ func (s *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 // backToMenu is the "◀️ Меню" button: it turns the same message back into
 // the main menu, so the chat does not fill up with menus. If Telegram does
 // not let the bot edit it (e.g. too old), the menu comes as a new message.
-func (s *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	s.dialogs.drop(cq.ChatID())
 	menu, err := s.mainMenu(ctx, &cq.From)
 	if err != nil {
@@ -329,7 +329,7 @@ func (s *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error 
 
 // mainMenu registers the user (or refreshes the username) and builds the
 // menu for their role.
-func (s *Router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, error) {
+func (s *router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, error) {
 	registerInput := service.RegisterInput{
 		ID:       from.ID,
 		Username: from.Username,
@@ -351,7 +351,7 @@ func (s *Router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, e
 // keyStepApps is step 1 of getting a key: which app to install, with
 // store links and "next". It first checks that a key can be given, so no
 // one installs an app to learn their trial is used up.
-func (s *Router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	err := s.keys.CheckCreateKey(ctx, cq.SenderID())
 	if err != nil {
 		text, known := createKeyErrorText(err)
@@ -388,7 +388,7 @@ func createKeyErrorText(err error) (text string, known bool) {
 // replyError tells the user what went wrong. An expected error (Known)
 // ends there; an unexpected one is also returned, for the log. A failed
 // send is logged.
-func (s *Router) replyError(ctx context.Context, e userError) error {
+func (s *router) replyError(ctx context.Context, e userError) error {
 	outMessage := outMessage{
 		ChatID: e.ChatID,
 		Text:   e.Text,
@@ -404,7 +404,7 @@ func (s *Router) replyError(ctx context.Context, e userError) error {
 }
 
 // askKeyName is step 2: it waits for the key's name, with a "skip" button.
-func (s *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	pendingInput := pendingInput{
 		ChatID: cq.ChatID(),
 		UserID: cq.SenderID(),
@@ -422,7 +422,7 @@ func (s *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error 
 // issueKey creates the user's key and sends it with the import steps.
 // ErrBadKeyName is returned as is (the caller asks again); other known
 // errors are explained to the user.
-func (s *Router) issueKey(ctx context.Context, k keyRequest) error {
+func (s *router) issueKey(ctx context.Context, k keyRequest) error {
 	createKeyInput := service.CreateKeyInput{
 		UserID: k.UserID,
 		Name:   k.Name,
@@ -464,7 +464,7 @@ func (s *Router) issueKey(ctx context.Context, k keyRequest) error {
 
 // deliverKey sends a new key (step 2): config, QR code and how to add it
 // to the app, with "next" to the split-tunneling step.
-func (s *Router) deliverKey(ctx context.Context, d keyDelivery) error {
+func (s *router) deliverKey(ctx context.Context, d keyDelivery) error {
 	conf, err := s.keys.ClientConfig(ctx, d.Peer.PublicKey)
 	if err != nil {
 		return err
@@ -490,7 +490,7 @@ func (s *Router) deliverKey(ctx context.Context, d keyDelivery) error {
 
 // sendConfig sends the .conf file and its QR code. A config too long for a
 // QR code only gets a note: the file alone is enough.
-func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
+func (s *router) sendConfig(ctx context.Context, d configDelivery) error {
 	confFile := outFile{
 		ChatID:  d.ChatID,
 		Name:    configFileName(d.Key.Peer),
@@ -510,7 +510,7 @@ func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
 
 // sendQR sends the config (in.Data) as a QR code, or a note when it
 // doesn't fit into one.
-func (s *Router) sendQR(ctx context.Context, in outFile) error {
+func (s *router) sendQR(ctx context.Context, in outFile) error {
 	png, err := qrcode.Encode(string(in.Data), qrcode.Low, 768)
 	if err != nil {
 		outMessage := outMessage{
@@ -530,7 +530,7 @@ func (s *Router) sendQR(ctx context.Context, in outFile) error {
 
 // myAccess lists the user's keys with status, end date, last connection
 // and traffic, with a "config again" button per key.
-func (s *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	keys, err := s.keys.Access(ctx, cq.SenderID())
 	if err != nil {
 		return err
@@ -562,7 +562,7 @@ func (s *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
 // sendBypass is the split-tunneling step: how to set it up in AmneziaVPN,
 // then the lists of Russian sites/networks that must not use the VPN. If
 // the lists can't be downloaded the user gets a note instead.
-func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
+func (s *router) sendBypass(ctx context.Context, chatID int64) error {
 	files, err := s.bypass.Files(ctx)
 	if err != nil {
 		log.Printf("bot: bypass lists: %v", err)
@@ -598,7 +598,7 @@ func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
 
 // commandText answers /terms, /support, /paysupport (Telegram requires the
 // first and the last for bots that take Stars) and any unknown command.
-func (s *Router) commandText(c command) string {
+func (s *router) commandText(c command) string {
 	switch c.Name {
 	case cbTerms:
 		return termsText(s.support)
@@ -615,7 +615,7 @@ func (s *Router) commandText(c command) string {
 }
 
 // configAgain resends one of the user's own keys.
-func (s *Router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	userKey := service.UserKey{
 		UserID:    cq.SenderID(),
 		PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
@@ -651,7 +651,7 @@ func configErrorText(err error) (text string, known bool) {
 
 // start registers the user (first /start adds them to the bot) and sends
 // the main menu. /start and /menu are a way out of any prompt.
-func (s *Router) start(ctx context.Context, m *tgbot.Message) error {
+func (s *router) start(ctx context.Context, m *tgbot.Message) error {
 	s.dialogs.drop(m.Chat.ID)
 	menu, err := s.mainMenu(ctx, m.From)
 	if err != nil {
@@ -668,7 +668,7 @@ func (s *Router) start(ctx context.Context, m *tgbot.Message) error {
 // keyNamed creates the key with the name the user sent. A bad name asks
 // again and keeps waiting; anything else ends the question. Only the user
 // who asked answers.
-func (s *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
+func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 	p, _ := s.dialogs.peek(m.Chat.ID)
 	if p.UserID != m.From.ID {
 		return nil

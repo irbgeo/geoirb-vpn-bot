@@ -20,19 +20,19 @@ var containerNames = []string{
 	"amnezia-awg",
 }
 
-// DockerRunner runs commands inside a container with `docker exec`.
-type DockerRunner struct {
+// dockerRunner runs commands inside a container with `docker exec`.
+type dockerRunner struct {
 	Bin       string // docker binary, "docker" by default
 	Container string
 	Timeout   time.Duration
 }
 
-// NewDockerRunner creates a DockerRunner for the Amnezia container: the
+// NewDockerRunner creates a dockerRunner for the Amnezia container: the
 // one in AWG_CONTAINER, or the one found by DetectContainer.
 func NewDockerRunner(
 	ctx context.Context,
 	cfg *config.Config,
-) (*DockerRunner, error) {
+) (*dockerRunner, error) {
 	name := cfg.AWGContainer
 	if name == "" {
 		var err error
@@ -42,7 +42,7 @@ func NewDockerRunner(
 		}
 	}
 	log.Printf("vpn: container %s", name)
-	return &DockerRunner{
+	return &dockerRunner{
 		Bin:       cfg.DockerBin,
 		Container: name,
 		Timeout:   cfg.DockerTimeout,
@@ -69,7 +69,7 @@ func DetectContainer(ctx context.Context, bin string) (string, error) {
 
 // Exec runs one command in the container and returns its stdout.
 // Errors carry the command and stderr, never stdin (it may hold secrets).
-func (s *DockerRunner) Exec(ctx context.Context, in execInput) (string, error) {
+func (s *dockerRunner) Exec(ctx context.Context, in execInput) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 
@@ -99,7 +99,7 @@ func (s *DockerRunner) Exec(ctx context.Context, in execInput) (string, error) {
 	return stdout.String(), nil
 }
 
-func (s *DockerRunner) bin() string {
+func (s *dockerRunner) bin() string {
 	if s.Bin == "" {
 		return "docker"
 	}

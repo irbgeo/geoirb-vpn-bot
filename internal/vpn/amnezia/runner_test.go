@@ -21,7 +21,7 @@ func fakeDocker(t *testing.T, script string) string {
 }
 
 func TestDockerRunnerExec(t *testing.T) {
-	r := &DockerRunner{
+	r := &dockerRunner{
 		Bin:       fakeDocker(t, `echo "$@"; cat`),
 		Container: "amnezia-awg2",
 		Timeout:   5 * time.Second,
@@ -39,7 +39,7 @@ func TestDockerRunnerExec(t *testing.T) {
 }
 
 func TestDockerRunnerErrorHasStderrNotStdin(t *testing.T) {
-	r := &DockerRunner{
+	r := &dockerRunner{
 		Bin:       fakeDocker(t, `echo "no such container" >&2; exit 1`),
 		Container: "x",
 		Timeout:   5 * time.Second,
@@ -58,14 +58,19 @@ func TestDockerRunnerErrorHasStderrNotStdin(t *testing.T) {
 }
 
 func TestDockerRunnerTimeout(t *testing.T) {
-	r := &DockerRunner{
+	r := &dockerRunner{
 		Bin:       fakeDocker(t, `exec sleep 5`),
 		Container: "x",
 		Timeout:   100 * time.Millisecond,
 	}
 
 	start := time.Now()
-	_, err := r.Exec(context.Background(), execInput{Args: []string{"true"}})
+	_, err := r.Exec(
+		context.Background(),
+		execInput{
+			Args: []string{"true"},
+		},
+	)
 	require.ErrorContains(t, err, "timed out")
 	require.Less(t, time.Since(start), 3*time.Second)
 }

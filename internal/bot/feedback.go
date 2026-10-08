@@ -12,7 +12,7 @@ import (
 
 // askFeedback waits for one message with a review or suggestion; the
 // "◀️ Меню" button cancels.
-func (s *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	pendingInput := pendingInput{
 		ChatID: cq.ChatID(),
 		UserID: cq.SenderID(),
@@ -30,7 +30,7 @@ func (s *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error
 // feedbackText saves the text the user sent after "Отзывы и предложения".
 // A message without text or a bad text asks again; anything else ends the
 // question. Only the user who asked answers.
-func (s *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
+func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 	p, _ := s.dialogs.peek(m.Chat.ID)
 	if p.UserID != m.From.ID {
 		return nil

@@ -357,7 +357,7 @@ func (s *fakeBypass) Files(context.Context) ([]bypass.File, error) {
 	}, nil
 }
 
-func newRouter(svc *fakeService) (*Router, *fakeSender) {
+func newRouter(svc *fakeService) (*router, *fakeSender) {
 	s := &fakeSender{
 		fail: map[int64]bool{},
 	}

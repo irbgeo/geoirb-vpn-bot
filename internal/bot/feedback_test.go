@@ -101,7 +101,7 @@ func TestNewFeedbackIsSentToAdmins(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press(cbFeedback)))
 	require.NoError(t, r.Handle(ctx, startUpdate("Добавьте тариф на неделю")))
 
-	alerts := sentTo(s, 1)
+	alerts := s.sentTo(1)
 	require.Len(t, alerts, 1)
 	require.Contains(t, alerts[0].Text, "@alice")
 	require.Contains(t, alerts[0].Text, "Добавьте тариф на неделю")

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// The Router's own state lives in these small types, each with its own
+// The router's own state lives in these small types, each with its own
 // lock, so one feature can't hold up another and each is easy to read.
 
 // dialogs remembers, per chat, what the bot waits for: a broadcast text, a

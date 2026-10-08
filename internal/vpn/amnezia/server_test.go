@@ -97,7 +97,7 @@ func TestGenKeys(t *testing.T) {
 		}
 		return "", errors.New("unexpected")
 	}}
-	s := &Server{
+	s := &server{
 		run:  r,
 		tool: "awg",
 	}
@@ -191,7 +191,7 @@ func TestStats(t *testing.T) {
 		require.Equal(t, []string{"awg", "show", "awg0", "dump"}, in.Args)
 		return dump, nil
 	}}
-	s := &Server{
+	s := &server{
 		run:   r,
 		tool:  "awg",
 		iface: "awg0",
@@ -224,7 +224,7 @@ func TestServerPublicKey(t *testing.T) {
 		require.Equal(t, []string{"awg", "show", "awg0", "public-key"}, in.Args)
 		return "SERVERPUB=\n", nil
 	}}
-	s := &Server{
+	s := &server{
 		run:   r,
 		tool:  "awg",
 		iface: "awg0",
