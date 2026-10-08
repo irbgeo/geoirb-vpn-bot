@@ -59,7 +59,8 @@ func (s *paymentRepo) MarkApplied(ctx context.Context, m service.PaymentMark) er
 // MarkRefunded records the refund time, touching nothing else. A charge
 // with no record (refused before it was saved) is not an error.
 func (s *paymentRepo) MarkRefunded(ctx context.Context, m service.PaymentMark) error {
-	if _, err := s.coll.UpdateOne(ctx, byID(m.ChargeID), markRefunded(m.At)); err != nil {
+	_, err := s.coll.UpdateOne(ctx, byID(m.ChargeID), markRefunded(m.At))
+	if err != nil {
 		return fmt.Errorf("store: mark payment refunded: %w", err)
 	}
 	return nil
@@ -75,13 +76,23 @@ func (s *paymentRepo) Since(ctx context.Context, t time.Time) ([]*service.Paymen
 	return s.find(ctx, createdSince(t))
 }
 
+// newPaymentRepo builds a paymentRepo on coll.
+func newPaymentRepo(
+	coll *mongo.Collection,
+) *paymentRepo {
+	return &paymentRepo{
+		coll: coll,
+	}
+}
+
 func (s *paymentRepo) find(ctx context.Context, filter bson.M) ([]*service.Payment, error) {
 	cur, err := s.coll.Find(ctx, filter, newestFirst())
 	if err != nil {
 		return nil, fmt.Errorf("store: find payments: %w", err)
 	}
 	var docs []payment
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return nil, fmt.Errorf("store: decode payments: %w", err)
 	}
 	out := make([]*service.Payment, len(docs))

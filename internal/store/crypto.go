@@ -41,7 +41,8 @@ func newSealer(
 // seal returns "v1:" + base64(nonce | ciphertext) of in.Text.
 func (s *sealer) seal(in sealInput) (string, error) {
 	nonce := make([]byte, s.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
+	_, err := rand.Read(nonce)
+	if err != nil {
 		return "", fmt.Errorf("store: nonce: %w", err)
 	}
 	out := s.aead.Seal(nonce, nonce, []byte(in.Text), []byte(in.AAD))

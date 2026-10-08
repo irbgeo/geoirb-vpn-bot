@@ -40,7 +40,8 @@ func Connect(
 	if err != nil {
 		return nil, err
 	}
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.MongoURI))
+	clientOptions := options.Client().ApplyURI(cfg.MongoURI)
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
 		return nil, fmt.Errorf("store: connect: %w", err)
 	}
@@ -50,22 +51,24 @@ func Connect(
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
 	db := client.Database(cfg.MongoDB)
+	usersColl := db.Collection("users")
+	users := newUserRepo(usersColl)
+	peersColl := db.Collection("peers")
+	peers := newPeerRepo(
+		peersColl,
+		box,
+	)
+	paymentsColl := db.Collection("payments")
+	payments := newPaymentRepo(paymentsColl)
+	feedbackColl := db.Collection("feedback")
+	feedbacks := newFeedbackRepo(feedbackColl)
 	s := &store{
-		client: client,
-		db:     db,
-		Users: &userRepo{
-			coll: db.Collection("users"),
-		},
-		Peers: &peerRepo{
-			coll: db.Collection("peers"),
-			box:  box,
-		},
-		Payments: &paymentRepo{
-			coll: db.Collection("payments"),
-		},
-		Feedback: &feedbackRepo{
-			coll: db.Collection("feedback"),
-		},
+		client:   client,
+		db:       db,
+		Users:    users,
+		Peers:    peers,
+		Payments: payments,
+		Feedback: feedbacks,
 	}
 	err = s.ensureIndexes(ctx)
 	if err != nil {

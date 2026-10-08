@@ -42,7 +42,8 @@ func (s *userRepo) Register(ctx context.Context, u *service.User) (*service.User
 
 // AddKeys changes a user's keys count; a user without a row is left alone.
 func (s *userRepo) AddKeys(ctx context.Context, d service.KeysDelta) error {
-	if _, err := s.coll.UpdateOne(ctx, byID(d.UserID), incKeysCount(d.Delta)); err != nil {
+	_, err := s.coll.UpdateOne(ctx, byID(d.UserID), incKeysCount(d.Delta))
+	if err != nil {
 		return fmt.Errorf("store: keys count of %d: %w", d.UserID, err)
 	}
 	return nil
@@ -54,11 +55,13 @@ func (s *userRepo) SetKeyCounts(ctx context.Context, counts map[int64]int) error
 	ids := make([]int64, 0, len(counts))
 	for id, n := range counts {
 		ids = append(ids, id)
-		if _, err := s.coll.UpdateOne(ctx, byID(id), setKeysCount(n)); err != nil {
+		_, err := s.coll.UpdateOne(ctx, byID(id), setKeysCount(n))
+		if err != nil {
 			return fmt.Errorf("store: set keys count of %d: %w", id, err)
 		}
 	}
-	if _, err := s.coll.UpdateMany(ctx, countedExcept(ids), setKeysCount(0)); err != nil {
+	_, err := s.coll.UpdateMany(ctx, countedExcept(ids), setKeysCount(0))
+	if err != nil {
 		return fmt.Errorf("store: reset keys counts: %w", err)
 	}
 	return nil
@@ -66,7 +69,8 @@ func (s *userRepo) SetKeyCounts(ctx context.Context, counts map[int64]int) error
 
 // SetTrialUsed marks the free trial as used, touching nothing else.
 func (s *userRepo) SetTrialUsed(ctx context.Context, id int64) error {
-	if _, err := s.coll.UpdateOne(ctx, byID(id), setTrialUsed()); err != nil {
+	_, err := s.coll.UpdateOne(ctx, byID(id), setTrialUsed())
+	if err != nil {
 		return fmt.Errorf("store: set trial used for %d: %w", id, err)
 	}
 	return nil
@@ -79,7 +83,8 @@ func (s *userRepo) ByRole(ctx context.Context, role service.Role) ([]*service.Us
 		return nil, fmt.Errorf("store: users by role: %w", err)
 	}
 	var docs []user
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return nil, fmt.Errorf("store: decode users: %w", err)
 	}
 	return usersToService(docs), nil
@@ -97,10 +102,20 @@ func (s *userRepo) List(ctx context.Context, p service.Page) ([]*service.User, i
 		return nil, 0, fmt.Errorf("store: list users: %w", err)
 	}
 	var docs []user
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return nil, 0, fmt.Errorf("store: decode users: %w", err)
 	}
 	return usersToService(docs), total, nil
+}
+
+// newUserRepo builds a userRepo on coll.
+func newUserRepo(
+	coll *mongo.Collection,
+) *userRepo {
+	return &userRepo{
+		coll: coll,
+	}
 }
 
 func usersToService(docs []user) []*service.User {

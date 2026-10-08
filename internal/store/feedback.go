@@ -25,7 +25,8 @@ func (s *feedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Fee
 		return nil, 0, fmt.Errorf("store: list feedback: %w", err)
 	}
 	var docs []feedback
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return nil, 0, fmt.Errorf("store: decode feedback: %w", err)
 	}
 	out := make([]*service.Feedback, len(docs))
@@ -37,8 +38,18 @@ func (s *feedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Fee
 
 // Add saves one review or suggestion.
 func (s *feedbackRepo) Add(ctx context.Context, f *service.Feedback) error {
-	if _, err := s.coll.InsertOne(ctx, feedbackToStore(f)); err != nil {
+	_, err := s.coll.InsertOne(ctx, feedbackToStore(f))
+	if err != nil {
 		return fmt.Errorf("store: add feedback: %w", err)
 	}
 	return nil
+}
+
+// newFeedbackRepo builds a feedbackRepo on coll.
+func newFeedbackRepo(
+	coll *mongo.Collection,
+) *feedbackRepo {
+	return &feedbackRepo{
+		coll: coll,
+	}
 }

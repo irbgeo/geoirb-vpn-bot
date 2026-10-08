@@ -41,7 +41,8 @@ func (s *peerRepo) Get(ctx context.Context, publicKey string) (*service.Peer, er
 // stored sealed secrets are kept.
 func (s *peerRepo) Save(ctx context.Context, p *service.Peer) error {
 	if p.PSK == "" {
-		if _, err := s.coll.UpdateOne(ctx, byID(p.PublicKey), setPeerMeta(peerToStore(p))); err != nil {
+		_, err := s.coll.UpdateOne(ctx, byID(p.PublicKey), setPeerMeta(peerToStore(p)))
+		if err != nil {
 			return fmt.Errorf("store: save peer %s: %w", p.IP, err)
 		}
 		return nil
@@ -59,7 +60,8 @@ func (s *peerRepo) Save(ctx context.Context, p *service.Peer) error {
 
 // Delete removes the peer; unknown keys are a no-op.
 func (s *peerRepo) Delete(ctx context.Context, publicKey string) error {
-	if _, err := s.coll.DeleteOne(ctx, byID(publicKey)); err != nil {
+	_, err := s.coll.DeleteOne(ctx, byID(publicKey))
+	if err != nil {
 		return fmt.Errorf("store: delete peer: %w", err)
 	}
 	return nil
@@ -78,7 +80,8 @@ func (s *peerRepo) ServerIPs(ctx context.Context, serverID string) ([]string, er
 		return nil, fmt.Errorf("store: peer IPs: %w", err)
 	}
 	var docs []peer
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return nil, fmt.Errorf("store: decode peer IPs: %w", err)
 	}
 	ips := make([]string, 0, len(docs))
@@ -93,13 +96,25 @@ func (s *peerRepo) ByServer(ctx context.Context, serverID string) ([]*service.Pe
 	return s.find(ctx, byServerID(serverID))
 }
 
+// newPeerRepo builds a peerRepo on coll; box seals the secrets.
+func newPeerRepo(
+	coll *mongo.Collection,
+	box *sealer,
+) *peerRepo {
+	return &peerRepo{
+		coll: coll,
+		box:  box,
+	}
+}
+
 func (s *peerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, error) {
 	cur, err := s.coll.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("store: find peers: %w", err)
 	}
 	var docs []peer
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return nil, fmt.Errorf("store: decode peers: %w", err)
 	}
 	out := make([]*service.Peer, 0, len(docs))
@@ -120,14 +135,16 @@ func (s *peerRepo) checkKey(ctx context.Context) error {
 		return fmt.Errorf("store: read peers to check the key: %w", err)
 	}
 	var docs []peer
-	if err := cur.All(ctx, &docs); err != nil {
+	err = cur.All(ctx, &docs)
+	if err != nil {
 		return fmt.Errorf("store: read peers to check the key: %w", err)
 	}
 	if len(docs) == 0 {
 		return nil
 	}
 	for i := range docs {
-		if _, err := s.open(&docs[i]); err == nil {
+		_, err = s.open(&docs[i])
+		if err == nil {
 			return nil
 		}
 	}
@@ -138,23 +155,24 @@ func (s *peerRepo) checkKey(ctx context.Context) error {
 // is the associated data, so a secret only opens on its own peer.
 func (s *peerRepo) encode(p *service.Peer) (*peer, error) {
 	d := peerToStore(p)
-	var err error
-	if d.PrivateKey, err = s.box.seal(
-		sealInput{
-			Text: p.PrivateKey,
-			AAD:  p.PublicKey,
-		},
-	); err != nil {
+	privateKeySealInput := sealInput{
+		Text: p.PrivateKey,
+		AAD:  p.PublicKey,
+	}
+	privateKey, err := s.box.seal(privateKeySealInput)
+	if err != nil {
 		return nil, err
 	}
-	if d.PSK, err = s.box.seal(
-		sealInput{
-			Text: p.PSK,
-			AAD:  p.PublicKey,
-		},
-	); err != nil {
+	pskSealInput := sealInput{
+		Text: p.PSK,
+		AAD:  p.PublicKey,
+	}
+	psk, err := s.box.seal(pskSealInput)
+	if err != nil {
 		return nil, err
 	}
+	d.PrivateKey = privateKey
+	d.PSK = psk
 	return d, nil
 }
 
@@ -173,19 +191,18 @@ func (s *peerRepo) decode(d *peer) *service.Peer {
 // returned with the peer, its secrets empty.
 func (s *peerRepo) open(d *peer) (*service.Peer, error) {
 	p := d.toService()
-	priv, err1 := s.box.open(
-		sealInput{
-			Text: d.PrivateKey,
-			AAD:  d.PublicKey,
-		},
-	)
-	psk, err2 := s.box.open(
-		sealInput{
-			Text: d.PSK,
-			AAD:  d.PublicKey,
-		},
-	)
-	if err := errors.Join(err1, err2); err != nil {
+	privateKeySealInput := sealInput{
+		Text: d.PrivateKey,
+		AAD:  d.PublicKey,
+	}
+	priv, err1 := s.box.open(privateKeySealInput)
+	pskSealInput := sealInput{
+		Text: d.PSK,
+		AAD:  d.PublicKey,
+	}
+	psk, err2 := s.box.open(pskSealInput)
+	err := errors.Join(err1, err2)
+	if err != nil {
 		p.PrivateKey, p.PSK = "", "" // toService copied the sealed text
 		return p, err
 	}

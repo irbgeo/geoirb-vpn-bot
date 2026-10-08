@@ -131,17 +131,19 @@ func setPeerMeta(d *peer) bson.M {
 	}
 }
 
-// sample limits a find to n documents.
-func sample(n int64) *options.FindOptions {
-	return options.Find().SetLimit(n)
-}
-
 func setTrialUsed() bson.M {
 	return bson.M{
 		"$set": bson.M{
 			"trial_used": true,
 		},
 	}
+}
+
+// --- options ---
+
+// sample limits a find to n documents.
+func sample(n int64) *options.FindOptions {
+	return options.Find().SetLimit(n)
 }
 
 // ipOnly reads just the tunnel IP of peers (no secrets to decrypt).
@@ -152,8 +154,6 @@ func ipOnly() *options.FindOptions {
 		},
 	)
 }
-
-// --- options ---
 
 func upsert() *options.ReplaceOptions {
 	return options.Replace().SetUpsert(true)
