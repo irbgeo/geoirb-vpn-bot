@@ -45,7 +45,7 @@ func adminService() *fakeService {
 }
 
 // buttons flattens a keyboard into callback data.
-func buttons(m EditMessage) []string {
+func buttons(m editMessage) []string {
 	var out []string
 	for _, row := range m.Keyboard.InlineKeyboard {
 		for _, b := range row {
@@ -301,7 +301,7 @@ func TestAdminRefund(t *testing.T) {
 	charge := "stxLongTelegramChargeID-0123456789-abcdefghijklmnopqrstuvwxyz"
 	require.Equal(
 		t,
-		[]RefundInput{
+		[]refundInput{
 			{
 				UserID:   7,
 				ChargeID: charge,
@@ -688,8 +688,8 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 }
 
 // sentTo returns the messages sent to one chat.
-func sentTo(s *fakeSender, chatID int64) []OutMessage {
-	var out []OutMessage
+func sentTo(s *fakeSender, chatID int64) []outMessage {
+	var out []outMessage
 	for _, m := range s.sent {
 		if m.ChatID == chatID {
 			out = append(out, m)

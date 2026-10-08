@@ -26,7 +26,7 @@ type DockerRunner struct {
 
 // Exec runs one command in the container and returns its stdout.
 // Errors carry the command and stderr, never stdin (it may hold secrets).
-func (s *DockerRunner) Exec(ctx context.Context, in ExecInput) (string, error) {
+func (s *DockerRunner) Exec(ctx context.Context, in execInput) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 

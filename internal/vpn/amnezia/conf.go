@@ -46,8 +46,8 @@ var commentedClientKeys = map[string]bool{
 }
 
 // ParseServerConf parses awg0.conf text.
-func ParseServerConf(text string) (*ServerConf, error) {
-	c := &ServerConf{}
+func ParseServerConf(text string) (*serverConf, error) {
+	c := &serverConf{}
 	section := ""
 	for _, raw := range strings.Split(text, "\n") {
 		line := strings.TrimSpace(raw)
@@ -56,7 +56,7 @@ func ParseServerConf(text string) (*ServerConf, error) {
 			section = "interface"
 		case strings.EqualFold(line, "[Peer]"):
 			section = "peer"
-			c.Peers = append(c.Peers, Peer{})
+			c.Peers = append(c.Peers, peer{})
 		case line == "":
 		case section == "interface":
 			c.Interface = append(c.Interface, line)
@@ -78,7 +78,7 @@ func ParseServerConf(text string) (*ServerConf, error) {
 }
 
 // RenderClient builds the client .conf text.
-func RenderClient(in *ClientConf) string {
+func RenderClient(in *clientConf) string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	fmt.Fprintf(&b, "Address = %s\n", in.Address)
@@ -101,7 +101,7 @@ func RenderClient(in *ClientConf) string {
 }
 
 // Get returns the value of an active [Interface] key, or "".
-func (s *ServerConf) Get(key string) string {
+func (s *serverConf) Get(key string) string {
 	for _, line := range s.Interface {
 		if k, v, ok := splitKV(line); ok && strings.EqualFold(k, key) {
 			return v
@@ -111,7 +111,7 @@ func (s *ServerConf) Get(key string) string {
 }
 
 // String renders the config back to file text.
-func (s *ServerConf) String() string {
+func (s *serverConf) String() string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	for _, line := range s.Interface {
@@ -127,7 +127,7 @@ func (s *ServerConf) String() string {
 
 // Stripped renders the config without awg-quick-only keys and comments,
 // ready for `awg syncconf`.
-func (s *ServerConf) Stripped() string {
+func (s *serverConf) Stripped() string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	for _, line := range s.Interface {
@@ -145,14 +145,14 @@ func (s *ServerConf) Stripped() string {
 
 // ClientParams returns the obfuscation keys a client must share with the
 // server: every [Interface] key except server-only ones, plus commented I1–I5.
-func (s *ServerConf) ClientParams() []KV {
-	var out []KV
+func (s *serverConf) ClientParams() []kv {
+	var out []kv
 	for _, line := range s.Interface {
 		if k, v, ok := splitKV(line); ok {
 			if !serverOnlyKeys[strings.ToLower(k)] {
 				out = append(
 					out,
-					KV{
+					kv{
 						Key:   k,
 						Value: v,
 					},
@@ -167,7 +167,7 @@ func (s *ServerConf) ClientParams() []KV {
 		if k, v, ok := splitKV(strings.TrimSpace(body)); ok && commentedClientKeys[strings.ToLower(k)] {
 			out = append(
 				out,
-				KV{
+				kv{
 					Key:   k,
 					Value: v,
 				},
@@ -178,7 +178,7 @@ func (s *ServerConf) ClientParams() []KV {
 }
 
 // FindPeer returns the peer with this public key, or nil.
-func (s *ServerConf) FindPeer(publicKey string) *Peer {
+func (s *serverConf) FindPeer(publicKey string) *peer {
 	for i := range s.Peers {
 		if s.Peers[i].PublicKey == publicKey {
 			return &s.Peers[i]
@@ -188,12 +188,12 @@ func (s *ServerConf) FindPeer(publicKey string) *Peer {
 }
 
 // AddPeer appends a peer.
-func (s *ServerConf) AddPeer(p Peer) {
+func (s *serverConf) AddPeer(p peer) {
 	s.Peers = append(s.Peers, p)
 }
 
 // RemovePeer deletes the peer with this public key; false if not found.
-func (s *ServerConf) RemovePeer(publicKey string) bool {
+func (s *serverConf) RemovePeer(publicKey string) bool {
 	for i := range s.Peers {
 		if s.Peers[i].PublicKey == publicKey {
 			s.Peers = append(s.Peers[:i], s.Peers[i+1:]...)
@@ -204,7 +204,7 @@ func (s *ServerConf) RemovePeer(publicKey string) bool {
 }
 
 // String renders the peer as a [Peer] section.
-func (s *Peer) String() string {
+func (s *peer) String() string {
 	var b strings.Builder
 	b.WriteString("[Peer]\n")
 	fmt.Fprintf(&b, "PublicKey = %s\n", s.PublicKey)
@@ -219,7 +219,7 @@ func (s *Peer) String() string {
 }
 
 // addLine sets a known key from a config line, or keeps it verbatim.
-func (s *Peer) addLine(line string) {
+func (s *peer) addLine(line string) {
 	k, v, ok := splitKV(line)
 	switch {
 	case ok && strings.EqualFold(k, "PublicKey"):

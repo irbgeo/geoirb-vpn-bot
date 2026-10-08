@@ -99,7 +99,7 @@ func TestPendingBroadcastExpiresAndCanBeCancelled(t *testing.T) {
 	require.Zero(t, previews(), "an old prompt doesn't turn a later text into a broadcast")
 
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
-	require.Contains(t, buttons(EditMessage{Keyboard: s.sent[len(s.sent)-1].Keyboard}), "a:cancel", "the prompt can be cancelled")
+	require.Contains(t, buttons(editMessage{Keyboard: s.sent[len(s.sent)-1].Keyboard}), "a:cancel", "the prompt can be cancelled")
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
 	require.NoError(t, r.Handle(ctx, startUpdate("text")))
 	require.Zero(t, previews(), "cancelled")

@@ -30,7 +30,7 @@ var persistPath = regexp.MustCompile(`f="([^"]+)"`)
 // fileContainer fakes a container with files that `cat` reads and the
 // persist script writes.
 func fileContainer(files map[string]string) *fakeRunner {
-	return &fakeRunner{handler: func(in ExecInput) (string, error) {
+	return &fakeRunner{handler: func(in execInput) (string, error) {
 		if in.Args[0] == "cat" {
 			return files[in.Args[1]], nil
 		}
@@ -56,7 +56,7 @@ func TestSetClientAddsEntry(t *testing.T) {
 
 	err := s.SetClient(
 		context.Background(),
-		ClientEntry{
+		clientEntry{
 			PublicKey:  "PUB2=",
 			Name:       "tg:alice",
 			AllowedIPs: "10.8.1.10/32",
@@ -92,7 +92,7 @@ func TestSetClientRenamesExisting(t *testing.T) {
 
 	err := s.SetClient(
 		context.Background(),
-		ClientEntry{
+		clientEntry{
 			PublicKey:  "PUB1=",
 			Name:       "tg:bob",
 			AllowedIPs: "10.8.1.1/32",

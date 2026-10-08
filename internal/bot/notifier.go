@@ -123,7 +123,7 @@ func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {
 	for _, a := range admins {
 		err := s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: a.ID,
 				Text:   text,
 			},
@@ -141,7 +141,7 @@ func (s *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 		log.Printf("bot: key %s has no owner, notice not sent: %s", kn.Peer.IP, kn.Text)
 		return
 	}
-	msg := OutMessage{
+	msg := outMessage{
 		ChatID: kn.Peer.UserID,
 		Text:   kn.Text,
 	}

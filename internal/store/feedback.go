@@ -9,13 +9,13 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// FeedbackRepo stores users' reviews and suggestions in MongoDB.
-type FeedbackRepo struct {
+// feedbackRepo stores users' reviews and suggestions in MongoDB.
+type feedbackRepo struct {
 	coll *mongo.Collection
 }
 
 // List returns one page, newest first, and the total count.
-func (s *FeedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error) {
+func (s *feedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error) {
 	total, err := s.coll.CountDocuments(ctx, matchAll())
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: count feedback: %w", err)
@@ -36,7 +36,7 @@ func (s *FeedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Fee
 }
 
 // Add saves one review or suggestion.
-func (s *FeedbackRepo) Add(ctx context.Context, f *service.Feedback) error {
+func (s *feedbackRepo) Add(ctx context.Context, f *service.Feedback) error {
 	if _, err := s.coll.InsertOne(ctx, feedbackToStore(f)); err != nil {
 		return fmt.Errorf("store: add feedback: %w", err)
 	}

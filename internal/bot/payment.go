@@ -21,7 +21,7 @@ func (s *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: cq.ChatID(),
 			Text:   buyText,
 			Keyboard: tariffsKeyboard(
@@ -63,7 +63,7 @@ func (s *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	}
 	return s.send.SendInvoice(
 		ctx,
-		&OutInvoice{
+		&outInvoice{
 			ChatID:      cq.ChatID(),
 			Title:       invoiceTitle(inv.Days),
 			Description: invoiceDescription(inv.Days),
@@ -85,7 +85,7 @@ func (s *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) err
 			Stars:   int(q.TotalAmount),
 		},
 	)
-	a := PreCheckoutAnswer{
+	a := preCheckoutAnswer{
 		ID: q.ID,
 		OK: err == nil,
 	}
@@ -137,7 +137,7 @@ func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
 	} else {
 		err = s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: m.Chat.ID,
 				Text:   extendedText(res.Peer),
 			},
@@ -156,7 +156,7 @@ func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
 		ctx = context.WithoutCancel(ctx)
 		if sendErr := s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: m.Chat.ID,
 				Text:   paidDeliveryFailedText,
 			},
@@ -183,7 +183,7 @@ func (s *Router) refund(ctx context.Context, f failedPayment) error {
 	text := refundedText
 	a.RefundErr = s.send.Refund(
 		ctx,
-		RefundInput{
+		refundInput{
 			UserID:   a.UserID,
 			ChargeID: a.ChargeID,
 		},
@@ -196,7 +196,7 @@ func (s *Router) refund(ctx context.Context, f failedPayment) error {
 	s.notify.NotifyAdmins(ctx, refundAlertText(a))
 	if sendErr := s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: m.Chat.ID,
 			Text:   text,
 		},

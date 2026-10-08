@@ -8,7 +8,7 @@ import (
 )
 
 func TestFreeIPSkipsServerPeersAndReserved(t *testing.T) {
-	c, err := ParseServerConf(serverConf) // server .0, peers .1 and .2
+	c, err := ParseServerConf(serverConfText) // server .0, peers .1 and .2
 	require.NoError(t, err)
 
 	ip, err := c.FreeIP(nil)
@@ -26,7 +26,7 @@ func TestFreeIPSkipsServerPeersAndReserved(t *testing.T) {
 }
 
 func TestFreeIPReusesGaps(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 	c.RemovePeer("PUB1=")
 
@@ -44,7 +44,7 @@ func TestFreeIPFullSubnet(t *testing.T) {
 }
 
 func TestSubnetUsage(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
 	used, total, err := c.SubnetUsage([]netip.Addr{netip.MustParseAddr("10.8.1.9")})

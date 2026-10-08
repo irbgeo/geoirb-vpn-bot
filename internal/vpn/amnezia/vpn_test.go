@@ -37,7 +37,7 @@ func newBox(t *testing.T) *box {
 	t.Helper()
 	b := &box{
 		files: map[string]string{
-			confFile:  serverConf,
+			confFile:  serverConfText,
 			tablePath: clientsTable,
 		},
 	}
@@ -52,7 +52,7 @@ func newBox(t *testing.T) *box {
 	return b
 }
 
-func (s *box) handle(in ExecInput) (string, error) {
+func (s *box) handle(in execInput) (string, error) {
 	c := strings.Join(in.Args, " ")
 	switch {
 	case c == "ls /opt/amnezia/awg":
@@ -150,7 +150,7 @@ func TestAddPeerSaveFailureTouchesNothing(t *testing.T) {
 		},
 	)
 	require.ErrorIs(t, err, errBoom)
-	require.Equal(t, serverConf, b.files[confFile])
+	require.Equal(t, serverConfText, b.files[confFile])
 	require.Zero(t, b.syncs)
 	require.False(t, b.inApp("NEW="))
 }
@@ -193,7 +193,7 @@ func TestPutPeerRefusesATakenIP(t *testing.T) {
 	err := b.vpn.PutPeer(context.Background(), p)
 	require.ErrorIs(t, err, service.ErrIPTaken)
 	require.ErrorContains(t, err, "10.8.1.2")
-	require.Equal(t, serverConf, b.files[confFile])
+	require.Equal(t, serverConfText, b.files[confFile])
 }
 
 func TestPutPeerIgnoresSimilarLookingIP(t *testing.T) {

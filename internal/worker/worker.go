@@ -17,8 +17,8 @@ const (
 	deliverLimit  = 25 * time.Second
 )
 
-// Worker runs Job every Every and hands the result to Delivery.
-type Worker struct {
+// worker runs Job every Every and hands the result to Delivery.
+type worker struct {
 	job           Job
 	delivery      Delivery
 	every         time.Duration
@@ -26,11 +26,11 @@ type Worker struct {
 	deliverLimit  time.Duration
 }
 
-// New creates a Worker.
+// New creates a worker.
 func New(
 	in *Input,
-) *Worker {
-	return &Worker{
+) *worker {
+	return &worker{
 		job:           in.Job,
 		delivery:      in.Delivery,
 		every:         in.Every,
@@ -43,7 +43,7 @@ func New(
 // run is logged and the next tick tries again. A run in progress is not
 // cancelled with ctx: cut half-way it could take a key off the server but
 // leave it enabled in the DB. Run returns once that run is finished.
-func (s *Worker) Run(ctx context.Context) {
+func (s *worker) Run(ctx context.Context) {
 	t := time.NewTicker(s.every)
 	defer t.Stop()
 	for {
@@ -59,7 +59,7 @@ func (s *Worker) Run(ctx context.Context) {
 // once runs one pass. It is not cancelled with ctx (see Run), but each
 // step has a time limit, so a hung docker can't hold it past systemd's
 // stop timeout.
-func (s *Worker) once(ctx context.Context) {
+func (s *worker) once(ctx context.Context) {
 	base := context.WithoutCancel(ctx)
 	mctx, cancel := context.WithTimeout(base, s.maintainLimit)
 	m, err := s.job.Maintain(mctx)

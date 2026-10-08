@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// serverConf mirrors the real awg0.conf layout (keys are fake).
-const serverConf = `[Interface]
+// serverConfText mirrors the real awg0.conf layout (keys are fake).
+const serverConfText = `[Interface]
 PrivateKey = SERVERPRIV=
 Address = 10.8.1.0/24
 ListenPort = 443
@@ -33,7 +33,7 @@ AllowedIPs = 10.8.1.2/32
 `
 
 func TestParseServerConf(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
 	require.Equal(t, "443", c.Get("ListenPort"))
@@ -42,7 +42,7 @@ func TestParseServerConf(t *testing.T) {
 	require.Len(t, c.Peers, 2)
 	require.Equal(
 		t,
-		Peer{
+		peer{
 			PublicKey:    "PUB2=",
 			PresharedKey: "PSK2=",
 			AllowedIPs:   "10.8.1.2/32",
@@ -60,7 +60,7 @@ func TestParseServerConfErrors(t *testing.T) {
 }
 
 func TestServerConfRoundTrip(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
 	again, err := ParseServerConf(c.String())
@@ -70,11 +70,11 @@ func TestServerConfRoundTrip(t *testing.T) {
 }
 
 func TestAddRemovePeer(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
 	c.AddPeer(
-		Peer{
+		peer{
 			PublicKey:    "PUB3=",
 			PresharedKey: "PSK3=",
 			AllowedIPs:   "10.8.1.3/32",
@@ -90,10 +90,10 @@ func TestAddRemovePeer(t *testing.T) {
 }
 
 func TestClientParams(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
-	require.Equal(t, []KV{
+	require.Equal(t, []kv{
 		{
 			Key:   "Jc",
 			Value: "6",
@@ -138,7 +138,7 @@ func TestClientParams(t *testing.T) {
 }
 
 func TestStripped(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
 	s := c.Stripped()
@@ -154,7 +154,7 @@ func TestStripped(t *testing.T) {
 
 func TestRenderClientMTU(t *testing.T) {
 	got := RenderClient(
-		&ClientConf{
+		&clientConf{
 			Address: "10.8.1.10/32",
 			DNS:     "1.1.1.1",
 			MTU:     1380,
@@ -165,11 +165,11 @@ func TestRenderClientMTU(t *testing.T) {
 }
 
 func TestRenderClient(t *testing.T) {
-	c, err := ParseServerConf(serverConf)
+	c, err := ParseServerConf(serverConfText)
 	require.NoError(t, err)
 
 	got := RenderClient(
-		&ClientConf{
+		&clientConf{
 			Address:         "10.8.1.10/32",
 			DNS:             "1.1.1.1, 1.0.0.1",
 			PrivateKey:      "CLIENTPRIV=",

@@ -17,7 +17,7 @@ const confDir = "/opt/amnezia/awg"
 
 // Runner runs a command inside the Amnezia container.
 type Runner interface {
-	Exec(ctx context.Context, in ExecInput) (string, error)
+	Exec(ctx context.Context, in execInput) (string, error)
 }
 
 // Server manages the AmneziaWG interface inside the container.
@@ -68,22 +68,22 @@ func Open(
 }
 
 // GenKeys generates a client private key, its public key and a preshared key.
-func (s *Server) GenKeys(ctx context.Context) (Keys, error) {
+func (s *Server) GenKeys(ctx context.Context) (keys, error) {
 	priv, err := s.exec(ctx, cmd(s.tool, "genkey"))
 	if err != nil {
-		return Keys{}, err
+		return keys{}, err
 	}
 	in := cmd(s.tool, "pubkey")
 	in.Stdin = priv
 	pub, err := s.exec(ctx, in)
 	if err != nil {
-		return Keys{}, err
+		return keys{}, err
 	}
 	psk, err := s.exec(ctx, cmd(s.tool, "genpsk"))
 	if err != nil {
-		return Keys{}, err
+		return keys{}, err
 	}
-	return Keys{
+	return keys{
 		Private: priv,
 		Public:  pub,
 		PSK:     psk,
@@ -96,7 +96,7 @@ func (s *Server) ServerPublicKey(ctx context.Context) (string, error) {
 }
 
 // ReadConf returns the current server config.
-func (s *Server) ReadConf(ctx context.Context) (*ServerConf, error) {
+func (s *Server) ReadConf(ctx context.Context) (*serverConf, error) {
 	text, err := s.run.Exec(ctx, cmd("cat", s.confPath))
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *Server) ReadConf(ctx context.Context) (*ServerConf, error) {
 // live interface without a restart, then saves it to disk.
 // If fn fails nothing is written. If the live apply fails the file is not
 // touched, so disk and interface stay in sync.
-func (s *Server) Update(ctx context.Context, fn func(*ServerConf) error) error {
+func (s *Server) Update(ctx context.Context, fn func(*serverConf) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -149,7 +149,7 @@ func (s *Server) Update(ctx context.Context, fn func(*ServerConf) error) error {
 }
 
 // Stats returns live handshake and traffic data for every peer.
-func (s *Server) Stats(ctx context.Context) ([]PeerStat, error) {
+func (s *Server) Stats(ctx context.Context) ([]peerStat, error) {
 	out, err := s.run.Exec(ctx, cmd(s.tool, "show", s.iface, "dump"))
 	if err != nil {
 		return nil, err
@@ -157,13 +157,13 @@ func (s *Server) Stats(ctx context.Context) ([]PeerStat, error) {
 	return parseDump(out)
 }
 
-func cmd(args ...string) ExecInput {
-	return ExecInput{
+func cmd(args ...string) execInput {
+	return execInput{
 		Args: args,
 	}
 }
 
-func (s *Server) exec(ctx context.Context, in ExecInput) (string, error) {
+func (s *Server) exec(ctx context.Context, in execInput) (string, error) {
 	out, err := s.run.Exec(ctx, in)
 	return strings.TrimSpace(out), err
 }
@@ -202,9 +202,9 @@ func (s *Server) persist(ctx context.Context, in persistInput) error {
 // parseDump reads `awg show <iface> dump`. The first line is the interface
 // itself; each next line is: public-key, preshared-key, endpoint,
 // allowed-ips, latest-handshake (unix), rx, tx, keepalive.
-func parseDump(out string) ([]PeerStat, error) {
+func parseDump(out string) ([]peerStat, error) {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	stats := make([]PeerStat, 0, len(lines))
+	stats := make([]peerStat, 0, len(lines))
 	for _, line := range lines[1:] {
 		f := strings.Split(line, "\t")
 		if len(f) < 8 {
@@ -216,7 +216,7 @@ func parseDump(out string) ([]PeerStat, error) {
 		if err1 != nil || err2 != nil || err3 != nil {
 			return nil, fmt.Errorf("amnezia: bad numbers in dump for peer %s", f[0])
 		}
-		st := PeerStat{
+		st := peerStat{
 			PublicKey:  f[0],
 			AllowedIPs: f[3],
 			RX:         rx,

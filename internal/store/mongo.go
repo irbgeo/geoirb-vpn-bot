@@ -10,22 +10,22 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// Store wraps a MongoDB connection and exposes repositories.
-type Store struct {
+// store wraps a MongoDB connection and exposes repositories.
+type store struct {
 	client   *mongo.Client
 	db       *mongo.Database
-	Users    *UserRepo
-	Peers    *PeerRepo
-	Payments *PaymentRepo
-	Feedback *FeedbackRepo
+	Users    *userRepo
+	Peers    *peerRepo
+	Payments *paymentRepo
+	Feedback *feedbackRepo
 }
 
 // Compile-time checks that the repos satisfy the service ports.
 var (
-	_ service.UserRepository     = (*UserRepo)(nil)
-	_ service.PeerRepository     = (*PeerRepo)(nil)
-	_ service.PaymentRepository  = (*PaymentRepo)(nil)
-	_ service.FeedbackRepository = (*FeedbackRepo)(nil)
+	_ service.UserRepository     = (*userRepo)(nil)
+	_ service.PeerRepository     = (*peerRepo)(nil)
+	_ service.PaymentRepository  = (*paymentRepo)(nil)
+	_ service.FeedbackRepository = (*feedbackRepo)(nil)
 )
 
 // Connect dials MongoDB, verifies the connection, creates indexes and
@@ -33,7 +33,7 @@ var (
 func Connect(
 	ctx context.Context,
 	in ConnectInput,
-) (*Store, error) {
+) (*store, error) {
 	box, err := newSealer(in.SecretKey)
 	if err != nil {
 		return nil, err
@@ -47,20 +47,20 @@ func Connect(
 		return nil, fmt.Errorf("store: ping: %w", err)
 	}
 	db := client.Database(in.DBName)
-	s := &Store{
+	s := &store{
 		client: client,
 		db:     db,
-		Users: &UserRepo{
+		Users: &userRepo{
 			coll: db.Collection("users"),
 		},
-		Peers: &PeerRepo{
+		Peers: &peerRepo{
 			coll: db.Collection("peers"),
 			box:  box,
 		},
-		Payments: &PaymentRepo{
+		Payments: &paymentRepo{
 			coll: db.Collection("payments"),
 		},
-		Feedback: &FeedbackRepo{
+		Feedback: &feedbackRepo{
 			coll: db.Collection("feedback"),
 		},
 	}
@@ -76,7 +76,7 @@ func Connect(
 }
 
 // Disconnect closes the MongoDB connection.
-func (s *Store) Disconnect(ctx context.Context) error {
+func (s *store) Disconnect(ctx context.Context) error {
 	return s.client.Disconnect(ctx)
 }
 
@@ -84,7 +84,7 @@ func (s *Store) Disconnect(ctx context.Context) error {
 // none: _id is the charge ID, which already makes them unique.
 // ponytail: no lookup indexes — at most 254 peers per server and few
 // payments; add user_id / created_at indexes if listing gets slow.
-func (s *Store) ensureIndexes(ctx context.Context) error {
+func (s *store) ensureIndexes(ctx context.Context) error {
 	_, err := s.Peers.coll.Indexes().CreateOne(ctx, peerServerIPIndex())
 	if err != nil {
 		return fmt.Errorf("store: create peers index: %w", err)

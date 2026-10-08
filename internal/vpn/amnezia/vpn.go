@@ -47,7 +47,7 @@ func (s *VPN) GenKeys(ctx context.Context) (service.VPNKeys, error) {
 // the server untouched.
 func (s *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 	p := *in.Peer
-	err := s.srv.Update(ctx, func(c *ServerConf) error {
+	err := s.srv.Update(ctx, func(c *serverConf) error {
 		ip, err := c.FreeIP(in.Reserved)
 		if err != nil {
 			return err
@@ -76,7 +76,7 @@ func (s *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 // PutPeer puts a known key back on its IP, unless another peer (e.g. one
 // made in the Amnezia app) took the IP meanwhile: service.ErrIPTaken.
 func (s *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
-	err := s.srv.Update(ctx, func(c *ServerConf) error {
+	err := s.srv.Update(ctx, func(c *serverConf) error {
 		for _, other := range c.Peers {
 			if other.PublicKey == p.PublicKey {
 				return nil
@@ -107,7 +107,7 @@ func (s *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 
 // RemovePeer takes a key off the server and the app's list.
 func (s *VPN) RemovePeer(ctx context.Context, p *service.VPNPeer) error {
-	err := s.srv.Update(ctx, func(c *ServerConf) error {
+	err := s.srv.Update(ctx, func(c *serverConf) error {
 		c.RemovePeer(p.PublicKey)
 		return nil
 	})
@@ -121,7 +121,7 @@ func (s *VPN) RemovePeer(ctx context.Context, p *service.VPNPeer) error {
 // ReplacePeer swaps in.Old for in.New in one config update. On failure
 // the new peer is taken off and the old one put back.
 func (s *VPN) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) error {
-	err := s.srv.Update(ctx, func(c *ServerConf) error {
+	err := s.srv.Update(ctx, func(c *serverConf) error {
 		c.RemovePeer(in.Old.PublicKey)
 		c.AddPeer(serverPeer(in.New))
 		return nil
@@ -200,7 +200,7 @@ func (s *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (strin
 		return "", err
 	}
 	return RenderClient(
-		&ClientConf{
+		&clientConf{
 			Address:         spec.IP + "/32",
 			DNS:             spec.DNS,
 			MTU:             spec.MTU,
@@ -236,7 +236,7 @@ func (s *VPN) takeOff(ctx context.Context, in *takeOffInput) error {
 	if c.FindPeer(in.Peer.PublicKey) == nil && !errors.Is(in.Cause, ErrNotPersisted) {
 		return nil
 	}
-	return s.srv.Update(ctx, func(c *ServerConf) error {
+	return s.srv.Update(ctx, func(c *serverConf) error {
 		c.RemovePeer(in.Peer.PublicKey)
 		return nil
 	})
@@ -247,7 +247,7 @@ func (s *VPN) takeOff(ctx context.Context, in *takeOffInput) error {
 func (s *VPN) showInApp(ctx context.Context, p *service.VPNPeer) {
 	err := s.srv.SetClient(
 		ctx,
-		ClientEntry{
+		clientEntry{
 			PublicKey:  p.PublicKey,
 			Name:       p.Name,
 			AllowedIPs: p.IP + "/32",
@@ -266,8 +266,8 @@ func (s *VPN) hideInApp(ctx context.Context, p *service.VPNPeer) {
 	}
 }
 
-func serverPeer(p *service.VPNPeer) Peer {
-	return Peer{
+func serverPeer(p *service.VPNPeer) peer {
+	return peer{
 		PublicKey:    p.PublicKey,
 		PresharedKey: p.PSK,
 		AllowedIPs:   p.IP + "/32",

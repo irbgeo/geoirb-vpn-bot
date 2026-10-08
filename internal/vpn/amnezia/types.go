@@ -12,14 +12,14 @@ import (
 // the live interface from the file.
 var ErrNotPersisted = errors.New("amnezia: live interface updated but config not saved")
 
-// KV is one "Key = Value" line of a config section.
-type KV struct {
+// kv is one "Key = Value" line of a config section.
+type kv struct {
 	Key   string
 	Value string
 }
 
-// Peer is one [Peer] section of the server config.
-type Peer struct {
+// peer is one [Peer] section of the server config.
+type peer struct {
 	PublicKey    string
 	PresharedKey string
 	AllowedIPs   string
@@ -27,41 +27,41 @@ type Peer struct {
 	Other []string
 }
 
-// ServerConf is the parsed awg0.conf. The [Interface] lines are kept
+// serverConf is the parsed awg0.conf. The [Interface] lines are kept
 // verbatim (comments included) so the file is written back unchanged.
-type ServerConf struct {
+type serverConf struct {
 	Interface []string
-	Peers     []Peer
+	Peers     []peer
 }
 
-// ClientConf is everything needed to render a client .conf file.
-type ClientConf struct {
+// clientConf is everything needed to render a client .conf file.
+type clientConf struct {
 	Address         string
 	DNS             string
 	MTU             int // 0 = not written
 	PrivateKey      string
-	Params          []KV
+	Params          []kv
 	ServerPublicKey string
 	PresharedKey    string
 	Endpoint        string
 }
 
-// ExecInput is one command to run inside the container.
-type ExecInput struct {
+// execInput is one command to run inside the container.
+type execInput struct {
 	Args []string
 	// Stdin carries secrets (keys, configs) so they never show up in argv.
 	Stdin string
 }
 
-// Keys is a fresh client key set.
-type Keys struct {
+// keys is a fresh client key set.
+type keys struct {
 	Private string
 	Public  string
 	PSK     string
 }
 
-// PeerStat is live data for one peer from `awg show <iface> dump`.
-type PeerStat struct {
+// peerStat is live data for one peer from `awg show <iface> dump`.
+type peerStat struct {
 	PublicKey  string
 	Endpoint   string
 	AllowedIPs string
@@ -71,8 +71,8 @@ type PeerStat struct {
 	TX              int64
 }
 
-// ClientEntry is one client to show in the Amnezia app (clientsTable).
-type ClientEntry struct {
+// clientEntry is one client to show in the Amnezia app (clientsTable).
+type clientEntry struct {
 	PublicKey  string
 	Name       string
 	AllowedIPs string
@@ -98,7 +98,7 @@ type persistInput struct {
 // liveSync is a config to apply with `awg syncconf`, if the file on disk is
 // still the one it was built from (Expect: its sha256, hex).
 type liveSync struct {
-	Conf   *ServerConf
+	Conf   *serverConf
 	Expect string
 }
 

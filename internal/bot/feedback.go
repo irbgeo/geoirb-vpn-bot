@@ -22,7 +22,7 @@ func (s *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error
 	)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   cq.ChatID(),
 			Text:     askFeedbackText,
 			Keyboard: menuKeyboard(),
@@ -40,7 +40,7 @@ func (s *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID:   m.Chat.ID,
 				Text:     needFeedbackTextText,
 				Keyboard: menuKeyboard(),
@@ -59,7 +59,7 @@ func (s *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 	case errors.Is(err, service.ErrBadFeedback):
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID:   m.Chat.ID,
 				Text:     badFeedbackText,
 				Keyboard: menuKeyboard(),
@@ -88,7 +88,7 @@ func (s *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 	)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   m.Chat.ID,
 			Text:     feedbackThanksText,
 			Keyboard: menuKeyboard(),

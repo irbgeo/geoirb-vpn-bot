@@ -126,7 +126,7 @@ func TestPreCheckout(t *testing.T) {
 	require.NoError(t, r.Handle(context.Background(), preCheckout()))
 	require.Equal(
 		t,
-		[]PreCheckoutAnswer{
+		[]preCheckoutAnswer{
 			{
 				ID: "pc1",
 				OK: true,
@@ -229,7 +229,7 @@ func TestPaymentFailureRefunds(t *testing.T) {
 	require.ErrorContains(t, err, "docker down")
 	require.Equal(
 		t,
-		[]RefundInput{
+		[]refundInput{
 			{
 				UserID:   42,
 				ChargeID: "charge1",

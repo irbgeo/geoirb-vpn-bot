@@ -10,34 +10,34 @@ import (
 
 // Sender talks to Telegram. Faked in tests.
 type Sender interface {
-	Send(ctx context.Context, m OutMessage) error
-	Edit(ctx context.Context, m EditMessage) error
-	SendDocument(ctx context.Context, f OutFile) error
-	SendPhoto(ctx context.Context, f OutFile) error
+	Send(ctx context.Context, m outMessage) error
+	Edit(ctx context.Context, m editMessage) error
+	SendDocument(ctx context.Context, f outFile) error
+	SendPhoto(ctx context.Context, f outFile) error
 	Answer(ctx context.Context, callbackID string) error
-	SendInvoice(ctx context.Context, inv *OutInvoice) error
-	AnswerPreCheckout(ctx context.Context, a PreCheckoutAnswer) error
-	Refund(ctx context.Context, in RefundInput) error
+	SendInvoice(ctx context.Context, inv *outInvoice) error
+	AnswerPreCheckout(ctx context.Context, a preCheckoutAnswer) error
+	Refund(ctx context.Context, in refundInput) error
 }
 
-// TelegramSender adapts *tgbot.Client to Sender.
-type TelegramSender struct {
+// telegramSender adapts *tgbot.Client to Sender.
+type telegramSender struct {
 	client *tgbot.Client
 }
 
-var _ Sender = (*TelegramSender)(nil)
+var _ Sender = (*telegramSender)(nil)
 
-// NewTelegramSender creates a TelegramSender.
+// NewTelegramSender creates a telegramSender.
 func NewTelegramSender(
 	client *tgbot.Client,
-) *TelegramSender {
-	return &TelegramSender{
+) *telegramSender {
+	return &telegramSender{
 		client: client,
 	}
 }
 
 // Send sends a text message, with inline buttons if any.
-func (s *TelegramSender) Send(ctx context.Context, m OutMessage) error {
+func (s *telegramSender) Send(ctx context.Context, m outMessage) error {
 	var opts *tgbot.SendMessageOptions
 	if m.Keyboard != nil {
 		opts = &tgbot.SendMessageOptions{
@@ -50,7 +50,7 @@ func (s *TelegramSender) Send(ctx context.Context, m OutMessage) error {
 
 // Edit replaces a message's text and buttons in place. "Message is not
 // modified" (same content twice) is not an error.
-func (s *TelegramSender) Edit(ctx context.Context, m EditMessage) error {
+func (s *telegramSender) Edit(ctx context.Context, m editMessage) error {
 	_, err := s.client.EditMessageText(
 		ctx,
 		m.ChatID,
@@ -68,7 +68,7 @@ func (s *TelegramSender) Edit(ctx context.Context, m EditMessage) error {
 }
 
 // SendDocument uploads a file.
-func (s *TelegramSender) SendDocument(ctx context.Context, f OutFile) error {
+func (s *telegramSender) SendDocument(ctx context.Context, f outFile) error {
 	_, err := s.client.SendDocument(
 		ctx,
 		f.ChatID,
@@ -81,7 +81,7 @@ func (s *TelegramSender) SendDocument(ctx context.Context, f OutFile) error {
 }
 
 // SendPhoto uploads an image.
-func (s *TelegramSender) SendPhoto(ctx context.Context, f OutFile) error {
+func (s *telegramSender) SendPhoto(ctx context.Context, f outFile) error {
 	_, err := s.client.SendPhoto(
 		ctx,
 		f.ChatID,
@@ -94,14 +94,14 @@ func (s *TelegramSender) SendPhoto(ctx context.Context, f OutFile) error {
 }
 
 // Answer stops the loading spinner on a pressed inline button.
-func (s *TelegramSender) Answer(ctx context.Context, callbackID string) error {
+func (s *telegramSender) Answer(ctx context.Context, callbackID string) error {
 	_, err := s.client.AnswerCallback(ctx, callbackID)
 	return err
 }
 
 // SendInvoice sends a Telegram Stars invoice: currency XTR, empty
 // provider token.
-func (s *TelegramSender) SendInvoice(ctx context.Context, inv *OutInvoice) error {
+func (s *telegramSender) SendInvoice(ctx context.Context, inv *outInvoice) error {
 	_, err := s.client.SendInvoice(
 		ctx,
 		inv.ChatID,
@@ -122,14 +122,14 @@ func (s *TelegramSender) SendInvoice(ctx context.Context, inv *OutInvoice) error
 }
 
 // AnswerPreCheckout accepts or declines a payment before Telegram charges.
-func (s *TelegramSender) AnswerPreCheckout(ctx context.Context, a PreCheckoutAnswer) error {
+func (s *telegramSender) AnswerPreCheckout(ctx context.Context, a preCheckoutAnswer) error {
 	_, err := s.client.AnswerPreCheckoutQuery(ctx, a.ID, a.OK, a.Error)
 	return err
 }
 
 // Refund returns the Stars of a payment to the user. A charge that is
 // already refunded counts as done.
-func (s *TelegramSender) Refund(ctx context.Context, in RefundInput) error {
+func (s *telegramSender) Refund(ctx context.Context, in refundInput) error {
 	_, err := s.client.RefundStarPayment(ctx, in.UserID, in.ChargeID)
 	if tgbot.IsChargeAlreadyRefunded(err) {
 		return nil
@@ -137,7 +137,7 @@ func (s *TelegramSender) Refund(ctx context.Context, in RefundInput) error {
 	return err
 }
 
-func inputFile(f OutFile) tgbot.InputFile {
+func inputFile(f outFile) tgbot.InputFile {
 	return tgbot.InputFile{
 		Reader:   bytes.NewReader(f.Data),
 		Filename: f.Name,

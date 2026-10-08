@@ -138,7 +138,7 @@ func (s *Router) adminIssueTerm(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    a.ChatID,
 			MessageID: a.MessageID,
 			Text:      issueTermText,
@@ -207,7 +207,7 @@ func (s *Router) adminText(ctx context.Context, m *tgbot.Message) error {
 	if text == "" {
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: m.Chat.ID,
 				Text:   needTextText,
 			},
@@ -228,7 +228,7 @@ func (s *Router) adminCancel(ctx context.Context, a adminAction) error {
 	s.dialogs.drop(a.ChatID)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: a.ChatID,
 			Text:   cancelledText,
 		},
@@ -243,7 +243,7 @@ func (s *Router) adminStats(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   a.ChatID,
 			Text:     statsText(st),
 			Keyboard: menuKeyboard(),
@@ -273,7 +273,7 @@ func (s *Router) adminUsers(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    a.ChatID,
 			MessageID: a.MessageID,
 			Text:      usersText(v),
@@ -303,7 +303,7 @@ func (s *Router) adminFeedback(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    a.ChatID,
 			MessageID: a.MessageID,
 			Text:      feedbackListText(v),
@@ -332,7 +332,7 @@ func (s *Router) adminUser(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    a.ChatID,
 			MessageID: a.MessageID,
 			Text:      userCardText(u) + keysText(keys) + paymentsText(payments),
@@ -403,7 +403,7 @@ func (s *Router) adminDeleteAsk(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    a.ChatID,
 			MessageID: a.MessageID,
 			Text:      deleteConfirmText(p),
@@ -437,7 +437,7 @@ func (s *Router) adminRefundAsk(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    a.ChatID,
 			MessageID: a.MessageID,
 			Text:      refundConfirmText(p),
@@ -470,7 +470,7 @@ func (s *Router) adminRefund(ctx context.Context, a adminAction) error {
 	ctx = context.WithoutCancel(ctx)
 	if err := s.send.Refund(
 		ctx,
-		RefundInput{
+		refundInput{
 			UserID:   p.UserID,
 			ChargeID: p.ChargeID,
 		},
@@ -481,7 +481,7 @@ func (s *Router) adminRefund(ctx context.Context, a adminAction) error {
 		log.Printf("bot: stars returned but not recorded for %s: %v", p.ChargeID, err)
 		if err := s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: a.ChatID,
 				Text:   refundNotRecordedText(p),
 			},
@@ -491,7 +491,7 @@ func (s *Router) adminRefund(ctx context.Context, a adminAction) error {
 	}
 	if err := s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: p.UserID,
 			Text:   refundedToUserText(p),
 		},

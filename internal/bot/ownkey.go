@@ -19,7 +19,7 @@ func (s *Router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) e
 	if err != nil {
 		return err
 	}
-	msg := OutMessage{
+	msg := outMessage{
 		ChatID: cq.ChatID(),
 		Text:   keyNotFoundText,
 	}
@@ -71,7 +71,7 @@ func (s *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	}
 	if sendErr := s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   cq.ChatID(),
 			Text:     text,
 			Keyboard: myAccessKeyboard(),
@@ -100,7 +100,7 @@ func (s *Router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) erro
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   cq.ChatID(),
 			Text:     keyDeletedText,
 			Keyboard: menuKeyboard(),

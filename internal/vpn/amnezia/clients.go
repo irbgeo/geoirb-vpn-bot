@@ -14,7 +14,7 @@ const creationDateLayout = "Mon Jan 2 15:04:05 2006"
 
 // SetClient adds a client to clientsTable, or renames it if present
 // (creation date and app-written stats are kept).
-func (s *Server) SetClient(ctx context.Context, e ClientEntry) error {
+func (s *Server) SetClient(ctx context.Context, e clientEntry) error {
 	return s.updateTable(ctx, func(list []tableEntry) ([]tableEntry, bool) {
 		for i := range list {
 			if list[i].ClientID == e.PublicKey {

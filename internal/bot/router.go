@@ -173,7 +173,7 @@ func (s *Router) Handle(ctx context.Context, upd tgbot.Update) error {
 		}
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: upd.ChatID(),
 				Text: s.commandText(
 					command{
@@ -243,7 +243,7 @@ func (s *Router) start(ctx context.Context, m *tgbot.Message) error {
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   m.Chat.ID,
 			Text:     menu.Text,
 			Keyboard: menu.Keyboard,
@@ -262,7 +262,7 @@ func (s *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	}
 	err = s.send.Edit(
 		ctx,
-		EditMessage{
+		editMessage{
 			ChatID:    cq.ChatID(),
 			MessageID: cq.MessageID(),
 			Text:      menu.Text,
@@ -275,7 +275,7 @@ func (s *Router) backToMenu(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	log.Printf("bot: menu in place: %v", err)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   cq.ChatID(),
 			Text:     menu.Text,
 			Keyboard: menu.Keyboard,
@@ -342,7 +342,7 @@ func (s *Router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	case cq.Data == cbSupport, cq.Data == cbTerms:
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: cq.ChatID(),
 				Text: s.commandText(
 					command{
@@ -378,7 +378,7 @@ func (s *Router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   cq.ChatID(),
 			Text:     askKeyNameText,
 			Keyboard: skipKeyNameKeyboard(),
@@ -396,7 +396,7 @@ func (s *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID:   m.Chat.ID,
 				Text:     askKeyNameText,
 				Keyboard: skipKeyNameKeyboard(),
@@ -424,7 +424,7 @@ func (s *Router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 	)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   m.Chat.ID,
 			Text:     badKeyNameText,
 			Keyboard: skipKeyNameKeyboard(),
@@ -468,7 +468,7 @@ func (s *Router) issueKey(ctx context.Context, k keyRequest) error {
 		// The key exists: say where it is, or a second press makes another.
 		if sendErr := s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID:   k.ChatID,
 				Text:     keyDeliveryFailedText,
 				Keyboard: myAccessKeyboard(),
@@ -524,7 +524,7 @@ func (s *Router) keyStepApps(ctx context.Context, cq *tgbot.CallbackQuery) error
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   cq.ChatID(),
 			Text:     appsText,
 			Keyboard: appsKeyboard(),
@@ -553,7 +553,7 @@ func (s *Router) deliverKey(ctx context.Context, d keyDelivery) error {
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   d.ChatID,
 			Text:     importText,
 			Keyboard: bypassNextKeyboard(),
@@ -575,7 +575,7 @@ func (s *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if len(keys) == 0 {
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID:   cq.ChatID(),
 				Text:     noKeysText,
 				Keyboard: createKeyKeyboard(),
@@ -584,7 +584,7 @@ func (s *Router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: cq.ChatID(),
 			Text:   accessText(keys),
 			Keyboard: accessKeyboard(
@@ -632,7 +632,7 @@ func (s *Router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error
 func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
 	err := s.send.SendDocument(
 		ctx,
-		OutFile{
+		outFile{
 			ChatID:  d.ChatID,
 			Name:    configFileName(d.Key.Peer),
 			Data:    []byte(d.Key.Conf),
@@ -644,7 +644,7 @@ func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
 	}
 	return s.sendQR(
 		ctx,
-		OutFile{
+		outFile{
 			ChatID: d.ChatID,
 			Data:   []byte(d.Key.Conf),
 		},
@@ -653,12 +653,12 @@ func (s *Router) sendConfig(ctx context.Context, d configDelivery) error {
 
 // sendQR sends the config (in.Data) as a QR code, or a note when it
 // doesn't fit into one.
-func (s *Router) sendQR(ctx context.Context, in OutFile) error {
+func (s *Router) sendQR(ctx context.Context, in outFile) error {
 	png, err := qrcode.Encode(string(in.Data), qrcode.Low, 768)
 	if err != nil {
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: in.ChatID,
 				Text:   qrTooLongText,
 			},
@@ -666,7 +666,7 @@ func (s *Router) sendQR(ctx context.Context, in OutFile) error {
 	}
 	return s.send.SendPhoto(
 		ctx,
-		OutFile{
+		outFile{
 			ChatID:  in.ChatID,
 			Name:    "qr.png",
 			Data:    png,
@@ -684,7 +684,7 @@ func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
 		log.Printf("bot: bypass lists: %v", err)
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: chatID,
 				Text:   bypassDownText,
 			},
@@ -692,7 +692,7 @@ func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
 	}
 	if err := s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   chatID,
 			Text:     bypassHowToText,
 			Keyboard: menuKeyboard(),
@@ -703,7 +703,7 @@ func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
 	for _, f := range files {
 		err := s.send.SendDocument(
 			ctx,
-			OutFile{
+			outFile{
 				ChatID:  chatID,
 				Name:    f.Name,
 				Data:    f.Data,
@@ -723,7 +723,7 @@ func (s *Router) sendBypass(ctx context.Context, chatID int64) error {
 func (s *Router) replyError(ctx context.Context, e userError) error {
 	err := s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: e.ChatID,
 			Text:   e.Text,
 		},

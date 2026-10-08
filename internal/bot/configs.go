@@ -11,7 +11,7 @@ func (s *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   a.ChatID,
 			Text:     configsAskText(len(ids)),
 			Keyboard: configsKeyboard(),
@@ -41,7 +41,7 @@ func (s *Router) adminConfigs(ctx context.Context, a adminAction) error {
 func (s *Router) sendConfigsNotice(ctx context.Context, userID int64) error {
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   userID,
 			Text:     configsNoticeText,
 			Keyboard: myAccessKeyboard(),

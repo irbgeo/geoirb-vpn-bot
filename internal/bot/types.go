@@ -11,15 +11,15 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// OutMessage is one text message to send.
-type OutMessage struct {
+// outMessage is one text message to send.
+type outMessage struct {
 	ChatID   int64
 	Text     string
 	Keyboard *tgbot.InlineKeyboardMarkup // nil = no buttons
 }
 
-// EditMessage replaces the text and buttons of a sent message.
-type EditMessage struct {
+// editMessage replaces the text and buttons of a sent message.
+type editMessage struct {
 	ChatID    int64
 	MessageID int64
 	Text      string
@@ -80,8 +80,8 @@ type errorReport struct {
 	Err    error
 }
 
-// OutInvoice is a Telegram Stars (XTR) invoice.
-type OutInvoice struct {
+// outInvoice is a Telegram Stars (XTR) invoice.
+type outInvoice struct {
 	ChatID      int64
 	Title       string // up to 32 chars
 	Description string // up to 255 chars
@@ -90,15 +90,15 @@ type OutInvoice struct {
 	Stars       int
 }
 
-// PreCheckoutAnswer answers a pre-checkout query (within 10 seconds).
-type PreCheckoutAnswer struct {
+// preCheckoutAnswer answers a pre-checkout query (within 10 seconds).
+type preCheckoutAnswer struct {
 	ID    string
 	OK    bool
 	Error string // shown to the user when OK is false
 }
 
-// RefundInput returns the Stars of one payment.
-type RefundInput struct {
+// refundInput returns the Stars of one payment.
+type refundInput struct {
 	UserID   int64
 	ChargeID string
 }
@@ -232,8 +232,8 @@ type broadcastResult struct {
 	Failed int
 }
 
-// OutFile is one file (document or photo) to send.
-type OutFile struct {
+// outFile is one file (document or photo) to send.
+type outFile struct {
 	ChatID  int64
 	Name    string
 	Data    []byte

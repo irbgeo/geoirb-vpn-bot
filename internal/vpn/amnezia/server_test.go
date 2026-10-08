@@ -14,11 +14,11 @@ import (
 // fakeRunner answers container commands from a handler and records calls.
 type fakeRunner struct {
 	mu      sync.Mutex
-	calls   []ExecInput
-	handler func(in ExecInput) (string, error)
+	calls   []execInput
+	handler func(in execInput) (string, error)
 }
 
-func (s *fakeRunner) Exec(ctx context.Context, in ExecInput) (string, error) {
+func (s *fakeRunner) Exec(ctx context.Context, in execInput) (string, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, in)
 	s.mu.Unlock()
@@ -38,7 +38,7 @@ func (s *fakeRunner) cmds() []string {
 
 // awgContainer fakes a container with awg0.conf and the awg tool.
 func awgContainer(conf *string) *fakeRunner {
-	return &fakeRunner{handler: func(in ExecInput) (string, error) {
+	return &fakeRunner{handler: func(in execInput) (string, error) {
 		cmd := strings.Join(in.Args, " ")
 		switch {
 		case cmd == "ls /opt/amnezia/awg":
@@ -56,7 +56,7 @@ func awgContainer(conf *string) *fakeRunner {
 }
 
 func TestOpenDetectsLayout(t *testing.T) {
-	conf := serverConf
+	conf := serverConfText
 	s, err := Open(context.Background(), awgContainer(&conf))
 	require.NoError(t, err)
 	require.Equal(t, "awg0", s.iface)
@@ -65,7 +65,7 @@ func TestOpenDetectsLayout(t *testing.T) {
 }
 
 func TestOpenOldWireGuardLayout(t *testing.T) {
-	r := &fakeRunner{handler: func(in ExecInput) (string, error) {
+	r := &fakeRunner{handler: func(in execInput) (string, error) {
 		if in.Args[0] == "ls" {
 			return "wg0.conf\nclientsTable\n", nil
 		}
@@ -78,13 +78,13 @@ func TestOpenOldWireGuardLayout(t *testing.T) {
 }
 
 func TestOpenFailsWithoutConf(t *testing.T) {
-	r := &fakeRunner{handler: func(ExecInput) (string, error) { return "clientsTable\n", nil }}
+	r := &fakeRunner{handler: func(execInput) (string, error) { return "clientsTable\n", nil }}
 	_, err := Open(context.Background(), r)
 	require.ErrorContains(t, err, "no awg0.conf or wg0.conf")
 }
 
 func TestGenKeys(t *testing.T) {
-	r := &fakeRunner{handler: func(in ExecInput) (string, error) {
+	r := &fakeRunner{handler: func(in execInput) (string, error) {
 		switch in.Args[1] {
 		case "genkey":
 			return "PRIV=\n", nil
@@ -105,7 +105,7 @@ func TestGenKeys(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(
 		t,
-		Keys{
+		keys{
 			Private: "PRIV=",
 			Public:  "PUB=",
 			PSK:     "PSK=",
@@ -115,15 +115,15 @@ func TestGenKeys(t *testing.T) {
 }
 
 func TestUpdateSyncsThenPersists(t *testing.T) {
-	conf := serverConf
+	conf := serverConfText
 	r := awgContainer(&conf)
 	s, err := Open(context.Background(), r)
 	require.NoError(t, err)
 	r.calls = nil
 
-	err = s.Update(context.Background(), func(c *ServerConf) error {
+	err = s.Update(context.Background(), func(c *serverConf) error {
 		c.AddPeer(
-			Peer{
+			peer{
 				PublicKey:    "PUB3=",
 				PresharedKey: "PSK3=",
 				AllowedIPs:   "10.8.1.3/32",
@@ -150,22 +150,22 @@ func TestUpdateSyncsThenPersists(t *testing.T) {
 }
 
 func TestUpdateCallbackErrorWritesNothing(t *testing.T) {
-	conf := serverConf
+	conf := serverConfText
 	r := awgContainer(&conf)
 	s, err := Open(context.Background(), r)
 	require.NoError(t, err)
 	r.calls = nil
 
-	err = s.Update(context.Background(), func(*ServerConf) error { return errors.New("boom") })
+	err = s.Update(context.Background(), func(*serverConf) error { return errors.New("boom") })
 	require.ErrorContains(t, err, "boom")
 	require.Equal(t, []string{"cat /opt/amnezia/awg/awg0.conf"}, r.cmds())
 }
 
 func TestUpdateSyncFailureKeepsFile(t *testing.T) {
-	conf := serverConf
+	conf := serverConfText
 	r := awgContainer(&conf)
 	inner := r.handler
-	r.handler = func(in ExecInput) (string, error) {
+	r.handler = func(in execInput) (string, error) {
 		if strings.Contains(strings.Join(in.Args, " "), "syncconf") {
 			return "", errors.New("syncconf failed")
 		}
@@ -174,19 +174,19 @@ func TestUpdateSyncFailureKeepsFile(t *testing.T) {
 	s, err := Open(context.Background(), r)
 	require.NoError(t, err)
 
-	err = s.Update(context.Background(), func(c *ServerConf) error {
+	err = s.Update(context.Background(), func(c *serverConf) error {
 		c.RemovePeer("PUB1=")
 		return nil
 	})
 	require.ErrorContains(t, err, "syncconf failed")
-	require.Equal(t, serverConf, conf, "file untouched when live apply fails")
+	require.Equal(t, serverConfText, conf, "file untouched when live apply fails")
 }
 
 func TestStats(t *testing.T) {
 	dump := "SERVERPRIV=\tSERVERPUB=\t443\toff\n" +
 		"PUB1=\tPSK1=\t1.2.3.4:5000\t10.8.1.1/32\t1790505566\t100\t200\toff\n" +
 		"PUB2=\tPSK2=\t(none)\t10.8.1.2/32\t0\t0\t0\toff\n"
-	r := &fakeRunner{handler: func(in ExecInput) (string, error) {
+	r := &fakeRunner{handler: func(in execInput) (string, error) {
 		require.Equal(t, []string{"awg", "show", "awg0", "dump"}, in.Args)
 		return dump, nil
 	}}
@@ -200,7 +200,7 @@ func TestStats(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(
 		t,
-		[]PeerStat{
+		[]peerStat{
 			{
 				PublicKey:       "PUB1=",
 				Endpoint:        "1.2.3.4:5000",
@@ -219,7 +219,7 @@ func TestStats(t *testing.T) {
 }
 
 func TestServerPublicKey(t *testing.T) {
-	r := &fakeRunner{handler: func(in ExecInput) (string, error) {
+	r := &fakeRunner{handler: func(in execInput) (string, error) {
 		require.Equal(t, []string{"awg", "show", "awg0", "public-key"}, in.Args)
 		return "SERVERPUB=\n", nil
 	}}
@@ -235,18 +235,18 @@ func TestServerPublicKey(t *testing.T) {
 }
 
 func TestUpdateRefusesAConfigChangedByAnotherWriter(t *testing.T) {
-	conf := serverConf
+	conf := serverConfText
 	r := awgContainer(&conf)
 	s, err := Open(context.Background(), r)
 	require.NoError(t, err)
 	r.calls = nil
 
-	require.NoError(t, s.Update(context.Background(), func(c *ServerConf) error {
+	require.NoError(t, s.Update(context.Background(), func(c *serverConf) error {
 		c.RemovePeer("PUB1=")
 		return nil
 	}))
 
-	want := sha256Hex(serverConf)
+	want := sha256Hex(serverConfText)
 	sync, persist := r.calls[1].Args[2], r.calls[2].Args[2]
 	require.Contains(t, sync, want, "syncconf runs only on the file we read")
 	require.Contains(t, persist, want, "mv runs only on the file we read")

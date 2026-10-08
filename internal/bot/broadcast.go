@@ -17,7 +17,7 @@ func (s *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
 	)
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   a.ChatID,
 			Text:     askBroadcastText,
 			Keyboard: cancelKeyboard(),
@@ -63,7 +63,7 @@ func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 	}
 	return s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID:   p.ChatID,
 			Text:     broadcastPreviewText(preview),
 			Keyboard: broadcastKeyboard(),
@@ -90,7 +90,7 @@ func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 	case takeExpired:
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: a.ChatID,
 				Text:   previewExpiredText,
 			},
@@ -99,7 +99,7 @@ func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 	if p.Maint != maintKeep && s.maint.on() == (p.Maint == maintStart) {
 		return s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: a.ChatID,
 				Text:   maintAlreadyText(p.Maint == maintStart),
 			},
@@ -123,7 +123,7 @@ func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 			Deliver: func(ctx context.Context, id int64) error {
 				return s.send.Send(
 					ctx,
-					OutMessage{
+					outMessage{
 						ChatID: id,
 						Text:   p.Text,
 					},
@@ -146,7 +146,7 @@ func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 	if !s.jobs.reserve() {
 		return false, s.send.Send(
 			ctx,
-			OutMessage{
+			outMessage{
 				ChatID: m.AdminChat,
 				Text:   massSendBusyText,
 			},
@@ -168,7 +168,7 @@ func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 	}
 	err = s.send.Send(
 		ctx,
-		OutMessage{
+		outMessage{
 			ChatID: m.AdminChat,
 			Text:   m.Started,
 		},
@@ -210,7 +210,7 @@ send:
 	}
 	err := s.send.Send(
 		context.WithoutCancel(ctx),
-		OutMessage{
+		outMessage{
 			ChatID: job.AdminChat,
 			Text:   job.Report(res),
 		},

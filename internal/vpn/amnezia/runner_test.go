@@ -27,7 +27,7 @@ func TestDockerRunnerExec(t *testing.T) {
 
 	out, err := r.Exec(
 		context.Background(),
-		ExecInput{
+		execInput{
 			Args:  []string{"awg", "pubkey"},
 			Stdin: "SECRET",
 		},
@@ -45,7 +45,7 @@ func TestDockerRunnerErrorHasStderrNotStdin(t *testing.T) {
 
 	_, err := r.Exec(
 		context.Background(),
-		ExecInput{
+		execInput{
 			Args:  []string{"awg", "pubkey"},
 			Stdin: "SECRET",
 		},
@@ -63,7 +63,7 @@ func TestDockerRunnerTimeout(t *testing.T) {
 	}
 
 	start := time.Now()
-	_, err := r.Exec(context.Background(), ExecInput{Args: []string{"true"}})
+	_, err := r.Exec(context.Background(), execInput{Args: []string{"true"}})
 	require.ErrorContains(t, err, "timed out")
 	require.Less(t, time.Since(start), 3*time.Second)
 }

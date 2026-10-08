@@ -19,32 +19,32 @@ import (
 type fakeSender struct {
 	editErr   error
 	mu        sync.Mutex
-	invoices  []*OutInvoice
-	answers   []PreCheckoutAnswer
-	refunds   []RefundInput
+	invoices  []*outInvoice
+	answers   []preCheckoutAnswer
+	refunds   []refundInput
 	refundErr error
-	edits     []EditMessage
-	sent      []OutMessage
-	files     []OutFile
+	edits     []editMessage
+	sent      []outMessage
+	files     []outFile
 	answered  []string
 	fail      map[int64]bool
 }
 
-func (s *fakeSender) SendInvoice(_ context.Context, m *OutInvoice) error {
+func (s *fakeSender) SendInvoice(_ context.Context, m *outInvoice) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invoices = append(s.invoices, m)
 	return nil
 }
 
-func (s *fakeSender) AnswerPreCheckout(_ context.Context, a PreCheckoutAnswer) error {
+func (s *fakeSender) AnswerPreCheckout(_ context.Context, a preCheckoutAnswer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.answers = append(s.answers, a)
 	return nil
 }
 
-func (s *fakeSender) Refund(ctx context.Context, in RefundInput) error {
+func (s *fakeSender) Refund(ctx context.Context, in refundInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -54,7 +54,7 @@ func (s *fakeSender) Refund(ctx context.Context, in RefundInput) error {
 	return s.refundErr
 }
 
-func (s *fakeSender) Edit(_ context.Context, m EditMessage) error {
+func (s *fakeSender) Edit(_ context.Context, m editMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.editErr != nil {
@@ -64,14 +64,14 @@ func (s *fakeSender) Edit(_ context.Context, m EditMessage) error {
 	return nil
 }
 
-func (s *fakeSender) SendDocument(_ context.Context, m OutFile) error {
+func (s *fakeSender) SendDocument(_ context.Context, m outFile) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.files = append(s.files, m)
 	return nil
 }
 
-func (s *fakeSender) SendPhoto(_ context.Context, m OutFile) error {
+func (s *fakeSender) SendPhoto(_ context.Context, m outFile) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.files = append(s.files, m)
@@ -85,7 +85,7 @@ func (s *fakeSender) Answer(_ context.Context, callbackID string) error {
 	return nil
 }
 
-func (s *fakeSender) Send(_ context.Context, m OutMessage) error {
+func (s *fakeSender) Send(_ context.Context, m outMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fail[m.ChatID] {
@@ -842,7 +842,7 @@ func TestNotifyAdminsReachesEveryAdmin(t *testing.T) {
 
 	require.Equal(
 		t,
-		[]OutMessage{
+		[]outMessage{
 			{
 				ChatID: 1,
 				Text:   "alert",

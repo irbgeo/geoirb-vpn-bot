@@ -16,7 +16,7 @@ import (
 
 // testStore connects to MONGO_URI (default localhost), wipes the test
 // database and skips the test when Mongo is not reachable.
-func testStore(t *testing.T) *Store {
+func testStore(t *testing.T) *store {
 	t.Helper()
 	uri := os.Getenv("MONGO_URI")
 	if uri == "" {
