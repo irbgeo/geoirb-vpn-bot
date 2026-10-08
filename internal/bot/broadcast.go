@@ -8,14 +8,14 @@ import (
 )
 
 // adminBroadcastAsk waits for the broadcast text.
-func (r *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
-	r.dialogs.set(
+func (s *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
+	s.dialogs.set(
 		pendingInput{
 			ChatID: a.ChatID,
 			Kind:   pendingBroadcast,
 		},
 	)
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   a.ChatID,
@@ -28,25 +28,25 @@ func (r *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
 // adminMaintenance is one toggle button: it previews "maintenance
 // started", or "maintenance is over" while it is on. The state flips only
 // when the admin presses "send" (the usual broadcast confirm).
-func (r *Router) adminMaintenance(ctx context.Context, a adminAction) error {
+func (s *Router) adminMaintenance(ctx context.Context, a adminAction) error {
 	p := pendingInput{
 		ChatID: a.ChatID,
 		Text:   maintenanceText,
 		Maint:  maintStart,
 	}
-	if r.maint.on() {
+	if s.maint.on() {
 		p.Text, p.Maint = maintenanceEndText, maintEnd
 	}
-	return r.adminBroadcastPreview(ctx, p)
+	return s.adminBroadcastPreview(ctx, p)
 }
 
 // adminBroadcastPreview shows the text and how many users get it, and
 // waits for "send" or "cancel". p is the admin chat, the text and what
 // sending does to the maintenance state.
-func (r *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
-	ids, err := r.ops.BroadcastRecipients(ctx)
+func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
+	ids, err := s.ops.BroadcastRecipients(ctx)
 	if err != nil {
-		return r.reportError(
+		return s.reportError(
 			ctx,
 			errorReport{
 				ChatID: p.ChatID,
@@ -56,12 +56,12 @@ func (r *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 	}
 	p.Kind = readyBroadcast
 	p.At = time.Time{} // a fresh preview gets a fresh pendingTTL
-	r.dialogs.set(p)
+	s.dialogs.set(p)
 	preview := broadcastView{
 		Recipients: len(ids),
 		Text:       p.Text,
 	}
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   p.ChatID,
@@ -77,8 +77,8 @@ func (r *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 // (pendingTTL) or a maintenance change someone already made is not sent.
 // When it can't start (another mass send runs, recipients fail) the
 // preview stays, so "send" can be pressed again.
-func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
-	p, res := r.dialogs.take(
+func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
+	p, res := s.dialogs.take(
 		dialogTake{
 			ChatID: a.ChatID,
 			Kind:   readyBroadcast,
@@ -88,7 +88,7 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 	case takeNone:
 		return nil
 	case takeExpired:
-		return r.send.Send(
+		return s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: a.ChatID,
@@ -96,8 +96,8 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 			},
 		)
 	}
-	if p.Maint != maintKeep && r.maint.on() == (p.Maint == maintStart) {
-		return r.send.Send(
+	if p.Maint != maintKeep && s.maint.on() == (p.Maint == maintStart) {
+		return s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: a.ChatID,
@@ -105,7 +105,7 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 			},
 		)
 	}
-	started, err := r.startMassSend(
+	started, err := s.startMassSend(
 		ctx,
 		massSend{
 			AdminChat: a.ChatID,
@@ -115,13 +115,13 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 					return nil
 				}
 				// flip before sending: the admin's next /menu shows the new button
-				if err := r.maint.set(p.Maint == maintStart); err != nil {
+				if err := s.maint.set(p.Maint == maintStart); err != nil {
 					return fmt.Errorf("bot: maintenance flag: %w", err)
 				}
 				return nil
 			},
 			Deliver: func(ctx context.Context, id int64) error {
-				return r.send.Send(
+				return s.send.Send(
 					ctx,
 					OutMessage{
 						ChatID: id,
@@ -133,7 +133,7 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 		},
 	)
 	if !started {
-		r.dialogs.set(p) // keep the preview: "send" works again later
+		s.dialogs.set(p) // keep the preview: "send" works again later
 	}
 	return err
 }
@@ -142,9 +142,9 @@ func (r *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 // runs m.Before and starts m.Deliver for each recipient. started is false
 // when it did not start: another mass send is running (the admin is told)
 // or a step failed (the error is reported in the admin chat and returned).
-func (r *Router) startMassSend(ctx context.Context, m massSend) (started bool, err error) {
-	if !r.jobs.reserve() {
-		return false, r.send.Send(
+func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, err error) {
+	if !s.jobs.reserve() {
+		return false, s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: m.AdminChat,
@@ -152,13 +152,13 @@ func (r *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 			},
 		)
 	}
-	ids, err := r.ops.BroadcastRecipients(ctx)
+	ids, err := s.ops.BroadcastRecipients(ctx)
 	if err == nil && m.Before != nil {
 		err = m.Before()
 	}
 	if err != nil {
-		r.jobs.release()
-		return false, r.reportError(
+		s.jobs.release()
+		return false, s.reportError(
 			ctx,
 			errorReport{
 				ChatID: m.AdminChat,
@@ -166,15 +166,15 @@ func (r *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 			},
 		)
 	}
-	err = r.send.Send(
+	err = s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID: m.AdminChat,
 			Text:   m.Started,
 		},
 	)
-	r.jobs.run(func(life context.Context) {
-		r.runBroadcast(
+	s.jobs.run(func(life context.Context) {
+		s.runBroadcast(
 			life,
 			broadcastJob{
 				AdminChat:  m.AdminChat,
@@ -190,7 +190,7 @@ func (r *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 // runBroadcast runs job.Deliver for each recipient with a pause, then
 // reports how many got it. On shutdown (ctx done) it stops and reports
 // what went out.
-func (r *Router) runBroadcast(ctx context.Context, job broadcastJob) {
+func (s *Router) runBroadcast(ctx context.Context, job broadcastJob) {
 	res := broadcastResult{}
 send:
 	for i, id := range job.Recipients {
@@ -198,7 +198,7 @@ send:
 			select {
 			case <-ctx.Done(): // shutting down: stop and report what went out
 				break send
-			case <-time.After(r.pause):
+			case <-time.After(s.pause):
 			}
 		}
 		if err := job.Deliver(ctx, id); err != nil {
@@ -208,7 +208,7 @@ send:
 			res.Sent++
 		}
 	}
-	err := r.send.Send(
+	err := s.send.Send(
 		context.WithoutCancel(ctx),
 		OutMessage{
 			ChatID: job.AdminChat,

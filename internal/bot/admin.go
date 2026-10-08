@@ -72,8 +72,8 @@ var errPaymentNotFound = errors.New("bot: payment not found")
 
 // admin handles admin buttons. The role is checked in the DB on every
 // press, so a forged button from a non-admin does nothing.
-func (r *Router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	u, err := r.users.User(ctx, cq.SenderID())
+func (s *Router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	u, err := s.users.User(ctx, cq.SenderID())
 	if err != nil && !errors.Is(err, service.ErrNotFound) {
 		return err
 	}
@@ -90,53 +90,53 @@ func (r *Router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	}
 	switch name {
 	case actUsers:
-		return r.adminUsers(ctx, a)
+		return s.adminUsers(ctx, a)
 	case actUser:
-		return r.adminUser(ctx, a)
+		return s.adminUser(ctx, a)
 	case actDisable, actEnable, actExtend:
-		return r.adminKeyAction(ctx, a)
+		return s.adminKeyAction(ctx, a)
 	case actConfig:
-		return r.adminConfig(ctx, a)
+		return s.adminConfig(ctx, a)
 	case actDelete:
-		return r.adminDeleteAsk(ctx, a)
+		return s.adminDeleteAsk(ctx, a)
 	case actDeleteOK:
-		return r.adminDelete(ctx, a)
+		return s.adminDelete(ctx, a)
 	case actIssue:
-		return r.adminIssueTerm(ctx, a)
+		return s.adminIssueTerm(ctx, a)
 	case actIssueDays:
-		return r.adminIssue(ctx, a)
+		return s.adminIssue(ctx, a)
 	case actFeedback:
-		return r.adminFeedback(ctx, a)
+		return s.adminFeedback(ctx, a)
 	case actStats:
-		return r.adminStats(ctx, a)
+		return s.adminStats(ctx, a)
 	case actBroadcast:
-		return r.adminBroadcastAsk(ctx, a)
+		return s.adminBroadcastAsk(ctx, a)
 	case actBroadcastOK:
-		return r.adminBroadcast(ctx, a)
+		return s.adminBroadcast(ctx, a)
 	case actCancel:
-		return r.adminCancel(ctx, a)
+		return s.adminCancel(ctx, a)
 	case actConfigs:
-		return r.adminConfigsAsk(ctx, a)
+		return s.adminConfigsAsk(ctx, a)
 	case actConfigsOK:
-		return r.adminConfigs(ctx, a)
+		return s.adminConfigs(ctx, a)
 	case actMaint:
-		return r.adminMaintenance(ctx, a)
+		return s.adminMaintenance(ctx, a)
 	case actRefund:
-		return r.adminRefundAsk(ctx, a)
+		return s.adminRefundAsk(ctx, a)
 	case actRefundOK:
-		return r.adminRefund(ctx, a)
+		return s.adminRefund(ctx, a)
 	}
 	log.Printf("bot: unknown admin action %q", name)
 	return nil
 }
 
 // adminIssueTerm asks for the term of a key issued to a user by hand.
-func (r *Router) adminIssueTerm(ctx context.Context, a adminAction) error {
+func (s *Router) adminIssueTerm(ctx context.Context, a adminAction) error {
 	id, err := strconv.ParseInt(a.Arg, 10, 64)
 	if err != nil {
 		return fmt.Errorf("bot: bad user id in button: %w", err)
 	}
-	return r.send.Edit(
+	return s.send.Edit(
 		ctx,
 		EditMessage{
 			ChatID:    a.ChatID,
@@ -149,14 +149,14 @@ func (r *Router) adminIssueTerm(ctx context.Context, a adminAction) error {
 
 // adminIssue issues a key to a bot user without payment, trial or limits.
 // The key goes straight to the user; if they blocked the bot, to the admin.
-func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
+func (s *Router) adminIssue(ctx context.Context, a adminAction) error {
 	idText, daysText, _ := strings.Cut(a.Arg, ":")
 	id, err1 := strconv.ParseInt(idText, 10, 64)
 	days, err2 := strconv.Atoi(daysText)
 	if err1 != nil || err2 != nil || id <= 0 {
 		return fmt.Errorf("bot: bad issue button %q", a.Arg)
 	}
-	p, err := r.keys.Issue(
+	p, err := s.keys.Issue(
 		ctx,
 		service.IssueInput{
 			UserID: id,
@@ -164,9 +164,9 @@ func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
 		},
 	)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	if err := r.deliverKey(
+	if err := s.deliverKey(
 		ctx,
 		keyDelivery{
 			ChatID: id,
@@ -174,7 +174,7 @@ func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
 		},
 	); err != nil {
 		log.Printf("bot: deliver key to %d: %v", id, err)
-		if err := r.deliverKey(
+		if err := s.deliverKey(
 			ctx,
 			keyDelivery{
 				ChatID: a.ChatID,
@@ -185,7 +185,7 @@ func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
 		}
 	}
 	a.Arg = idText
-	return r.adminUser(ctx, a)
+	return s.adminUser(ctx, a)
 }
 
 // adminText handles a text an admin sent after "📣 Рассылка": the
@@ -194,18 +194,18 @@ func (r *Router) adminIssue(ctx context.Context, a adminAction) error {
 // text, text from someone who is not an admin, or an old prompt
 // (pendingTTL) is ignored. A message without text (a photo, a sticker)
 // gets "send text" and the bot keeps waiting.
-func (r *Router) adminText(ctx context.Context, m *tgbot.Message) error {
-	p, waiting := r.dialogs.peek(m.Chat.ID)
+func (s *Router) adminText(ctx context.Context, m *tgbot.Message) error {
+	p, waiting := s.dialogs.peek(m.Chat.ID)
 	if !waiting {
 		return nil
 	}
-	u, err := r.users.User(ctx, m.From.ID)
+	u, err := s.users.User(ctx, m.From.ID)
 	if err != nil || u.Role != service.RoleAdmin {
 		return nil //nolint:nilerr // not an admin (any more): ignore the text
 	}
 	text := strings.TrimSpace(m.Text)
 	if text == "" {
-		return r.send.Send(
+		return s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: m.Chat.ID,
@@ -213,7 +213,7 @@ func (r *Router) adminText(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	}
-	return r.adminBroadcastPreview(
+	return s.adminBroadcastPreview(
 		ctx,
 		pendingInput{
 			ChatID: m.Chat.ID,
@@ -224,9 +224,9 @@ func (r *Router) adminText(ctx context.Context, m *tgbot.Message) error {
 }
 
 // adminCancel drops what the bot waits for from this admin.
-func (r *Router) adminCancel(ctx context.Context, a adminAction) error {
-	r.dialogs.drop(a.ChatID)
-	return r.send.Send(
+func (s *Router) adminCancel(ctx context.Context, a adminAction) error {
+	s.dialogs.drop(a.ChatID)
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID: a.ChatID,
@@ -236,12 +236,12 @@ func (r *Router) adminCancel(ctx context.Context, a adminAction) error {
 }
 
 // adminStats sends the overview as a new message, so the menu stays.
-func (r *Router) adminStats(ctx context.Context, a adminAction) error {
-	st, err := r.ops.Stats(ctx)
+func (s *Router) adminStats(ctx context.Context, a adminAction) error {
+	st, err := s.ops.Stats(ctx)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   a.ChatID,
@@ -253,10 +253,10 @@ func (r *Router) adminStats(ctx context.Context, a adminAction) error {
 
 // adminUsers shows one page of users: plain users, then unlimited, then
 // admins; newest first inside a role.
-func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
+func (s *Router) adminUsers(ctx context.Context, a adminAction) error {
 	page, _ := strconv.ParseInt(a.Arg, 10, 64)
 	page = max(page, 0)
-	users, total, err := r.users.Users(
+	users, total, err := s.users.Users(
 		ctx,
 		service.Page{
 			Skip:  page * adminPageSize,
@@ -271,7 +271,7 @@ func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
 		Total: total,
 		Page:  page,
 	}
-	return r.send.Edit(
+	return s.send.Edit(
 		ctx,
 		EditMessage{
 			ChatID:    a.ChatID,
@@ -283,10 +283,10 @@ func (r *Router) adminUsers(ctx context.Context, a adminAction) error {
 }
 
 // adminFeedback shows one page of reviews and suggestions, newest first.
-func (r *Router) adminFeedback(ctx context.Context, a adminAction) error {
+func (s *Router) adminFeedback(ctx context.Context, a adminAction) error {
 	page, _ := strconv.ParseInt(a.Arg, 10, 64)
 	page = max(page, 0)
-	list, total, err := r.feedback.Feedbacks(
+	list, total, err := s.feedback.Feedbacks(
 		ctx,
 		service.Page{
 			Skip:  page * adminPageSize,
@@ -294,14 +294,14 @@ func (r *Router) adminFeedback(ctx context.Context, a adminAction) error {
 		},
 	)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
 	v := feedbackView{
 		List:  list,
 		Total: total,
 		Page:  page,
 	}
-	return r.send.Edit(
+	return s.send.Edit(
 		ctx,
 		EditMessage{
 			ChatID:    a.ChatID,
@@ -313,24 +313,24 @@ func (r *Router) adminFeedback(ctx context.Context, a adminAction) error {
 }
 
 // adminUser shows a user card: role, trial, and every key with actions.
-func (r *Router) adminUser(ctx context.Context, a adminAction) error {
+func (s *Router) adminUser(ctx context.Context, a adminAction) error {
 	id, err := strconv.ParseInt(a.Arg, 10, 64)
 	if err != nil {
 		return fmt.Errorf("bot: bad user id in button: %w", err)
 	}
-	u, err := r.users.User(ctx, id)
+	u, err := s.users.User(ctx, id)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	keys, err := r.keys.Access(ctx, id)
+	keys, err := s.keys.Access(ctx, id)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	payments, err := r.billing.Payments(ctx, id)
+	payments, err := s.billing.Payments(ctx, id)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.send.Edit(
+	return s.send.Edit(
 		ctx,
 		EditMessage{
 			ChatID:    a.ChatID,
@@ -349,15 +349,15 @@ func (r *Router) adminUser(ctx context.Context, a adminAction) error {
 
 // adminKeyAction disables, enables or extends a key, then redraws the
 // owner's card.
-func (r *Router) adminKeyAction(ctx context.Context, a adminAction) error {
+func (s *Router) adminKeyAction(ctx context.Context, a adminAction) error {
 	var err error
 	switch a.Name {
 	case actDisable:
-		err = r.keys.Disable(ctx, a.Arg)
+		err = s.keys.Disable(ctx, a.Arg)
 	case actEnable:
-		err = r.keys.Enable(ctx, a.Arg)
+		err = s.keys.Enable(ctx, a.Arg)
 	case actExtend:
-		_, err = r.keys.Extend(
+		_, err = s.keys.Extend(
 			ctx,
 			service.ExtendInput{
 				PublicKey: a.Arg,
@@ -368,22 +368,22 @@ func (r *Router) adminKeyAction(ctx context.Context, a adminAction) error {
 		return fmt.Errorf("bot: unknown key action %q", a.Name)
 	}
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.adminOwnerCard(ctx, a)
+	return s.adminOwnerCard(ctx, a)
 }
 
 // adminConfig sends a key's config and QR code to the admin.
-func (r *Router) adminConfig(ctx context.Context, a adminAction) error {
-	p, err := r.keys.Key(ctx, a.Arg)
+func (s *Router) adminConfig(ctx context.Context, a adminAction) error {
+	p, err := s.keys.Key(ctx, a.Arg)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	conf, err := r.keys.ClientConfig(ctx, a.Arg)
+	conf, err := s.keys.ClientConfig(ctx, a.Arg)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.sendConfig(
+	return s.sendConfig(
 		ctx,
 		configDelivery{
 			ChatID: a.ChatID,
@@ -396,12 +396,12 @@ func (r *Router) adminConfig(ctx context.Context, a adminAction) error {
 }
 
 // adminDeleteAsk asks to confirm deleting a key.
-func (r *Router) adminDeleteAsk(ctx context.Context, a adminAction) error {
-	p, err := r.keys.Key(ctx, a.Arg)
+func (s *Router) adminDeleteAsk(ctx context.Context, a adminAction) error {
+	p, err := s.keys.Key(ctx, a.Arg)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.send.Edit(
+	return s.send.Edit(
 		ctx,
 		EditMessage{
 			ChatID:    a.ChatID,
@@ -413,29 +413,29 @@ func (r *Router) adminDeleteAsk(ctx context.Context, a adminAction) error {
 }
 
 // adminDelete deletes a key for good and shows the owner's card.
-func (r *Router) adminDelete(ctx context.Context, a adminAction) error {
-	p, err := r.keys.Key(ctx, a.Arg)
+func (s *Router) adminDelete(ctx context.Context, a adminAction) error {
+	p, err := s.keys.Key(ctx, a.Arg)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	if err := r.keys.Delete(ctx, a.Arg); err != nil {
-		return r.reportError(ctx, a.failed(err))
+	if err := s.keys.Delete(ctx, a.Arg); err != nil {
+		return s.reportError(ctx, a.failed(err))
 	}
 	a.Arg = strconv.FormatInt(p.UserID, 10)
-	return r.adminUser(ctx, a)
+	return s.adminUser(ctx, a)
 }
 
 // adminRefundAsk asks to confirm returning the Stars of a payment.
-func (r *Router) adminRefundAsk(ctx context.Context, a adminAction) error {
+func (s *Router) adminRefundAsk(ctx context.Context, a adminAction) error {
 	ref, err := parsePaymentRef(a.Arg)
 	if err != nil {
 		return err
 	}
-	p, err := r.findPayment(ctx, ref)
+	p, err := s.findPayment(ctx, ref)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.send.Edit(
+	return s.send.Edit(
 		ctx,
 		EditMessage{
 			ChatID:    a.ChatID,
@@ -449,37 +449,37 @@ func (r *Router) adminRefundAsk(ctx context.Context, a adminAction) error {
 // adminRefund returns the Stars, records it, tells the user and redraws
 // the card. The key is left as is: the admin disables it separately if
 // needed. An already refunded payment is not refunded again.
-func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
+func (s *Router) adminRefund(ctx context.Context, a adminAction) error {
 	ref, err := parsePaymentRef(a.Arg)
 	if err != nil {
 		return err
 	}
-	p, err := r.findPayment(ctx, ref)
+	p, err := s.findPayment(ctx, ref)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
 	a.Arg = strconv.FormatInt(ref.UserID, 10)
 	if !p.RefundedAt.IsZero() {
-		return r.adminUser(ctx, a)
+		return s.adminUser(ctx, a)
 	}
-	if !r.refunds.start(p.ChargeID) {
+	if !s.refunds.start(p.ChargeID) {
 		return nil // a double press: the first one is refunding it
 	}
-	defer r.refunds.end(p.ChargeID)
+	defer s.refunds.end(p.ChargeID)
 	// Once the Stars go back, recording it must finish even on shutdown.
 	ctx = context.WithoutCancel(ctx)
-	if err := r.send.Refund(
+	if err := s.send.Refund(
 		ctx,
 		RefundInput{
 			UserID:   p.UserID,
 			ChargeID: p.ChargeID,
 		},
 	); err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	if err := r.billing.MarkRefunded(ctx, p.ChargeID); err != nil {
+	if err := s.billing.MarkRefunded(ctx, p.ChargeID); err != nil {
 		log.Printf("bot: stars returned but not recorded for %s: %v", p.ChargeID, err)
-		if err := r.send.Send(
+		if err := s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: a.ChatID,
@@ -489,7 +489,7 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 			log.Printf("bot: %v", err)
 		}
 	}
-	if err := r.send.Send(
+	if err := s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID: p.UserID,
@@ -498,12 +498,12 @@ func (r *Router) adminRefund(ctx context.Context, a adminAction) error {
 	); err != nil {
 		log.Printf("bot: tell user %d about refund: %v", p.UserID, err)
 	}
-	return r.adminUser(ctx, a)
+	return s.adminUser(ctx, a)
 }
 
 // findPayment finds a user's payment by its short ref.
-func (r *Router) findPayment(ctx context.Context, ref paymentRef) (*service.Payment, error) {
-	ps, err := r.billing.Payments(ctx, ref.UserID)
+func (s *Router) findPayment(ctx context.Context, ref paymentRef) (*service.Payment, error) {
+	ps, err := s.billing.Payments(ctx, ref.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -516,20 +516,20 @@ func (r *Router) findPayment(ctx context.Context, ref paymentRef) (*service.Paym
 }
 
 // adminOwnerCard redraws the card of the user who owns key a.Arg.
-func (r *Router) adminOwnerCard(ctx context.Context, a adminAction) error {
-	p, err := r.keys.Key(ctx, a.Arg)
+func (s *Router) adminOwnerCard(ctx context.Context, a adminAction) error {
+	p, err := s.keys.Key(ctx, a.Arg)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
 	a.Arg = strconv.FormatInt(p.UserID, 10)
-	return r.adminUser(ctx, a)
+	return s.adminUser(ctx, a)
 }
 
 // reportError explains a failed admin action in the chat. An unexpected
 // error is also returned, for the log; an expected one is not.
-func (r *Router) reportError(ctx context.Context, e errorReport) error {
+func (s *Router) reportError(ctx context.Context, e errorReport) error {
 	text, known := adminErrorText(e.Err)
-	return r.replyError(
+	return s.replyError(
 		ctx,
 		userError{
 			ChatID: e.ChatID,

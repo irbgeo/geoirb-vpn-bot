@@ -14,19 +14,19 @@ import (
 )
 
 // buyMenu shows the tariffs; "buyk:<key>" makes them extend that key.
-func (r *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	key := ""
 	if strings.HasPrefix(cq.Data, cbBuyKey) {
 		key = strings.TrimPrefix(cq.Data, cbBuyKey)
 	}
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID: cq.ChatID(),
 			Text:   buyText,
 			Keyboard: tariffsKeyboard(
 				tariffsView{
-					Tariffs:   r.billing.Tariffs(),
+					Tariffs:   s.billing.Tariffs(),
 					PublicKey: key,
 				},
 			),
@@ -35,13 +35,13 @@ func (r *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 }
 
 // invoice sends a Stars invoice for "buy:<days>[:<key>]".
-func (r *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
+func (s *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	daysText, key, _ := strings.Cut(strings.TrimPrefix(cq.Data, cbTariff), ":")
 	days, err := strconv.Atoi(daysText)
 	if err != nil {
 		return fmt.Errorf("bot: bad tariff button %q", cq.Data)
 	}
-	inv, err := r.billing.Invoice(
+	inv, err := s.billing.Invoice(
 		ctx,
 		service.PurchaseInput{
 			UserID:    cq.SenderID(),
@@ -51,7 +51,7 @@ func (r *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	)
 	if err != nil {
 		text, known := invoiceErrorText(err)
-		return r.replyError(
+		return s.replyError(
 			ctx,
 			userError{
 				ChatID: cq.ChatID(),
@@ -61,7 +61,7 @@ func (r *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 			},
 		)
 	}
-	return r.send.SendInvoice(
+	return s.send.SendInvoice(
 		ctx,
 		&OutInvoice{
 			ChatID:      cq.ChatID(),
@@ -76,8 +76,8 @@ func (r *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 
 // preCheckout accepts the payment only if the purchase still holds;
 // otherwise Telegram charges nothing. Must answer within 10 seconds.
-func (r *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) error {
-	err := r.billing.CheckPurchase(
+func (s *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) error {
+	err := s.billing.CheckPurchase(
 		ctx,
 		service.PaymentInput{
 			PayerID: q.From.ID,
@@ -93,14 +93,14 @@ func (r *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) err
 		log.Printf("bot: pre-checkout from %d declined: %v", q.From.ID, err)
 		a.Error = preCheckoutErrorText(err)
 	}
-	return r.send.AnswerPreCheckout(ctx, a)
+	return s.send.AnswerPreCheckout(ctx, a)
 }
 
 // paid applies a successful payment. If it can't be applied, the Stars
 // go back: a user is never charged for nothing.
-func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
+func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
 	sp := m.SuccessfulPayment
-	res, err := r.billing.Pay(
+	res, err := s.billing.Pay(
 		ctx,
 		service.PaymentInput{
 			ChargeID: sp.TelegramPaymentChargeID,
@@ -114,7 +114,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 		return nil
 	}
 	if err != nil {
-		return r.refund(
+		return s.refund(
 			ctx,
 			failedPayment{
 				Message: m,
@@ -127,7 +127,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 	}
 	// The user first: they are waiting for the result of their payment.
 	if res.NewKey {
-		err = r.deliverKey(
+		err = s.deliverKey(
 			ctx,
 			keyDelivery{
 				ChatID: m.Chat.ID,
@@ -135,7 +135,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	} else {
-		err = r.send.Send(
+		err = s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: m.Chat.ID,
@@ -154,7 +154,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 		// timeout, Telegram down): the user must still hear that the
 		// payment worked and where the key is.
 		ctx = context.WithoutCancel(ctx)
-		if sendErr := r.send.Send(
+		if sendErr := s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: m.Chat.ID,
@@ -164,7 +164,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 			log.Printf("bot: tell %d the payment worked: %v", m.Chat.ID, sendErr)
 		}
 	}
-	r.notify.NotifyAdmins(ctx, paymentAlertText(alert))
+	s.notify.NotifyAdmins(ctx, paymentAlertText(alert))
 	return err
 }
 
@@ -172,7 +172,7 @@ func (r *Router) paid(ctx context.Context, m *tgbot.Message) error {
 // the user and the admins, and returns the cause for the log. It runs on
 // a context that can't be cancelled: Telegram won't deliver the payment
 // again, so a refund skipped at shutdown would be lost.
-func (r *Router) refund(ctx context.Context, f failedPayment) error {
+func (s *Router) refund(ctx context.Context, f failedPayment) error {
 	ctx = context.WithoutCancel(ctx)
 	m := f.Message
 	a := refundAlert{
@@ -181,7 +181,7 @@ func (r *Router) refund(ctx context.Context, f failedPayment) error {
 		Cause:    f.Cause,
 	}
 	text := refundedText
-	a.RefundErr = r.send.Refund(
+	a.RefundErr = s.send.Refund(
 		ctx,
 		RefundInput{
 			UserID:   a.UserID,
@@ -190,11 +190,11 @@ func (r *Router) refund(ctx context.Context, f failedPayment) error {
 	)
 	if a.RefundErr != nil {
 		text = refundFailedText
-	} else if err := r.billing.MarkRefunded(ctx, a.ChargeID); err != nil {
+	} else if err := s.billing.MarkRefunded(ctx, a.ChargeID); err != nil {
 		log.Printf("bot: mark refunded %s: %v", a.ChargeID, err)
 	}
-	r.notify.NotifyAdmins(ctx, refundAlertText(a))
-	if sendErr := r.send.Send(
+	s.notify.NotifyAdmins(ctx, refundAlertText(a))
+	if sendErr := s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID: m.Chat.ID,

@@ -30,68 +30,68 @@ type fakeSender struct {
 	fail      map[int64]bool
 }
 
-func (f *fakeSender) SendInvoice(_ context.Context, m *OutInvoice) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.invoices = append(f.invoices, m)
+func (s *fakeSender) SendInvoice(_ context.Context, m *OutInvoice) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.invoices = append(s.invoices, m)
 	return nil
 }
 
-func (f *fakeSender) AnswerPreCheckout(_ context.Context, a PreCheckoutAnswer) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.answers = append(f.answers, a)
+func (s *fakeSender) AnswerPreCheckout(_ context.Context, a PreCheckoutAnswer) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.answers = append(s.answers, a)
 	return nil
 }
 
-func (f *fakeSender) Refund(ctx context.Context, in RefundInput) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+func (s *fakeSender) Refund(ctx context.Context, in RefundInput) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err // like a real API call on a cancelled context
 	}
-	f.refunds = append(f.refunds, in)
-	return f.refundErr
+	s.refunds = append(s.refunds, in)
+	return s.refundErr
 }
 
-func (f *fakeSender) Edit(_ context.Context, m EditMessage) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.editErr != nil {
-		return f.editErr
+func (s *fakeSender) Edit(_ context.Context, m EditMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.editErr != nil {
+		return s.editErr
 	}
-	f.edits = append(f.edits, m)
+	s.edits = append(s.edits, m)
 	return nil
 }
 
-func (f *fakeSender) SendDocument(_ context.Context, m OutFile) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.files = append(f.files, m)
+func (s *fakeSender) SendDocument(_ context.Context, m OutFile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files = append(s.files, m)
 	return nil
 }
 
-func (f *fakeSender) SendPhoto(_ context.Context, m OutFile) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.files = append(f.files, m)
+func (s *fakeSender) SendPhoto(_ context.Context, m OutFile) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.files = append(s.files, m)
 	return nil
 }
 
-func (f *fakeSender) Answer(_ context.Context, callbackID string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.answered = append(f.answered, callbackID)
+func (s *fakeSender) Answer(_ context.Context, callbackID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.answered = append(s.answered, callbackID)
 	return nil
 }
 
-func (f *fakeSender) Send(_ context.Context, m OutMessage) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.fail[m.ChatID] {
+func (s *fakeSender) Send(_ context.Context, m OutMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail[m.ChatID] {
 		return errors.New("blocked")
 	}
-	f.sent = append(f.sent, m)
+	s.sent = append(s.sent, m)
 	return nil
 }
 
@@ -132,36 +132,36 @@ type fakeService struct {
 	enableErr     error
 }
 
-func (f *fakeService) Stats(context.Context) (*service.Stats, error) {
-	return f.stats, nil
+func (s *fakeService) Stats(context.Context) (*service.Stats, error) {
+	return s.stats, nil
 }
 
-func (f *fakeService) AddFeedback(_ context.Context, in service.FeedbackInput) error {
-	if f.feedbackErr != nil {
-		return f.feedbackErr
+func (s *fakeService) AddFeedback(_ context.Context, in service.FeedbackInput) error {
+	if s.feedbackErr != nil {
+		return s.feedbackErr
 	}
-	f.feedback = append(f.feedback, in)
+	s.feedback = append(s.feedback, in)
 	return nil
 }
 
-func (f *fakeService) Feedbacks(_ context.Context, p service.Page) ([]*service.Feedback, int64, error) {
-	end := min(p.Skip+p.Limit, int64(len(f.feedbackList)))
-	return f.feedbackList[min(p.Skip, end):end], int64(len(f.feedbackList)), nil
+func (s *fakeService) Feedbacks(_ context.Context, p service.Page) ([]*service.Feedback, int64, error) {
+	end := min(p.Skip+p.Limit, int64(len(s.feedbackList)))
+	return s.feedbackList[min(p.Skip, end):end], int64(len(s.feedbackList)), nil
 }
 
-func (f *fakeService) BroadcastRecipients(context.Context) ([]int64, error) {
-	return f.recipients, f.recipientsErr
+func (s *fakeService) BroadcastRecipients(context.Context) ([]int64, error) {
+	return s.recipients, s.recipientsErr
 }
 
-func (f *fakeService) UnfinishedPayments(context.Context) ([]*service.Payment, error) {
-	return f.unfinished, nil
+func (s *fakeService) UnfinishedPayments(context.Context) ([]*service.Payment, error) {
+	return s.unfinished, nil
 }
 
-func (f *fakeService) Payments(context.Context, int64) ([]*service.Payment, error) {
-	return f.payments, nil
+func (s *fakeService) Payments(context.Context, int64) ([]*service.Payment, error) {
+	return s.payments, nil
 }
 
-func (f *fakeService) Tariffs() []service.Tariff {
+func (s *fakeService) Tariffs() []service.Tariff {
 	return []service.Tariff{
 		{
 			Days:  30,
@@ -174,10 +174,10 @@ func (f *fakeService) Tariffs() []service.Tariff {
 	}
 }
 
-func (f *fakeService) Invoice(_ context.Context, in service.PurchaseInput) (*service.Invoice, error) {
-	f.invoiceIn = in
-	if f.invoiceErr != nil {
-		return nil, f.invoiceErr
+func (s *fakeService) Invoice(_ context.Context, in service.PurchaseInput) (*service.Invoice, error) {
+	s.invoiceIn = in
+	if s.invoiceErr != nil {
+		return nil, s.invoiceErr
 	}
 	return &service.Invoice{
 		Days:    in.Days,
@@ -186,20 +186,20 @@ func (f *fakeService) Invoice(_ context.Context, in service.PurchaseInput) (*ser
 	}, nil
 }
 
-func (f *fakeService) CheckPurchase(context.Context, service.PaymentInput) error {
-	return f.checkErr
+func (s *fakeService) CheckPurchase(context.Context, service.PaymentInput) error {
+	return s.checkErr
 }
 
-func (f *fakeService) Pay(context.Context, service.PaymentInput) (*service.PayResult, error) {
-	return f.payRes, f.payErr
+func (s *fakeService) Pay(context.Context, service.PaymentInput) (*service.PayResult, error) {
+	return s.payRes, s.payErr
 }
 
-func (f *fakeService) MarkRefunded(_ context.Context, chargeID string) error {
-	if f.refundMarkErr != nil {
-		return f.refundMarkErr
+func (s *fakeService) MarkRefunded(_ context.Context, chargeID string) error {
+	if s.refundMarkErr != nil {
+		return s.refundMarkErr
 	}
-	f.refunded = append(f.refunded, chargeID)
-	for _, p := range f.payments {
+	s.refunded = append(s.refunded, chargeID)
+	for _, p := range s.payments {
 		if p.ChargeID == chargeID {
 			p.RefundedAt = time.Now()
 		}
@@ -207,8 +207,8 @@ func (f *fakeService) MarkRefunded(_ context.Context, chargeID string) error {
 	return nil
 }
 
-func (f *fakeService) Issue(_ context.Context, in service.IssueInput) (*service.Peer, error) {
-	f.issued = append(f.issued, in)
+func (s *fakeService) Issue(_ context.Context, in service.IssueInput) (*service.Peer, error) {
+	s.issued = append(s.issued, in)
 	return &service.Peer{
 		PublicKey: "NEW=",
 		UserID:    in.UserID,
@@ -217,25 +217,25 @@ func (f *fakeService) Issue(_ context.Context, in service.IssueInput) (*service.
 	}, nil
 }
 
-func (f *fakeService) User(_ context.Context, id int64) (*service.User, error) {
+func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
 	if id == 0 {
 		return nil, service.ErrNotFound
 	}
 	return &service.User{
 		ID:        id,
 		Username:  "bob",
-		Role:      f.role,
-		KeysCount: len(f.access),
+		Role:      s.role,
+		KeysCount: len(s.access),
 	}, nil
 }
 
-func (f *fakeService) Users(_ context.Context, p service.Page) ([]*service.User, int64, error) {
-	end := min(p.Skip+p.Limit, int64(len(f.users)))
-	return f.users[min(p.Skip, end):end], int64(len(f.users)), nil
+func (s *fakeService) Users(_ context.Context, p service.Page) ([]*service.User, int64, error) {
+	end := min(p.Skip+p.Limit, int64(len(s.users)))
+	return s.users[min(p.Skip, end):end], int64(len(s.users)), nil
 }
 
-func (f *fakeService) Key(_ context.Context, key string) (*service.Peer, error) {
-	for _, a := range f.access {
+func (s *fakeService) Key(_ context.Context, key string) (*service.Peer, error) {
+	for _, a := range s.access {
 		if a.Peer.PublicKey == key {
 			return a.Peer, nil
 		}
@@ -243,52 +243,52 @@ func (f *fakeService) Key(_ context.Context, key string) (*service.Peer, error) 
 	return nil, service.ErrNotFound
 }
 
-func (f *fakeService) Disable(_ context.Context, key string) error {
-	f.calls = append(f.calls, "disable "+key)
+func (s *fakeService) Disable(_ context.Context, key string) error {
+	s.calls = append(s.calls, "disable "+key)
 	return nil
 }
 
-func (f *fakeService) Enable(_ context.Context, key string) error {
-	f.calls = append(f.calls, "enable "+key)
-	return f.enableErr
+func (s *fakeService) Enable(_ context.Context, key string) error {
+	s.calls = append(s.calls, "enable "+key)
+	return s.enableErr
 }
 
-func (f *fakeService) Delete(_ context.Context, key string) error {
-	f.calls = append(f.calls, "delete "+key)
+func (s *fakeService) Delete(_ context.Context, key string) error {
+	s.calls = append(s.calls, "delete "+key)
 	return nil
 }
 
-func (f *fakeService) Extend(_ context.Context, in service.ExtendInput) (*service.Peer, error) {
-	f.calls = append(f.calls, fmt.Sprintf("extend %s %d", in.PublicKey, in.Days))
-	return f.Key(context.Background(), in.PublicKey)
+func (s *fakeService) Extend(_ context.Context, in service.ExtendInput) (*service.Peer, error) {
+	s.calls = append(s.calls, fmt.Sprintf("extend %s %d", in.PublicKey, in.Days))
+	return s.Key(context.Background(), in.PublicKey)
 }
 
-func (f *fakeService) ReissueKey(_ context.Context, k service.UserKey) (*service.Peer, error) {
-	if f.ownKeyErr != nil {
-		return nil, f.ownKeyErr
+func (s *fakeService) ReissueKey(_ context.Context, k service.UserKey) (*service.Peer, error) {
+	if s.ownKeyErr != nil {
+		return nil, s.ownKeyErr
 	}
-	f.reissuedFor = append(f.reissuedFor, k)
-	return f.reissued, nil
+	s.reissuedFor = append(s.reissuedFor, k)
+	return s.reissued, nil
 }
 
-func (f *fakeService) DeleteOwnKey(_ context.Context, k service.UserKey) error {
-	if f.ownKeyErr != nil {
-		return f.ownKeyErr
+func (s *fakeService) DeleteOwnKey(_ context.Context, k service.UserKey) error {
+	if s.ownKeyErr != nil {
+		return s.ownKeyErr
 	}
-	f.deletedOwn = append(f.deletedOwn, k)
+	s.deletedOwn = append(s.deletedOwn, k)
 	return nil
 }
 
-func (f *fakeService) Access(context.Context, int64) ([]service.KeyInfo, error) {
-	return f.access, nil
+func (s *fakeService) Access(context.Context, int64) ([]service.KeyInfo, error) {
+	return s.access, nil
 }
 
-func (f *fakeService) UserConfig(_ context.Context, k service.UserKey) (*service.KeyConfig, error) {
-	f.askedKey = k
+func (s *fakeService) UserConfig(_ context.Context, k service.UserKey) (*service.KeyConfig, error) {
+	s.askedKey = k
 	if k.PublicKey == "NOPRIV=" {
 		return nil, service.ErrNoPrivateKey
 	}
-	for _, a := range f.access {
+	for _, a := range s.access {
 		if a.Peer.PublicKey == k.PublicKey {
 			return &service.KeyConfig{
 				Peer: a.Peer,
@@ -299,49 +299,49 @@ func (f *fakeService) UserConfig(_ context.Context, k service.UserKey) (*service
 	return nil, service.ErrNotFound
 }
 
-func (f *fakeService) CreateKey(_ context.Context, in service.CreateKeyInput) (*service.Peer, error) {
-	f.createdWith = append(f.createdWith, in)
+func (s *fakeService) CreateKey(_ context.Context, in service.CreateKeyInput) (*service.Peer, error) {
+	s.createdWith = append(s.createdWith, in)
 	if strings.Contains(in.Name, "\n") {
 		return nil, service.ErrBadKeyName
 	}
-	return f.created, f.createErr
+	return s.created, s.createErr
 }
 
-func (f *fakeService) CheckCreateKey(context.Context, int64) error {
-	return f.createErr
+func (s *fakeService) CheckCreateKey(context.Context, int64) error {
+	return s.createErr
 }
 
-func (f *fakeService) ClientConfig(_ context.Context, key string) (string, error) {
-	if f.configErr != nil {
-		return "", f.configErr
+func (s *fakeService) ClientConfig(_ context.Context, key string) (string, error) {
+	if s.configErr != nil {
+		return "", s.configErr
 	}
 	return "[Interface]\nPrivateKey = " + key + "\n", nil
 }
 
-func (f *fakeService) Reconcile(context.Context) (*service.ReconcileReport, error) {
-	return f.report, f.reportErr
+func (s *fakeService) Reconcile(context.Context) (*service.ReconcileReport, error) {
+	return s.report, s.reportErr
 }
 
-func (f *fakeService) Register(_ context.Context, in service.RegisterInput) (*service.User, error) {
-	f.registered = append(f.registered, in)
+func (s *fakeService) Register(_ context.Context, in service.RegisterInput) (*service.User, error) {
+	s.registered = append(s.registered, in)
 	return &service.User{
 		ID:       in.ID,
 		Username: in.Username,
-		Role:     f.role,
+		Role:     s.role,
 	}, nil
 }
 
-func (f *fakeService) Admins(context.Context) ([]*service.User, error) {
-	return f.admins, nil
+func (s *fakeService) Admins(context.Context) ([]*service.User, error) {
+	return s.admins, nil
 }
 
 type fakeBypass struct {
 	err error
 }
 
-func (f *fakeBypass) Files(context.Context) ([]bypass.File, error) {
-	if f.err != nil {
-		return nil, f.err
+func (s *fakeBypass) Files(context.Context) ([]bypass.File, error) {
+	if s.err != nil {
+		return nil, s.err
 	}
 	return []bypass.File{
 		{

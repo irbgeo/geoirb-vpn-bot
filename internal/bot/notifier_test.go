@@ -183,8 +183,8 @@ type fakeLoad struct {
 	err    error
 }
 
-func (f *fakeLoad) Check() ([]sysload.Alert, error) {
-	return f.alerts, f.err
+func (s *fakeLoad) Check() ([]sysload.Alert, error) {
+	return s.alerts, s.err
 }
 
 func TestServerLoadAlertsGoToAdmins(t *testing.T) {

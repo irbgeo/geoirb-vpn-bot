@@ -23,7 +23,7 @@ type Lists struct{}
 
 // Files returns the lists, the computer one first. ReadFile copies, so each
 // call gets its own bytes.
-func (Lists) Files(context.Context) ([]File, error) {
+func (s Lists) Files(context.Context) ([]File, error) {
 	out := make([]File, 0, 2)
 	for _, name := range []string{
 		ComputerList,

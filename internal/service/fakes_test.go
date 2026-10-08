@@ -15,8 +15,8 @@ type fakeUsers struct {
 	m map[int64]User
 }
 
-func (f *fakeUsers) Get(_ context.Context, id int64) (*User, error) {
-	u, ok := f.m[id]
+func (s *fakeUsers) Get(_ context.Context, id int64) (*User, error) {
+	u, ok := s.m[id]
 	if !ok {
 		return nil, nil
 	}
@@ -25,44 +25,44 @@ func (f *fakeUsers) Get(_ context.Context, id int64) (*User, error) {
 
 // Register mirrors the store's upsert: a new user gets u as given; an
 // existing one only gets the new username (role and the rest are kept).
-func (f *fakeUsers) Register(_ context.Context, u *User) (*User, error) {
-	got, ok := f.m[u.ID]
+func (s *fakeUsers) Register(_ context.Context, u *User) (*User, error) {
+	got, ok := s.m[u.ID]
 	if !ok {
 		got = *u
 	}
 	got.Username = u.Username
-	f.m[u.ID] = got
+	s.m[u.ID] = got
 	return &got, nil
 }
 
-func (f *fakeUsers) AddKeys(_ context.Context, d KeysDelta) error {
-	u, ok := f.m[d.UserID]
+func (s *fakeUsers) AddKeys(_ context.Context, d KeysDelta) error {
+	u, ok := s.m[d.UserID]
 	if !ok {
 		return nil // like the store: no row, nothing to count
 	}
 	u.KeysCount += d.Delta
-	f.m[d.UserID] = u
+	s.m[d.UserID] = u
 	return nil
 }
 
-func (f *fakeUsers) SetKeyCounts(_ context.Context, counts map[int64]int) error {
-	for id, u := range f.m {
+func (s *fakeUsers) SetKeyCounts(_ context.Context, counts map[int64]int) error {
+	for id, u := range s.m {
 		u.KeysCount = counts[id]
-		f.m[id] = u
+		s.m[id] = u
 	}
 	return nil
 }
 
-func (f *fakeUsers) SetTrialUsed(_ context.Context, id int64) error {
-	u := f.m[id]
+func (s *fakeUsers) SetTrialUsed(_ context.Context, id int64) error {
+	u := s.m[id]
 	u.TrialUsed = true
-	f.m[id] = u
+	s.m[id] = u
 	return nil
 }
 
-func (f *fakeUsers) ByRole(_ context.Context, r Role) ([]*User, error) {
+func (s *fakeUsers) ByRole(_ context.Context, r Role) ([]*User, error) {
 	var out []*User
-	for _, u := range f.m {
+	for _, u := range s.m {
 		if u.Role == r {
 			out = append(out, &u)
 		}
@@ -70,9 +70,9 @@ func (f *fakeUsers) ByRole(_ context.Context, r Role) ([]*User, error) {
 	return out, nil
 }
 
-func (f *fakeUsers) List(_ context.Context, p Page) ([]*User, int64, error) {
-	all := make([]*User, 0, len(f.m))
-	for _, u := range f.m {
+func (s *fakeUsers) List(_ context.Context, p Page) ([]*User, int64, error) {
+	all := make([]*User, 0, len(s.m))
+	for _, u := range s.m {
 		all = append(all, &u)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
@@ -84,16 +84,16 @@ type fakeFeedback struct {
 	saved []Feedback
 }
 
-func (f *fakeFeedback) Add(_ context.Context, fb *Feedback) error {
-	f.saved = append(f.saved, *fb)
+func (s *fakeFeedback) Add(_ context.Context, fb *Feedback) error {
+	s.saved = append(s.saved, *fb)
 	return nil
 }
 
 // List returns the saved feedback newest first (the last added first).
-func (f *fakeFeedback) List(_ context.Context, p Page) ([]*Feedback, int64, error) {
-	all := make([]*Feedback, 0, len(f.saved))
-	for i := len(f.saved) - 1; i >= 0; i-- {
-		all = append(all, &f.saved[i])
+func (s *fakeFeedback) List(_ context.Context, p Page) ([]*Feedback, int64, error) {
+	all := make([]*Feedback, 0, len(s.saved))
+	for i := len(s.saved) - 1; i >= 0; i-- {
+		all = append(all, &s.saved[i])
 	}
 	end := min(p.Skip+p.Limit, int64(len(all)))
 	return all[min(p.Skip, end):end], int64(len(all)), nil
@@ -105,36 +105,36 @@ type fakePeers struct {
 	getErr  error
 }
 
-func (f *fakePeers) Get(_ context.Context, key string) (*Peer, error) {
-	if f.getErr != nil {
-		return nil, f.getErr
+func (s *fakePeers) Get(_ context.Context, key string) (*Peer, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
 	}
-	p, ok := f.m[key]
+	p, ok := s.m[key]
 	if !ok {
 		return nil, nil
 	}
 	return &p, nil
 }
 
-func (f *fakePeers) Save(_ context.Context, p *Peer) error {
-	if f.saveErr != nil {
-		return f.saveErr
+func (s *fakePeers) Save(_ context.Context, p *Peer) error {
+	if s.saveErr != nil {
+		return s.saveErr
 	}
-	f.m[p.PublicKey] = *p
+	s.m[p.PublicKey] = *p
 	return nil
 }
 
-func (f *fakePeers) Delete(ctx context.Context, key string) error {
+func (s *fakePeers) Delete(ctx context.Context, key string) error {
 	if err := ctx.Err(); err != nil {
 		return err // like a real DB call on a cancelled context
 	}
-	delete(f.m, key)
+	delete(s.m, key)
 	return nil
 }
 
-func (f *fakePeers) ByUser(_ context.Context, userID int64) ([]*Peer, error) {
+func (s *fakePeers) ByUser(_ context.Context, userID int64) ([]*Peer, error) {
 	var out []*Peer
-	for _, p := range f.m {
+	for _, p := range s.m {
 		if p.UserID == userID {
 			out = append(out, &p)
 		}
@@ -142,8 +142,8 @@ func (f *fakePeers) ByUser(_ context.Context, userID int64) ([]*Peer, error) {
 	return out, nil
 }
 
-func (f *fakePeers) ServerIPs(ctx context.Context, serverID string) ([]string, error) {
-	ps, _ := f.ByServer(ctx, serverID)
+func (s *fakePeers) ServerIPs(ctx context.Context, serverID string) ([]string, error) {
+	ps, _ := s.ByServer(ctx, serverID)
 	ips := make([]string, 0, len(ps))
 	for _, p := range ps {
 		ips = append(ips, p.IP)
@@ -151,9 +151,9 @@ func (f *fakePeers) ServerIPs(ctx context.Context, serverID string) ([]string, e
 	return ips, nil
 }
 
-func (f *fakePeers) ByServer(_ context.Context, serverID string) ([]*Peer, error) {
+func (s *fakePeers) ByServer(_ context.Context, serverID string) ([]*Peer, error) {
 	var out []*Peer
-	for _, p := range f.m {
+	for _, p := range s.m {
 		if p.ServerID == serverID {
 			out = append(out, &p)
 		}
@@ -168,16 +168,16 @@ type fakePayments struct {
 	saveFails int // fail this many Saves, then work
 }
 
-func (f *fakePayments) Add(_ context.Context, p *Payment) (bool, error) {
-	if _, ok := f.m[p.ChargeID]; ok {
+func (s *fakePayments) Add(_ context.Context, p *Payment) (bool, error) {
+	if _, ok := s.m[p.ChargeID]; ok {
 		return false, nil
 	}
-	f.m[p.ChargeID] = *p
+	s.m[p.ChargeID] = *p
 	return true, nil
 }
 
-func (f *fakePayments) Get(_ context.Context, id string) (*Payment, error) {
-	p, ok := f.m[id]
+func (s *fakePayments) Get(_ context.Context, id string) (*Payment, error) {
+	p, ok := s.m[id]
 	if !ok {
 		return nil, nil
 	}
@@ -185,40 +185,40 @@ func (f *fakePayments) Get(_ context.Context, id string) (*Payment, error) {
 }
 
 // MarkApplied / MarkRefunded change only their own fields, like the store.
-func (f *fakePayments) MarkApplied(_ context.Context, m PaymentMark) error {
-	if f.saveErr != nil {
-		return f.saveErr
+func (s *fakePayments) MarkApplied(_ context.Context, m PaymentMark) error {
+	if s.saveErr != nil {
+		return s.saveErr
 	}
-	if f.saveFails > 0 {
-		f.saveFails--
+	if s.saveFails > 0 {
+		s.saveFails--
 		return errBoom
 	}
-	p, ok := f.m[m.ChargeID]
+	p, ok := s.m[m.ChargeID]
 	if !ok {
 		return errors.New("no payment")
 	}
 	p.Applied = true
 	p.PeerKey = m.PeerKey
-	f.m[m.ChargeID] = p
+	s.m[m.ChargeID] = p
 	return nil
 }
 
-func (f *fakePayments) MarkRefunded(_ context.Context, m PaymentMark) error {
-	if f.saveErr != nil {
-		return f.saveErr
+func (s *fakePayments) MarkRefunded(_ context.Context, m PaymentMark) error {
+	if s.saveErr != nil {
+		return s.saveErr
 	}
-	p, ok := f.m[m.ChargeID]
+	p, ok := s.m[m.ChargeID]
 	if !ok {
 		return nil
 	}
 	p.RefundedAt = m.At
-	f.m[m.ChargeID] = p
+	s.m[m.ChargeID] = p
 	return nil
 }
 
-func (f *fakePayments) ByUser(_ context.Context, userID int64) ([]*Payment, error) {
+func (s *fakePayments) ByUser(_ context.Context, userID int64) ([]*Payment, error) {
 	var out []*Payment
-	for _, p := range f.m {
+	for _, p := range s.m {
 		if p.UserID == userID {
 			out = append(out, &p)
 		}
@@ -226,9 +226,9 @@ func (f *fakePayments) ByUser(_ context.Context, userID int64) ([]*Payment, erro
 	return out, nil
 }
 
-func (f *fakePayments) Since(_ context.Context, t time.Time) ([]*Payment, error) {
+func (s *fakePayments) Since(_ context.Context, t time.Time) ([]*Payment, error) {
 	var out []*Payment
-	for _, p := range f.m {
+	for _, p := range s.m {
 		if !p.CreatedAt.Before(t) {
 			out = append(out, &p)
 		}
@@ -266,92 +266,92 @@ func newFakeVPN() *fakeVPN {
 	}
 }
 
-func (f *fakeVPN) GenKeys(context.Context) (VPNKeys, error) {
-	f.keys++
+func (s *fakeVPN) GenKeys(context.Context) (VPNKeys, error) {
+	s.keys++
 	return VPNKeys{
-		Private: fmt.Sprintf("PRIV%d=", f.keys),
-		Public:  fmt.Sprintf("PUB%d=", f.keys),
-		PSK:     fmt.Sprintf("PSK%d=", f.keys),
+		Private: fmt.Sprintf("PRIV%d=", s.keys),
+		Public:  fmt.Sprintf("PUB%d=", s.keys),
+		PSK:     fmt.Sprintf("PSK%d=", s.keys),
 	}, nil
 }
 
-func (f *fakeVPN) AddPeer(_ context.Context, in *AddPeerInput) error {
-	f.changes++
+func (s *fakeVPN) AddPeer(_ context.Context, in *AddPeerInput) error {
+	s.changes++
 	p := *in.Peer
-	p.IP = f.freeIP(in.Reserved)
+	p.IP = s.freeIP(in.Reserved)
 	if err := in.Save(p.IP); err != nil {
 		return err
 	}
-	if err := f.fail(); err != nil {
+	if err := s.fail(); err != nil {
 		return err
 	}
-	f.put(&p)
+	s.put(&p)
 	return nil
 }
 
-func (f *fakeVPN) PutPeer(_ context.Context, p *VPNPeer) error {
-	f.changes++
-	if _, ok := f.peers[p.PublicKey]; ok {
+func (s *fakeVPN) PutPeer(_ context.Context, p *VPNPeer) error {
+	s.changes++
+	if _, ok := s.peers[p.PublicKey]; ok {
 		return nil
 	}
-	for _, other := range f.peers {
+	for _, other := range s.peers {
 		if other.IP == p.IP {
 			return fmt.Errorf("%w: %s", ErrIPTaken, p.IP)
 		}
 	}
-	if err := f.fail(); err != nil {
+	if err := s.fail(); err != nil {
 		return err
 	}
-	f.put(p)
+	s.put(p)
 	return nil
 }
 
-func (f *fakeVPN) RemovePeer(_ context.Context, p *VPNPeer) error {
-	f.changes++
-	if err := f.fail(); err != nil {
+func (s *fakeVPN) RemovePeer(_ context.Context, p *VPNPeer) error {
+	s.changes++
+	if err := s.fail(); err != nil {
 		return err
 	}
-	delete(f.peers, p.PublicKey)
-	delete(f.table, p.PublicKey)
+	delete(s.peers, p.PublicKey)
+	delete(s.table, p.PublicKey)
 	return nil
 }
 
-func (f *fakeVPN) ReplacePeer(_ context.Context, in *ReplacePeerInput) error {
-	f.changes++
-	if err := f.fail(); err != nil {
+func (s *fakeVPN) ReplacePeer(_ context.Context, in *ReplacePeerInput) error {
+	s.changes++
+	if err := s.fail(); err != nil {
 		return err
 	}
-	delete(f.peers, in.Old.PublicKey)
-	delete(f.table, in.Old.PublicKey)
-	f.put(in.New)
+	delete(s.peers, in.Old.PublicKey)
+	delete(s.table, in.Old.PublicKey)
+	s.put(in.New)
 	return nil
 }
 
-func (f *fakeVPN) PeerKeys(context.Context) ([]string, error) {
-	if f.readErr != nil {
-		return nil, f.readErr
+func (s *fakeVPN) PeerKeys(context.Context) ([]string, error) {
+	if s.readErr != nil {
+		return nil, s.readErr
 	}
-	out := make([]string, 0, len(f.peers))
-	for k := range f.peers {
+	out := make([]string, 0, len(s.peers))
+	for k := range s.peers {
 		out = append(out, k)
 	}
 	sort.Strings(out)
 	return out, nil
 }
 
-func (f *fakeVPN) SubnetUsage(_ context.Context, reserved []netip.Addr) (used, total int, err error) {
-	if f.readErr != nil {
-		return 0, 0, f.readErr
+func (s *fakeVPN) SubnetUsage(_ context.Context, reserved []netip.Addr) (used, total int, err error) {
+	if s.readErr != nil {
+		return 0, 0, s.readErr
 	}
-	return len(f.taken(reserved)), 254, nil
+	return len(s.taken(reserved)), 254, nil
 }
 
-func (f *fakeVPN) Stats(context.Context) ([]PeerStat, error) {
-	return f.stats, f.statsErr
+func (s *fakeVPN) Stats(context.Context) ([]PeerStat, error) {
+	return s.stats, s.statsErr
 }
 
 // ClientConfig renders a stand-in config from the spec.
-func (f *fakeVPN) ClientConfig(_ context.Context, c *ClientSpec) (string, error) {
+func (s *fakeVPN) ClientConfig(_ context.Context, c *ClientSpec) (string, error) {
 	return fmt.Sprintf(
 		"Address = %s/32\nDNS = %s\nMTU = %d\nPrivateKey = %s\nPresharedKey = %s\nEndpoint = %s\n",
 		c.IP,
@@ -364,23 +364,23 @@ func (f *fakeVPN) ClientConfig(_ context.Context, c *ClientSpec) (string, error)
 }
 
 // fail runs onChange and returns err: the change is not made.
-func (f *fakeVPN) fail() error {
-	if f.onChange != nil {
-		f.onChange()
+func (s *fakeVPN) fail() error {
+	if s.onChange != nil {
+		s.onChange()
 	}
-	return f.err
+	return s.err
 }
 
-func (f *fakeVPN) put(p *VPNPeer) {
-	f.peers[p.PublicKey] = *p
-	if f.tableErr == nil {
-		f.table[p.PublicKey] = p.Name
+func (s *fakeVPN) put(p *VPNPeer) {
+	s.peers[p.PublicKey] = *p
+	if s.tableErr == nil {
+		s.table[p.PublicKey] = p.Name
 	}
 }
 
 // freeIP is the lowest 10.8.1.x not on the server and not reserved.
-func (f *fakeVPN) freeIP(reserved []netip.Addr) string {
-	taken := f.taken(reserved)
+func (s *fakeVPN) freeIP(reserved []netip.Addr) string {
+	taken := s.taken(reserved)
 	for i := 1; ; i++ {
 		if ip := fmt.Sprintf("10.8.1.%d", i); !taken[ip] {
 			return ip
@@ -389,9 +389,9 @@ func (f *fakeVPN) freeIP(reserved []netip.Addr) string {
 }
 
 // taken is the set of IPs on the server or reserved.
-func (f *fakeVPN) taken(reserved []netip.Addr) map[string]bool {
+func (s *fakeVPN) taken(reserved []netip.Addr) map[string]bool {
 	out := map[string]bool{}
-	for _, p := range f.peers {
+	for _, p := range s.peers {
 		out[p.IP] = true
 	}
 	for _, ip := range reserved {
@@ -401,8 +401,8 @@ func (f *fakeVPN) taken(reserved []netip.Addr) map[string]bool {
 }
 
 // hasPeer reports whether the server holds this public key.
-func (f *fakeVPN) hasPeer(key string) bool {
-	_, ok := f.peers[key]
+func (s *fakeVPN) hasPeer(key string) bool {
+	_, ok := s.peers[key]
 	return ok
 }
 

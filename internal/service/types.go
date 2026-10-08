@@ -86,28 +86,28 @@ type Peer struct {
 // hasSecrets: every working key has a PSK. A key without one (its stored
 // secrets could not be read) still expires and is counted, but can't be
 // put back on the server.
-func (p *Peer) hasSecrets() bool {
-	return p.PSK != ""
+func (s *Peer) hasSecrets() bool {
+	return s.PSK != ""
 }
 
 // vpnPeer is the key as the VPN server needs it.
-func (p *Peer) vpnPeer() *VPNPeer {
+func (s *Peer) vpnPeer() *VPNPeer {
 	return &VPNPeer{
-		PublicKey: p.PublicKey,
-		PSK:       p.PSK,
-		IP:        p.IP,
-		Name:      p.Name,
-		CreatedAt: p.CreatedAt,
+		PublicKey: s.PublicKey,
+		PSK:       s.PSK,
+		IP:        s.IP,
+		Name:      s.Name,
+		CreatedAt: s.CreatedAt,
 	}
 }
 
 // public is a copy without the private key and PSK: they never leave the
 // service, only a rendered config does. nil stays nil.
-func (p *Peer) public() *Peer {
-	if p == nil {
+func (s *Peer) public() *Peer {
+	if s == nil {
 		return nil
 	}
-	c := *p
+	c := *s
 	c.PrivateKey, c.PSK = "", ""
 	return &c
 }
@@ -296,8 +296,8 @@ type ReconcileReport struct {
 }
 
 // OK reports whether the database and the server agree.
-func (r *ReconcileReport) OK() bool {
-	return len(r.MissingOnServer) == 0 && len(r.DisabledButOnServer) == 0
+func (s *ReconcileReport) OK() bool {
+	return len(s.MissingOnServer) == 0 && len(s.DisabledButOnServer) == 0
 }
 
 // VPNKeys is a fresh key set from the VPN server.

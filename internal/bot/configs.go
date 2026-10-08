@@ -4,12 +4,12 @@ import "context"
 
 // adminConfigsAsk shows how many users get the "update your config"
 // notice and waits for "send" or "cancel".
-func (r *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
-	ids, err := r.ops.BroadcastRecipients(ctx)
+func (s *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
+	ids, err := s.ops.BroadcastRecipients(ctx)
 	if err != nil {
-		return r.reportError(ctx, a.failed(err))
+		return s.reportError(ctx, a.failed(err))
 	}
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   a.ChatID,
@@ -22,13 +22,13 @@ func (r *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 // adminConfigs tells every user with an enabled key to get a fresh config
 // from "My access", in the background like a broadcast (the same one-at-a-
 // time slot, so a double press doesn't send everything twice).
-func (r *Router) adminConfigs(ctx context.Context, a adminAction) error {
-	_, err := r.startMassSend(
+func (s *Router) adminConfigs(ctx context.Context, a adminAction) error {
+	_, err := s.startMassSend(
 		ctx,
 		massSend{
 			AdminChat: a.ChatID,
 			Started:   configsStartedText,
-			Deliver:   r.sendConfigsNotice,
+			Deliver:   s.sendConfigsNotice,
 			Report:    configsReportText,
 		},
 	)
@@ -38,8 +38,8 @@ func (r *Router) adminConfigs(ctx context.Context, a adminAction) error {
 // sendConfigsNotice tells one user to get a fresh config themselves, with
 // a button to "My access": nothing is sent unasked, and the user takes it
 // when they are ready to re-add it in the app.
-func (r *Router) sendConfigsNotice(ctx context.Context, userID int64) error {
-	return r.send.Send(
+func (s *Router) sendConfigsNotice(ctx context.Context, userID int64) error {
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   userID,

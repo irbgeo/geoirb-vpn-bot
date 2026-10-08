@@ -101,8 +101,8 @@ func RenderClient(in *ClientConf) string {
 }
 
 // Get returns the value of an active [Interface] key, or "".
-func (c *ServerConf) Get(key string) string {
-	for _, line := range c.Interface {
+func (s *ServerConf) Get(key string) string {
+	for _, line := range s.Interface {
 		if k, v, ok := splitKV(line); ok && strings.EqualFold(k, key) {
 			return v
 		}
@@ -111,43 +111,43 @@ func (c *ServerConf) Get(key string) string {
 }
 
 // String renders the config back to file text.
-func (c *ServerConf) String() string {
+func (s *ServerConf) String() string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
-	for _, line := range c.Interface {
+	for _, line := range s.Interface {
 		b.WriteString(line)
 		b.WriteString("\n")
 	}
-	for i := range c.Peers {
+	for i := range s.Peers {
 		b.WriteString("\n")
-		b.WriteString(c.Peers[i].String())
+		b.WriteString(s.Peers[i].String())
 	}
 	return b.String()
 }
 
 // Stripped renders the config without awg-quick-only keys and comments,
 // ready for `awg syncconf`.
-func (c *ServerConf) Stripped() string {
+func (s *ServerConf) Stripped() string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
-	for _, line := range c.Interface {
+	for _, line := range s.Interface {
 		if k, _, ok := splitKV(line); ok && !stripKeys[strings.ToLower(k)] {
 			b.WriteString(line)
 			b.WriteString("\n")
 		}
 	}
-	for i := range c.Peers {
+	for i := range s.Peers {
 		b.WriteString("\n")
-		b.WriteString(c.Peers[i].String())
+		b.WriteString(s.Peers[i].String())
 	}
 	return b.String()
 }
 
 // ClientParams returns the obfuscation keys a client must share with the
 // server: every [Interface] key except server-only ones, plus commented I1–I5.
-func (c *ServerConf) ClientParams() []KV {
+func (s *ServerConf) ClientParams() []KV {
 	var out []KV
-	for _, line := range c.Interface {
+	for _, line := range s.Interface {
 		if k, v, ok := splitKV(line); ok {
 			if !serverOnlyKeys[strings.ToLower(k)] {
 				out = append(
@@ -178,25 +178,25 @@ func (c *ServerConf) ClientParams() []KV {
 }
 
 // FindPeer returns the peer with this public key, or nil.
-func (c *ServerConf) FindPeer(publicKey string) *Peer {
-	for i := range c.Peers {
-		if c.Peers[i].PublicKey == publicKey {
-			return &c.Peers[i]
+func (s *ServerConf) FindPeer(publicKey string) *Peer {
+	for i := range s.Peers {
+		if s.Peers[i].PublicKey == publicKey {
+			return &s.Peers[i]
 		}
 	}
 	return nil
 }
 
 // AddPeer appends a peer.
-func (c *ServerConf) AddPeer(p Peer) {
-	c.Peers = append(c.Peers, p)
+func (s *ServerConf) AddPeer(p Peer) {
+	s.Peers = append(s.Peers, p)
 }
 
 // RemovePeer deletes the peer with this public key; false if not found.
-func (c *ServerConf) RemovePeer(publicKey string) bool {
-	for i := range c.Peers {
-		if c.Peers[i].PublicKey == publicKey {
-			c.Peers = append(c.Peers[:i], c.Peers[i+1:]...)
+func (s *ServerConf) RemovePeer(publicKey string) bool {
+	for i := range s.Peers {
+		if s.Peers[i].PublicKey == publicKey {
+			s.Peers = append(s.Peers[:i], s.Peers[i+1:]...)
 			return true
 		}
 	}
@@ -204,32 +204,32 @@ func (c *ServerConf) RemovePeer(publicKey string) bool {
 }
 
 // String renders the peer as a [Peer] section.
-func (p *Peer) String() string {
+func (s *Peer) String() string {
 	var b strings.Builder
 	b.WriteString("[Peer]\n")
-	fmt.Fprintf(&b, "PublicKey = %s\n", p.PublicKey)
-	if p.PresharedKey != "" {
-		fmt.Fprintf(&b, "PresharedKey = %s\n", p.PresharedKey)
+	fmt.Fprintf(&b, "PublicKey = %s\n", s.PublicKey)
+	if s.PresharedKey != "" {
+		fmt.Fprintf(&b, "PresharedKey = %s\n", s.PresharedKey)
 	}
-	fmt.Fprintf(&b, "AllowedIPs = %s\n", p.AllowedIPs)
-	for _, line := range p.Other {
+	fmt.Fprintf(&b, "AllowedIPs = %s\n", s.AllowedIPs)
+	for _, line := range s.Other {
 		b.WriteString(line + "\n")
 	}
 	return b.String()
 }
 
 // addLine sets a known key from a config line, or keeps it verbatim.
-func (p *Peer) addLine(line string) {
+func (s *Peer) addLine(line string) {
 	k, v, ok := splitKV(line)
 	switch {
 	case ok && strings.EqualFold(k, "PublicKey"):
-		p.PublicKey = v
+		s.PublicKey = v
 	case ok && strings.EqualFold(k, "PresharedKey"):
-		p.PresharedKey = v
+		s.PresharedKey = v
 	case ok && strings.EqualFold(k, "AllowedIPs"):
-		p.AllowedIPs = v
+		s.AllowedIPs = v
 	default:
-		p.Other = append(p.Other, line)
+		s.Other = append(s.Other, line)
 	}
 }
 

@@ -65,9 +65,9 @@ func newEnv() *env {
 	}
 }
 
-func (e *env) issue(t *testing.T, days int) *Peer {
+func (s *env) issue(t *testing.T, days int) *Peer {
 	t.Helper()
-	p, err := e.svc.Issue(
+	p, err := s.svc.Issue(
 		context.Background(),
 		IssueInput{
 			UserID: 42,

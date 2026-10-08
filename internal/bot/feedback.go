@@ -12,15 +12,15 @@ import (
 
 // askFeedback waits for one message with a review or suggestion; the
 // "◀️ Меню" button cancels.
-func (r *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	r.dialogs.set(
+func (s *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	s.dialogs.set(
 		pendingInput{
 			ChatID: cq.ChatID(),
 			UserID: cq.SenderID(),
 			Kind:   pendingFeedback,
 		},
 	)
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   cq.ChatID(),
@@ -33,12 +33,12 @@ func (r *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error
 // feedbackText saves the text the user sent after "Отзывы и предложения".
 // A message without text or a bad text asks again; anything else ends the
 // question. Only the user who asked answers.
-func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
-	if p, _ := r.dialogs.peek(m.Chat.ID); p.UserID != m.From.ID {
+func (s *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
+	if p, _ := s.dialogs.peek(m.Chat.ID); p.UserID != m.From.ID {
 		return nil
 	}
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo
-		return r.send.Send(
+		return s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID:   m.Chat.ID,
@@ -47,7 +47,7 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	}
-	err := r.feedback.AddFeedback(
+	err := s.feedback.AddFeedback(
 		ctx,
 		service.FeedbackInput{
 			UserID:   m.From.ID,
@@ -57,7 +57,7 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 	)
 	switch {
 	case errors.Is(err, service.ErrBadFeedback):
-		return r.send.Send(
+		return s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID:   m.Chat.ID,
@@ -66,7 +66,7 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	case err != nil:
-		return r.replyError(
+		return s.replyError(
 			ctx,
 			userError{
 				ChatID: m.Chat.ID,
@@ -75,8 +75,8 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 			},
 		)
 	}
-	r.dialogs.drop(m.Chat.ID)
-	r.notify.NotifyAdmins(
+	s.dialogs.drop(m.Chat.ID)
+	s.notify.NotifyAdmins(
 		ctx,
 		feedbackAlertText(
 			&service.Feedback{
@@ -86,7 +86,7 @@ func (r *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 			},
 		),
 	)
-	return r.send.Send(
+	return s.send.Send(
 		ctx,
 		OutMessage{
 			ChatID:   m.Chat.ID,

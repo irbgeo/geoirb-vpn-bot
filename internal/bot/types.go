@@ -56,14 +56,14 @@ type paymentRef struct {
 }
 
 // String is the "<user ID>:<ref>" part of refund buttons.
-func (r paymentRef) String() string {
-	return strconv.FormatInt(r.UserID, 10) + ":" + r.Ref
+func (s paymentRef) String() string {
+	return strconv.FormatInt(s.UserID, 10) + ":" + s.Ref
 }
 
 // failed turns an error of this action into a report for its chat.
-func (a adminAction) failed(err error) errorReport {
+func (s adminAction) failed(err error) errorReport {
 	return errorReport{
-		ChatID: a.ChatID,
+		ChatID: s.ChatID,
 		Err:    err,
 	}
 }
@@ -333,4 +333,10 @@ type onlineSample struct {
 type onlineDrop struct {
 	Online int
 	Peak   int
+}
+
+// ownKeyFailedInput is a failed reissue or delete of a user's own key.
+type ownKeyFailedInput struct {
+	Query *tgbot.CallbackQuery
+	Err   error
 }

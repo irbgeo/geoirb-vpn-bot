@@ -43,11 +43,11 @@ func New(
 // run is logged and the next tick tries again. A run in progress is not
 // cancelled with ctx: cut half-way it could take a key off the server but
 // leave it enabled in the DB. Run returns once that run is finished.
-func (w *Worker) Run(ctx context.Context) {
-	t := time.NewTicker(w.every)
+func (s *Worker) Run(ctx context.Context) {
+	t := time.NewTicker(s.every)
 	defer t.Stop()
 	for {
-		w.once(ctx)
+		s.once(ctx)
 		select {
 		case <-ctx.Done():
 			return
@@ -59,16 +59,16 @@ func (w *Worker) Run(ctx context.Context) {
 // once runs one pass. It is not cancelled with ctx (see Run), but each
 // step has a time limit, so a hung docker can't hold it past systemd's
 // stop timeout.
-func (w *Worker) once(ctx context.Context) {
+func (s *Worker) once(ctx context.Context) {
 	base := context.WithoutCancel(ctx)
-	mctx, cancel := context.WithTimeout(base, w.maintainLimit)
-	m, err := w.job.Maintain(mctx)
+	mctx, cancel := context.WithTimeout(base, s.maintainLimit)
+	m, err := s.job.Maintain(mctx)
 	cancel()
 	if err != nil {
 		log.Printf("worker: %v", err)
 		return
 	}
-	dctx, cancel := context.WithTimeout(base, w.deliverLimit)
+	dctx, cancel := context.WithTimeout(base, s.deliverLimit)
 	defer cancel()
-	w.delivery.DeliverMaintenance(dctx, m)
+	s.delivery.DeliverMaintenance(dctx, m)
 }

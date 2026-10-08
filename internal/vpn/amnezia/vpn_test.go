@@ -52,7 +52,7 @@ func newBox(t *testing.T) *box {
 	return b
 }
 
-func (b *box) handle(in ExecInput) (string, error) {
+func (s *box) handle(in ExecInput) (string, error) {
 	c := strings.Join(in.Args, " ")
 	switch {
 	case c == "ls /opt/amnezia/awg":
@@ -60,42 +60,42 @@ func (b *box) handle(in ExecInput) (string, error) {
 	case strings.HasPrefix(c, "sh -c command -v"):
 		return "/usr/bin/awg\n", nil
 	case in.Args[0] == "cat":
-		return b.files[in.Args[1]], nil
+		return s.files[in.Args[1]], nil
 	case strings.Contains(c, "syncconf"):
-		b.syncs++
-		if b.onSync != nil {
-			b.onSync()
+		s.syncs++
+		if s.onSync != nil {
+			s.onSync()
 		}
-		return "", b.syncErr
+		return "", s.syncErr
 	case strings.Contains(c, `mv "$f.tmp"`):
 		path := persistPath.FindStringSubmatch(c)[1]
-		if path == confFile && b.confErr != nil {
-			err := b.confErr
-			b.confErr = nil
-			if b.confWritten {
-				b.files[path] = in.Stdin
+		if path == confFile && s.confErr != nil {
+			err := s.confErr
+			s.confErr = nil
+			if s.confWritten {
+				s.files[path] = in.Stdin
 			}
 			return "", err
 		}
-		b.files[path] = in.Stdin
+		s.files[path] = in.Stdin
 		return "", nil
 	case c == "awg show awg0 public-key":
 		return "SERVERPUB=\n", nil
 	case c == "awg show awg0 dump":
-		return b.dump, nil
+		return s.dump, nil
 	}
 	return "", fmt.Errorf("unexpected command %q", c)
 }
 
-func (b *box) onServer(t *testing.T, key string) bool {
+func (s *box) onServer(t *testing.T, key string) bool {
 	t.Helper()
-	c, err := ParseServerConf(b.files[confFile])
+	c, err := ParseServerConf(s.files[confFile])
 	require.NoError(t, err)
 	return c.FindPeer(key) != nil
 }
 
-func (b *box) inApp(key string) bool {
-	return strings.Contains(b.files[tablePath], `"clientId": "`+key+`"`)
+func (s *box) inApp(key string) bool {
+	return strings.Contains(s.files[tablePath], `"clientId": "`+key+`"`)
 }
 
 func newPeer() *service.VPNPeer {

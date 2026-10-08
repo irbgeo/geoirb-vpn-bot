@@ -23,34 +23,34 @@ type PeerRepo struct {
 }
 
 // Get returns the peer by public key, or (nil, nil) if not found.
-func (r *PeerRepo) Get(ctx context.Context, publicKey string) (*service.Peer, error) {
+func (s *PeerRepo) Get(ctx context.Context, publicKey string) (*service.Peer, error) {
 	var d peer
-	err := r.coll.FindOne(ctx, byID(publicKey)).Decode(&d)
+	err := s.coll.FindOne(ctx, byID(publicKey)).Decode(&d)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("store: get peer: %w", err)
 	}
-	return r.decode(&d), nil
+	return s.decode(&d), nil
 }
 
 // Save inserts or replaces the peer. Fails if another peer on the same
 // server already holds the IP. A peer without a PSK was loaded without its
 // secrets (they could not be read): only its other fields are updated, the
 // stored sealed secrets are kept.
-func (r *PeerRepo) Save(ctx context.Context, p *service.Peer) error {
+func (s *PeerRepo) Save(ctx context.Context, p *service.Peer) error {
 	if p.PSK == "" {
-		if _, err := r.coll.UpdateOne(ctx, byID(p.PublicKey), setPeerMeta(peerToStore(p))); err != nil {
+		if _, err := s.coll.UpdateOne(ctx, byID(p.PublicKey), setPeerMeta(peerToStore(p))); err != nil {
 			return fmt.Errorf("store: save peer %s: %w", p.IP, err)
 		}
 		return nil
 	}
-	d, err := r.encode(p)
+	d, err := s.encode(p)
 	if err != nil {
 		return err
 	}
-	_, err = r.coll.ReplaceOne(ctx, byID(p.PublicKey), d, upsert())
+	_, err = s.coll.ReplaceOne(ctx, byID(p.PublicKey), d, upsert())
 	if err != nil {
 		return fmt.Errorf("store: save peer %s: %w", p.IP, err)
 	}
@@ -58,22 +58,22 @@ func (r *PeerRepo) Save(ctx context.Context, p *service.Peer) error {
 }
 
 // Delete removes the peer; unknown keys are a no-op.
-func (r *PeerRepo) Delete(ctx context.Context, publicKey string) error {
-	if _, err := r.coll.DeleteOne(ctx, byID(publicKey)); err != nil {
+func (s *PeerRepo) Delete(ctx context.Context, publicKey string) error {
+	if _, err := s.coll.DeleteOne(ctx, byID(publicKey)); err != nil {
 		return fmt.Errorf("store: delete peer: %w", err)
 	}
 	return nil
 }
 
 // ByUser returns all peers of a Telegram user.
-func (r *PeerRepo) ByUser(ctx context.Context, userID int64) ([]*service.Peer, error) {
-	return r.find(ctx, byUserID(userID))
+func (s *PeerRepo) ByUser(ctx context.Context, userID int64) ([]*service.Peer, error) {
+	return s.find(ctx, byUserID(userID))
 }
 
 // ServerIPs returns the tunnel IP of every peer on a server, also of rows
 // whose secrets can't be read: those IPs must stay taken.
-func (r *PeerRepo) ServerIPs(ctx context.Context, serverID string) ([]string, error) {
-	cur, err := r.coll.Find(ctx, byServerID(serverID), ipOnly())
+func (s *PeerRepo) ServerIPs(ctx context.Context, serverID string) ([]string, error) {
+	cur, err := s.coll.Find(ctx, byServerID(serverID), ipOnly())
 	if err != nil {
 		return nil, fmt.Errorf("store: peer IPs: %w", err)
 	}
@@ -89,12 +89,12 @@ func (r *PeerRepo) ServerIPs(ctx context.Context, serverID string) ([]string, er
 }
 
 // ByServer returns all peers on a server.
-func (r *PeerRepo) ByServer(ctx context.Context, serverID string) ([]*service.Peer, error) {
-	return r.find(ctx, byServerID(serverID))
+func (s *PeerRepo) ByServer(ctx context.Context, serverID string) ([]*service.Peer, error) {
+	return s.find(ctx, byServerID(serverID))
 }
 
-func (r *PeerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, error) {
-	cur, err := r.coll.Find(ctx, filter)
+func (s *PeerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, error) {
+	cur, err := s.coll.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("store: find peers: %w", err)
 	}
@@ -104,7 +104,7 @@ func (r *PeerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, er
 	}
 	out := make([]*service.Peer, 0, len(docs))
 	for i := range docs {
-		out = append(out, r.decode(&docs[i]))
+		out = append(out, s.decode(&docs[i]))
 	}
 	return out, nil
 }
@@ -114,8 +114,8 @@ func (r *PeerRepo) find(ctx context.Context, filter bson.M) ([]*service.Peer, er
 // instead of failing quietly on every key. One bad row among good ones is
 // fine (it is loaded without secrets); none opening means the key is
 // wrong.
-func (r *PeerRepo) checkKey(ctx context.Context) error {
-	cur, err := r.coll.Find(ctx, matchAll(), sample(checkKeySample))
+func (s *PeerRepo) checkKey(ctx context.Context) error {
+	cur, err := s.coll.Find(ctx, matchAll(), sample(checkKeySample))
 	if err != nil {
 		return fmt.Errorf("store: read peers to check the key: %w", err)
 	}
@@ -127,7 +127,7 @@ func (r *PeerRepo) checkKey(ctx context.Context) error {
 		return nil
 	}
 	for i := range docs {
-		if _, err := r.open(&docs[i]); err == nil {
+		if _, err := s.open(&docs[i]); err == nil {
 			return nil
 		}
 	}
@@ -136,10 +136,10 @@ func (r *PeerRepo) checkKey(ctx context.Context) error {
 
 // encode converts to a document with the secrets encrypted. The public key
 // is the associated data, so a secret only opens on its own peer.
-func (r *PeerRepo) encode(p *service.Peer) (*peer, error) {
+func (s *PeerRepo) encode(p *service.Peer) (*peer, error) {
 	d := peerToStore(p)
 	var err error
-	if d.PrivateKey, err = r.box.seal(
+	if d.PrivateKey, err = s.box.seal(
 		sealInput{
 			Text: p.PrivateKey,
 			AAD:  p.PublicKey,
@@ -147,7 +147,7 @@ func (r *PeerRepo) encode(p *service.Peer) (*peer, error) {
 	); err != nil {
 		return nil, err
 	}
-	if d.PSK, err = r.box.seal(
+	if d.PSK, err = s.box.seal(
 		sealInput{
 			Text: p.PSK,
 			AAD:  p.PublicKey,
@@ -161,8 +161,8 @@ func (r *PeerRepo) encode(p *service.Peer) (*peer, error) {
 // decode converts a document back, decrypting the secrets. Secrets that
 // do not open are left empty (logged): one bad row must not stop expiry,
 // reminders and new keys for the rest.
-func (r *PeerRepo) decode(d *peer) *service.Peer {
-	p, err := r.open(d)
+func (s *PeerRepo) decode(d *peer) *service.Peer {
+	p, err := s.open(d)
 	if err != nil {
 		log.Printf("store: peer %s secrets unreadable: %v", d.IP, err)
 	}
@@ -171,15 +171,15 @@ func (r *PeerRepo) decode(d *peer) *service.Peer {
 
 // open decrypts a document's secrets; if they do not open, the error is
 // returned with the peer, its secrets empty.
-func (r *PeerRepo) open(d *peer) (*service.Peer, error) {
+func (s *PeerRepo) open(d *peer) (*service.Peer, error) {
 	p := d.toService()
-	priv, err1 := r.box.open(
+	priv, err1 := s.box.open(
 		sealInput{
 			Text: d.PrivateKey,
 			AAD:  d.PublicKey,
 		},
 	)
-	psk, err2 := r.box.open(
+	psk, err2 := s.box.open(
 		sealInput{
 			Text: d.PSK,
 			AAD:  d.PublicKey,

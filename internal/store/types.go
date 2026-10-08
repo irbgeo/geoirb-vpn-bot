@@ -44,14 +44,14 @@ func userToStore(u *service.User) *user {
 	}
 }
 
-func (d *user) toService() *service.User {
+func (s *user) toService() *service.User {
 	return &service.User{
-		ID:        d.ID,
-		Username:  d.Username,
-		Role:      roleOrUser(d.Role),
-		TrialUsed: d.TrialUsed,
-		KeysCount: d.KeysCount,
-		CreatedAt: d.CreatedAt,
+		ID:        s.ID,
+		Username:  s.Username,
+		Role:      roleOrUser(s.Role),
+		TrialUsed: s.TrialUsed,
+		KeysCount: s.KeysCount,
+		CreatedAt: s.CreatedAt,
 	}
 }
 
@@ -89,21 +89,21 @@ func peerToStore(p *service.Peer) *peer {
 	}
 }
 
-func (d *peer) toService() *service.Peer {
+func (s *peer) toService() *service.Peer {
 	return &service.Peer{
-		PublicKey:  d.PublicKey,
-		ServerID:   d.ServerID,
-		UserID:     d.UserID,
-		Name:       d.Name,
-		IP:         d.IP,
-		PrivateKey: d.PrivateKey,
-		PSK:        d.PSK,
-		Enabled:    d.Enabled,
-		ExpiresAt:  timeVal(d.ExpiresAt),
-		Reminded3d: d.Reminded3d,
-		Reminded1d: d.Reminded1d,
-		Blocked:    d.Blocked,
-		CreatedAt:  d.CreatedAt,
+		PublicKey:  s.PublicKey,
+		ServerID:   s.ServerID,
+		UserID:     s.UserID,
+		Name:       s.Name,
+		IP:         s.IP,
+		PrivateKey: s.PrivateKey,
+		PSK:        s.PSK,
+		Enabled:    s.Enabled,
+		ExpiresAt:  timeVal(s.ExpiresAt),
+		Reminded3d: s.Reminded3d,
+		Reminded1d: s.Reminded1d,
+		Blocked:    s.Blocked,
+		CreatedAt:  s.CreatedAt,
 	}
 }
 
@@ -131,16 +131,16 @@ func paymentToStore(p *service.Payment) *payment {
 	}
 }
 
-func (d *payment) toService() *service.Payment {
+func (s *payment) toService() *service.Payment {
 	return &service.Payment{
-		ChargeID:   d.ChargeID,
-		UserID:     d.UserID,
-		PeerKey:    d.PeerKey,
-		Stars:      d.Stars,
-		Days:       d.Days,
-		Applied:    d.Applied,
-		CreatedAt:  d.CreatedAt,
-		RefundedAt: timeVal(d.RefundedAt),
+		ChargeID:   s.ChargeID,
+		UserID:     s.UserID,
+		PeerKey:    s.PeerKey,
+		Stars:      s.Stars,
+		Days:       s.Days,
+		Applied:    s.Applied,
+		CreatedAt:  s.CreatedAt,
+		RefundedAt: timeVal(s.RefundedAt),
 	}
 }
 
@@ -183,11 +183,11 @@ func feedbackToStore(f *service.Feedback) *feedback {
 	}
 }
 
-func (d *feedback) toService() *service.Feedback {
+func (s *feedback) toService() *service.Feedback {
 	return &service.Feedback{
-		UserID:    d.UserID,
-		Username:  d.Username,
-		Text:      d.Text,
-		CreatedAt: d.CreatedAt,
+		UserID:    s.UserID,
+		Username:  s.Username,
+		Text:      s.Text,
+		CreatedAt: s.CreatedAt,
 	}
 }

@@ -9,15 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func (e *env) users() *fakeUsers {
-	return e.svc.users.(*fakeUsers)
+func (s *env) users() *fakeUsers {
+	return s.svc.users.(*fakeUsers)
 }
 
-func (e *env) setRole(t *testing.T, id int64, r Role) {
+func (s *env) setRole(t *testing.T, id int64, r Role) {
 	t.Helper()
-	u := e.users().m[id]
+	u := s.users().m[id]
 	u.Role = r
-	e.users().m[id] = u
+	s.users().m[id] = u
 }
 
 func TestRegisterNewUserIsPlainUser(t *testing.T) {

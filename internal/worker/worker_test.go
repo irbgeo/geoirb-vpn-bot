@@ -18,16 +18,16 @@ type fakeJob struct {
 	fail      bool
 }
 
-func (f *fakeJob) Maintain(context.Context) (*service.Maintenance, error) {
-	f.runs.Add(1)
-	if f.fail {
+func (s *fakeJob) Maintain(context.Context) (*service.Maintenance, error) {
+	s.runs.Add(1)
+	if s.fail {
 		return nil, errors.New("docker down")
 	}
 	return &service.Maintenance{}, nil
 }
 
-func (f *fakeJob) DeliverMaintenance(context.Context, *service.Maintenance) {
-	f.delivered.Add(1)
+func (s *fakeJob) DeliverMaintenance(context.Context, *service.Maintenance) {
+	s.delivered.Add(1)
 }
 
 func TestRunStartsAtOnceThenTicks(t *testing.T) {
@@ -74,13 +74,13 @@ type slowJob struct {
 	done    atomic.Bool
 }
 
-func (j *slowJob) Maintain(ctx context.Context) (*service.Maintenance, error) {
-	close(j.started)
+func (s *slowJob) Maintain(ctx context.Context) (*service.Maintenance, error) {
+	close(s.started)
 	time.Sleep(50 * time.Millisecond)
 	if ctx.Err() != nil {
 		return nil, ctx.Err() // a run cut in the middle
 	}
-	j.done.Store(true)
+	s.done.Store(true)
 	return &service.Maintenance{}, nil
 }
 
@@ -113,9 +113,9 @@ type deadlineJob struct {
 	hasDeadline atomic.Bool
 }
 
-func (j *deadlineJob) Maintain(ctx context.Context) (*service.Maintenance, error) {
+func (s *deadlineJob) Maintain(ctx context.Context) (*service.Maintenance, error) {
 	_, ok := ctx.Deadline()
-	j.hasDeadline.Store(ok)
+	s.hasDeadline.Store(ok)
 	return &service.Maintenance{}, nil
 }
 

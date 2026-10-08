@@ -30,8 +30,8 @@ func NewVPN(
 }
 
 // GenKeys makes a fresh key set.
-func (v *VPN) GenKeys(ctx context.Context) (service.VPNKeys, error) {
-	k, err := v.srv.GenKeys(ctx)
+func (s *VPN) GenKeys(ctx context.Context) (service.VPNKeys, error) {
+	k, err := s.srv.GenKeys(ctx)
 	if err != nil {
 		return service.VPNKeys{}, err
 	}
@@ -45,9 +45,9 @@ func (v *VPN) GenKeys(ctx context.Context) (service.VPNKeys, error) {
 // AddPeer picks the lowest free IP, lets in.Save store the key and puts
 // the peer on the server, all in one config update: a failed Save leaves
 // the server untouched.
-func (v *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
+func (s *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 	p := *in.Peer
-	err := v.srv.Update(ctx, func(c *ServerConf) error {
+	err := s.srv.Update(ctx, func(c *ServerConf) error {
 		ip, err := c.FreeIP(in.Reserved)
 		if err != nil {
 			return err
@@ -60,7 +60,7 @@ func (v *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 		return nil
 	})
 	if err != nil {
-		v.undo(
+		s.undo(
 			ctx,
 			&takeOffInput{
 				Peer:  &p,
@@ -69,14 +69,14 @@ func (v *VPN) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 		)
 		return err
 	}
-	v.showInApp(ctx, &p)
+	s.showInApp(ctx, &p)
 	return nil
 }
 
 // PutPeer puts a known key back on its IP, unless another peer (e.g. one
 // made in the Amnezia app) took the IP meanwhile: service.ErrIPTaken.
-func (v *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
-	err := v.srv.Update(ctx, func(c *ServerConf) error {
+func (s *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
+	err := s.srv.Update(ctx, func(c *ServerConf) error {
 		for _, other := range c.Peers {
 			if other.PublicKey == p.PublicKey {
 				return nil
@@ -92,7 +92,7 @@ func (v *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 		return err // nothing was changed
 	}
 	if err != nil {
-		v.undo(
+		s.undo(
 			ctx,
 			&takeOffInput{
 				Peer:  p,
@@ -101,52 +101,52 @@ func (v *VPN) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 		)
 		return err
 	}
-	v.showInApp(ctx, p)
+	s.showInApp(ctx, p)
 	return nil
 }
 
 // RemovePeer takes a key off the server and the app's list.
-func (v *VPN) RemovePeer(ctx context.Context, p *service.VPNPeer) error {
-	err := v.srv.Update(ctx, func(c *ServerConf) error {
+func (s *VPN) RemovePeer(ctx context.Context, p *service.VPNPeer) error {
+	err := s.srv.Update(ctx, func(c *ServerConf) error {
 		c.RemovePeer(p.PublicKey)
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	v.hideInApp(ctx, p)
+	s.hideInApp(ctx, p)
 	return nil
 }
 
 // ReplacePeer swaps in.Old for in.New in one config update. On failure
 // the new peer is taken off and the old one put back.
-func (v *VPN) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) error {
-	err := v.srv.Update(ctx, func(c *ServerConf) error {
+func (s *VPN) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) error {
+	err := s.srv.Update(ctx, func(c *ServerConf) error {
 		c.RemovePeer(in.Old.PublicKey)
 		c.AddPeer(serverPeer(in.New))
 		return nil
 	})
 	if err != nil {
-		v.undo(
+		s.undo(
 			ctx,
 			&takeOffInput{
 				Peer:  in.New,
 				Cause: err,
 			},
 		)
-		if err := v.PutPeer(context.WithoutCancel(ctx), in.Old); err != nil {
+		if err := s.PutPeer(context.WithoutCancel(ctx), in.Old); err != nil {
 			log.Printf("amnezia: put %s back: %v", in.Old.IP, err)
 		}
 		return err
 	}
-	v.hideInApp(ctx, in.Old)
-	v.showInApp(ctx, in.New)
+	s.hideInApp(ctx, in.Old)
+	s.showInApp(ctx, in.New)
 	return nil
 }
 
 // PeerKeys returns the public key of every peer in the config.
-func (v *VPN) PeerKeys(ctx context.Context) ([]string, error) {
-	c, err := v.srv.ReadConf(ctx)
+func (s *VPN) PeerKeys(ctx context.Context) ([]string, error) {
+	c, err := s.srv.ReadConf(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -158,8 +158,8 @@ func (v *VPN) PeerKeys(ctx context.Context) ([]string, error) {
 }
 
 // SubnetUsage counts taken client IPs: peers plus reserved.
-func (v *VPN) SubnetUsage(ctx context.Context, reserved []netip.Addr) (used, total int, err error) {
-	c, err := v.srv.ReadConf(ctx)
+func (s *VPN) SubnetUsage(ctx context.Context, reserved []netip.Addr) (used, total int, err error) {
+	c, err := s.srv.ReadConf(ctx)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -168,8 +168,8 @@ func (v *VPN) SubnetUsage(ctx context.Context, reserved []netip.Addr) (used, tot
 
 // Stats returns live data per peer. The server's RX is what the client
 // sent, its TX what the client received.
-func (v *VPN) Stats(ctx context.Context) ([]service.PeerStat, error) {
-	stats, err := v.srv.Stats(ctx)
+func (s *VPN) Stats(ctx context.Context) ([]service.PeerStat, error) {
+	stats, err := s.srv.Stats(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -190,12 +190,12 @@ func (v *VPN) Stats(ctx context.Context) ([]service.PeerStat, error) {
 
 // ClientConfig renders a client .conf with the server's obfuscation
 // params, public key and port.
-func (v *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (string, error) {
-	c, err := v.srv.ReadConf(ctx)
+func (s *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (string, error) {
+	c, err := s.srv.ReadConf(ctx)
 	if err != nil {
 		return "", err
 	}
-	serverKey, err := v.srv.ServerPublicKey(ctx)
+	serverKey, err := s.srv.ServerPublicKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -217,26 +217,26 @@ func (v *VPN) ClientConfig(ctx context.Context, spec *service.ClientSpec) (strin
 // come after the command already ran in the container, so the peer may be
 // there. It runs even when ctx is cancelled (the failure may be ctx
 // itself); errors are logged, this is an error path already.
-func (v *VPN) undo(ctx context.Context, in *takeOffInput) {
+func (s *VPN) undo(ctx context.Context, in *takeOffInput) {
 	ctx = context.WithoutCancel(ctx)
-	if err := v.takeOff(ctx, in); err != nil {
+	if err := s.takeOff(ctx, in); err != nil {
 		log.Printf("amnezia: roll back %s: %v", in.Peer.IP, err)
 	}
-	v.hideInApp(ctx, in.Peer)
+	s.hideInApp(ctx, in.Peer)
 }
 
 // takeOff removes the peer from the config. A peer missing from the file
 // costs no syncconf, unless the failure left the live interface ahead of
 // the file (ErrNotPersisted): then the update re-syncs it from the file.
-func (v *VPN) takeOff(ctx context.Context, in *takeOffInput) error {
-	c, err := v.srv.ReadConf(ctx)
+func (s *VPN) takeOff(ctx context.Context, in *takeOffInput) error {
+	c, err := s.srv.ReadConf(ctx)
 	if err != nil {
 		return err
 	}
 	if c.FindPeer(in.Peer.PublicKey) == nil && !errors.Is(in.Cause, ErrNotPersisted) {
 		return nil
 	}
-	return v.srv.Update(ctx, func(c *ServerConf) error {
+	return s.srv.Update(ctx, func(c *ServerConf) error {
 		c.RemovePeer(in.Peer.PublicKey)
 		return nil
 	})
@@ -244,8 +244,8 @@ func (v *VPN) takeOff(ctx context.Context, in *takeOffInput) error {
 
 // showInApp lists the key in the Amnezia app. Failing here is not fatal:
 // the key works, it is only missing from the app's list.
-func (v *VPN) showInApp(ctx context.Context, p *service.VPNPeer) {
-	err := v.srv.SetClient(
+func (s *VPN) showInApp(ctx context.Context, p *service.VPNPeer) {
+	err := s.srv.SetClient(
 		ctx,
 		ClientEntry{
 			PublicKey:  p.PublicKey,
@@ -260,8 +260,8 @@ func (v *VPN) showInApp(ctx context.Context, p *service.VPNPeer) {
 }
 
 // hideInApp drops the key from the Amnezia app's list; a failure is logged.
-func (v *VPN) hideInApp(ctx context.Context, p *service.VPNPeer) {
-	if err := v.srv.RemoveClient(ctx, p.PublicKey); err != nil {
+func (s *VPN) hideInApp(ctx context.Context, p *service.VPNPeer) {
+	if err := s.srv.RemoveClient(ctx, p.PublicKey); err != nil {
 		log.Printf("amnezia: clientsTable remove %s: %v", p.IP, err)
 	}
 }

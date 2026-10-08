@@ -43,8 +43,8 @@ func New(
 // limit or just came back to normal. A metric that can't be read is
 // skipped (its state kept) and reported in the error; the others still
 // work.
-func (m *Monitor) Check() ([]Alert, error) {
-	u, err := m.usage()
+func (s *Monitor) Check() ([]Alert, error) {
+	u, err := s.usage()
 	var out []Alert
 	for _, l := range limits() {
 		p, ok := u[l.Metric]
@@ -52,9 +52,9 @@ func (m *Monitor) Check() ([]Alert, error) {
 			continue
 		}
 		if p >= l.Percent {
-			m.hot[l.Metric]++
+			s.hot[l.Metric]++
 		} else {
-			m.hot[l.Metric] = 0
+			s.hot[l.Metric] = 0
 		}
 		a := Alert{
 			Metric:  l.Metric,
@@ -62,11 +62,11 @@ func (m *Monitor) Check() ([]Alert, error) {
 			Limit:   l.Percent,
 		}
 		switch {
-		case !m.alerted[l.Metric] && m.hot[l.Metric] >= l.Checks:
-			m.alerted[l.Metric] = true
+		case !s.alerted[l.Metric] && s.hot[l.Metric] >= l.Checks:
+			s.alerted[l.Metric] = true
 			out = append(out, a)
-		case m.alerted[l.Metric] && p < l.Percent-recoverGap:
-			m.alerted[l.Metric] = false
+		case s.alerted[l.Metric] && p < l.Percent-recoverGap:
+			s.alerted[l.Metric] = false
 			a.Recovered = true
 			out = append(out, a)
 		}
@@ -75,27 +75,27 @@ func (m *Monitor) Check() ([]Alert, error) {
 }
 
 // usage reads every metric it can, in percent.
-func (m *Monitor) usage() (map[Metric]int, error) {
+func (s *Monitor) usage() (map[Metric]int, error) {
 	u := map[Metric]int{}
 	var errs []error
-	if p, err := m.conntrack(); err != nil {
+	if p, err := s.conntrack(); err != nil {
 		errs = append(errs, err)
 	} else {
 		u[Conntrack] = p
 	}
-	if p, err := m.memory(); err != nil {
+	if p, err := s.memory(); err != nil {
 		errs = append(errs, err)
 	} else {
 		u[Memory] = p
 	}
-	if m.disk != "" {
-		if p, err := diskUsed(m.disk); err != nil {
+	if s.disk != "" {
+		if p, err := diskUsed(s.disk); err != nil {
 			errs = append(errs, err)
 		} else {
 			u[Disk] = p
 		}
 	}
-	if p, ok, err := m.cpu(); err != nil {
+	if p, ok, err := s.cpu(); err != nil {
 		errs = append(errs, err)
 	} else if ok {
 		u[CPU] = p
@@ -129,12 +129,12 @@ func limits() []limit {
 	}
 }
 
-func (m *Monitor) conntrack() (int, error) {
-	count, err := m.readInt("sys/net/netfilter/nf_conntrack_count")
+func (s *Monitor) conntrack() (int, error) {
+	count, err := s.readInt("sys/net/netfilter/nf_conntrack_count")
 	if err != nil {
 		return 0, err
 	}
-	limit, err := m.readInt("sys/net/netfilter/nf_conntrack_max")
+	limit, err := s.readInt("sys/net/netfilter/nf_conntrack_max")
 	if err != nil {
 		return 0, err
 	}
@@ -144,8 +144,8 @@ func (m *Monitor) conntrack() (int, error) {
 	}.percent(), nil
 }
 
-func (m *Monitor) readInt(name string) (uint64, error) {
-	b, err := os.ReadFile(filepath.Join(m.proc, name))
+func (s *Monitor) readInt(name string) (uint64, error) {
+	b, err := os.ReadFile(filepath.Join(s.proc, name))
 	if err != nil {
 		return 0, fmt.Errorf("sysload: %w", err)
 	}
@@ -156,8 +156,8 @@ func (m *Monitor) readInt(name string) (uint64, error) {
 	return n, nil
 }
 
-func (m *Monitor) memory() (int, error) {
-	b, err := os.ReadFile(filepath.Join(m.proc, "meminfo"))
+func (s *Monitor) memory() (int, error) {
+	b, err := os.ReadFile(filepath.Join(s.proc, "meminfo"))
 	if err != nil {
 		return 0, fmt.Errorf("sysload: %w", err)
 	}
@@ -185,13 +185,13 @@ func (m *Monitor) memory() (int, error) {
 }
 
 // cpu is the busy share since the last call; ok is false on the first call.
-func (m *Monitor) cpu() (p int, ok bool, err error) {
-	now, err := m.cpuTimes()
+func (s *Monitor) cpu() (p int, ok bool, err error) {
+	now, err := s.cpuTimes()
 	if err != nil {
 		return 0, false, err
 	}
-	prev := m.prevCPU
-	m.prevCPU = &now
+	prev := s.prevCPU
+	s.prevCPU = &now
 	if prev == nil || now.Total <= prev.Total {
 		return 0, false, nil
 	}
@@ -204,8 +204,8 @@ func (m *Monitor) cpu() (p int, ok bool, err error) {
 // cpuTimes reads the first line of /proc/stat: "cpu user nice system idle
 // iowait irq softirq steal guest guest_nice". Guest time is already inside
 // user and nice, so it is not added again.
-func (m *Monitor) cpuTimes() (cpuTimes, error) {
-	b, err := os.ReadFile(filepath.Join(m.proc, "stat"))
+func (s *Monitor) cpuTimes() (cpuTimes, error) {
+	b, err := os.ReadFile(filepath.Join(s.proc, "stat"))
 	if err != nil {
 		return cpuTimes{}, fmt.Errorf("sysload: %w", err)
 	}

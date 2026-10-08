@@ -56,7 +56,7 @@ func NewNotifier(
 // DeliverMaintenance tells owners that their key ended or ends soon (with
 // an "extend" button) and the admins about keys without Telegram, a nearly
 // full subnet, an old backup and clients suddenly dropping off.
-func (n *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenance) {
+func (s *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenance) {
 	for _, g := range []noticeGroup{
 		{
 			Peers:   m.MadeForever,
@@ -77,7 +77,7 @@ func (n *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 		},
 	} {
 		for _, p := range g.Peers {
-			n.sendKeyNotice(
+			s.sendKeyNotice(
 				ctx,
 				keyNotice{
 					Peer:    p,
@@ -87,31 +87,31 @@ func (n *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 			)
 		}
 	}
-	n.subnetAlert(ctx, m)
-	n.backupAlert(ctx)
-	n.onlineDropAlert(ctx, m)
+	s.subnetAlert(ctx, m)
+	s.backupAlert(ctx)
+	s.onlineDropAlert(ctx, m)
 }
 
 // CheckServerLoad tells admins when a server limit (connection table,
 // memory, disk, CPU) is passed or back to normal. It runs on its own
 // timer, not with maintenance: a server out of memory can fail that one.
-func (n *Notifier) CheckServerLoad(ctx context.Context) {
-	if n.load == nil {
+func (s *Notifier) CheckServerLoad(ctx context.Context) {
+	if s.load == nil {
 		return
 	}
-	alerts, err := n.load.Check()
+	alerts, err := s.load.Check()
 	if err != nil {
 		log.Printf("bot: server load: %v", err)
 	}
 	for _, a := range alerts {
-		n.NotifyAdmins(ctx, loadAlertText(a))
+		s.NotifyAdmins(ctx, loadAlertText(a))
 	}
 }
 
 // NotifyAdmins sends text to every admin. A failed send (e.g. an admin who
 // blocked the bot) is logged and the rest still get it.
-func (n *Notifier) NotifyAdmins(ctx context.Context, text string) {
-	admins, err := n.users.Admins(ctx)
+func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {
+	admins, err := s.users.Admins(ctx)
 	if err != nil {
 		log.Printf("bot: list admins: %v", err)
 		return
@@ -121,7 +121,7 @@ func (n *Notifier) NotifyAdmins(ctx context.Context, text string) {
 		return
 	}
 	for _, a := range admins {
-		err := n.send.Send(
+		err := s.send.Send(
 			ctx,
 			OutMessage{
 				ChatID: a.ID,
@@ -136,7 +136,7 @@ func (n *Notifier) NotifyAdmins(ctx context.Context, text string) {
 
 // sendKeyNotice sends kn to the key's owner. A failed send (e.g. the user
 // blocked the bot) and a key without an owner are logged.
-func (n *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
+func (s *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 	if kn.Peer.UserID == 0 {
 		log.Printf("bot: key %s has no owner, notice not sent: %s", kn.Peer.IP, kn.Text)
 		return
@@ -148,7 +148,7 @@ func (n *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 	if !kn.NoOffer {
 		msg.Keyboard = extendKeyboard(kn.Peer)
 	}
-	err := n.send.Send(ctx, msg)
+	err := s.send.Send(ctx, msg)
 	if err != nil {
 		log.Printf("bot: key notice to %d: %v", kn.Peer.UserID, err)
 	}
@@ -156,40 +156,40 @@ func (n *Notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 
 // subnetAlert warns admins once when the subnet passes subnetAlertPercent,
 // and again only after it has dropped below and risen once more.
-func (n *Notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
+func (s *Notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
 	if m.SubnetTotal == 0 {
 		return // unknown this run: keep the alert state as it is
 	}
 	full := m.SubnetUsed*100 > m.SubnetTotal*subnetAlertPercent
-	if n.subnetAlerted.rise(full) {
-		n.NotifyAdmins(ctx, subnetAlertText(m))
+	if s.subnetAlerted.rise(full) {
+		s.NotifyAdmins(ctx, subnetAlertText(m))
 	}
 }
 
 // backupAlert warns admins once when the last good backup is older than
 // backupMaxAge (or never happened), and again only after a fresh one.
-func (n *Notifier) backupAlert(ctx context.Context) {
-	if n.backupStamp == "" {
+func (s *Notifier) backupAlert(ctx context.Context) {
+	if s.backupStamp == "" {
 		return
 	}
 	var last time.Time
-	if st, err := os.Stat(n.backupStamp); err == nil {
+	if st, err := os.Stat(s.backupStamp); err == nil {
 		last = st.ModTime()
 	}
 	old := time.Since(last) > backupMaxAge
-	if n.backupAlerted.rise(old) {
-		n.NotifyAdmins(ctx, backupAlertText(last))
+	if s.backupAlerted.rise(old) {
+		s.NotifyAdmins(ctx, backupAlertText(last))
 	}
 }
 
 // onlineDropAlert warns admins once when the clients online fall far below
 // the peak of the last hour, and again only after they came back.
-func (n *Notifier) onlineDropAlert(ctx context.Context, m *service.Maintenance) {
+func (s *Notifier) onlineDropAlert(ctx context.Context, m *service.Maintenance) {
 	if m.Online < 0 {
 		return // unknown this run: keep the state as it is
 	}
-	drop, alert := n.online.record(m.Online)
+	drop, alert := s.online.record(m.Online)
 	if alert {
-		n.NotifyAdmins(ctx, onlineDropText(drop))
+		s.NotifyAdmins(ctx, onlineDropText(drop))
 	}
 }

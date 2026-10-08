@@ -35,27 +35,27 @@ func newDialogs() *dialogs {
 }
 
 // set records what the chat's next input is; At is stamped when zero.
-func (d *dialogs) set(p pendingInput) {
+func (s *dialogs) set(p pendingInput) {
 	if p.At.IsZero() {
 		p.At = time.Now()
 	}
-	d.mu.Lock()
-	d.m[p.ChatID] = p
-	d.mu.Unlock()
+	s.mu.Lock()
+	s.m[p.ChatID] = p
+	s.mu.Unlock()
 }
 
 // drop forgets what the bot waited for from this chat.
-func (d *dialogs) drop(chatID int64) {
-	d.mu.Lock()
-	delete(d.m, chatID)
-	d.mu.Unlock()
+func (s *dialogs) drop(chatID int64) {
+	s.mu.Lock()
+	delete(s.m, chatID)
+	s.mu.Unlock()
 }
 
 // peek returns the chat's live entry without removing it.
-func (d *dialogs) peek(chatID int64) (pendingInput, bool) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	p, ok := d.m[chatID]
+func (s *dialogs) peek(chatID int64) (pendingInput, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[chatID]
 	if !ok || time.Since(p.At) > pendingTTL {
 		return pendingInput{}, false
 	}
@@ -64,14 +64,14 @@ func (d *dialogs) peek(chatID int64) (pendingInput, bool) {
 
 // take removes and returns the chat's entry if it is of kind k. An
 // expired one is removed too, and reported as takeExpired.
-func (d *dialogs) take(in dialogTake) (pendingInput, takeResult) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	p, ok := d.m[in.ChatID]
+func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.m[in.ChatID]
 	if !ok || p.Kind != in.Kind {
 		return pendingInput{}, takeNone
 	}
-	delete(d.m, in.ChatID)
+	delete(s.m, in.ChatID)
 	if time.Since(p.At) > pendingTTL {
 		return pendingInput{}, takeExpired
 	}
@@ -99,40 +99,40 @@ func newJobs() *jobs {
 }
 
 // reserve takes the one slot; false when a mass send is running.
-func (j *jobs) reserve() bool {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.busy {
+func (s *jobs) reserve() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.busy {
 		return false
 	}
-	j.busy = true
+	s.busy = true
 	return true
 }
 
 // release gives the slot back without running anything.
-func (j *jobs) release() {
-	j.mu.Lock()
-	j.busy = false
-	j.mu.Unlock()
+func (s *jobs) release() {
+	s.mu.Lock()
+	s.busy = false
+	s.mu.Unlock()
 }
 
 // run starts fn in the reserved slot and frees it when fn returns.
-func (j *jobs) run(fn func(ctx context.Context)) {
-	j.wg.Go(func() {
-		defer j.release()
-		fn(j.life)
+func (s *jobs) run(fn func(ctx context.Context)) {
+	s.wg.Go(func() {
+		defer s.release()
+		fn(s.life)
 	})
 }
 
 // close stops running jobs (they report what went out) and waits for them.
-func (j *jobs) close() {
-	j.stop()
-	j.wg.Wait()
+func (s *jobs) close() {
+	s.stop()
+	s.wg.Wait()
 }
 
 // wait waits for running jobs without stopping them.
-func (j *jobs) wait() {
-	j.wg.Wait()
+func (s *jobs) wait() {
+	s.wg.Wait()
 }
 
 // maintFlag is the maintenance state: a file that exists while it is on,
@@ -149,27 +149,27 @@ func newMaintFlag(path string) *maintFlag {
 	}
 }
 
-func (f *maintFlag) on() bool {
-	if f.path == "" {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		return f.mem
+func (s *maintFlag) on() bool {
+	if s.path == "" {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.mem
 	}
-	_, err := os.Stat(f.path)
+	_, err := os.Stat(s.path)
 	return err == nil
 }
 
-func (f *maintFlag) set(on bool) error {
-	if f.path == "" {
-		f.mu.Lock()
-		f.mem = on
-		f.mu.Unlock()
+func (s *maintFlag) set(on bool) error {
+	if s.path == "" {
+		s.mu.Lock()
+		s.mem = on
+		s.mu.Unlock()
 		return nil
 	}
 	if on {
-		return os.WriteFile(f.path, nil, 0o644)
+		return os.WriteFile(s.path, nil, 0o644)
 	}
-	if err := os.Remove(f.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(s.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
@@ -182,11 +182,11 @@ type latch struct {
 	up bool
 }
 
-func (l *latch) rise(now bool) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	was := l.up
-	l.up = now
+func (s *latch) rise(now bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	was := s.up
+	s.up = now
 	return now && !was
 }
 
@@ -238,18 +238,18 @@ func newInFlight() *inFlight {
 }
 
 // start marks id running; false if it already is.
-func (f *inFlight) start(id string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.m[id] {
+func (s *inFlight) start(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.m[id] {
 		return false
 	}
-	f.m[id] = true
+	s.m[id] = true
 	return true
 }
 
-func (f *inFlight) end(id string) {
-	f.mu.Lock()
-	delete(f.m, id)
-	f.mu.Unlock()
+func (s *inFlight) end(id string) {
+	s.mu.Lock()
+	delete(s.m, id)
+	s.mu.Unlock()
 }

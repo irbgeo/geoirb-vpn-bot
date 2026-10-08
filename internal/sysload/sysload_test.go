@@ -31,29 +31,29 @@ func newFakeProc(t *testing.T) *fakeProc {
 	return p
 }
 
-func (p *fakeProc) write(name, text string) {
-	require.NoError(p.t, os.WriteFile(filepath.Join(p.root, name), []byte(text), 0o644))
+func (s *fakeProc) write(name, text string) {
+	require.NoError(s.t, os.WriteFile(filepath.Join(s.root, name), []byte(text), 0o644))
 }
 
 // conntrack sets the table to count of 1000.
-func (p *fakeProc) conntrack(count int) {
-	p.write("sys/net/netfilter/nf_conntrack_count", fmt.Sprintf("%d\n", count))
-	p.write("sys/net/netfilter/nf_conntrack_max", "1000\n")
+func (s *fakeProc) conntrack(count int) {
+	s.write("sys/net/netfilter/nf_conntrack_count", fmt.Sprintf("%d\n", count))
+	s.write("sys/net/netfilter/nf_conntrack_max", "1000\n")
 }
 
 // memory sets used memory to percent of 1000000 kB.
-func (p *fakeProc) memory(percent int) {
-	p.write("meminfo", fmt.Sprintf("MemTotal:        1000000 kB\nMemFree:          1000 kB\nMemAvailable:    %d kB\n", 1000000-percent*10000))
+func (s *fakeProc) memory(percent int) {
+	s.write("meminfo", fmt.Sprintf("MemTotal:        1000000 kB\nMemFree:          1000 kB\nMemAvailable:    %d kB\n", 1000000-percent*10000))
 }
 
 // cpu adds 100 jiffies to the counters, busy of them busy: half user,
 // half steal (steal counts as busy: the hypervisor took the CPU).
-func (p *fakeProc) cpu(busy int) {
-	p.user += busy - busy/2
-	p.steal += busy / 2
-	p.idle += 100 - busy
+func (s *fakeProc) cpu(busy int) {
+	s.user += busy - busy/2
+	s.steal += busy / 2
+	s.idle += 100 - busy
 	// cpu user nice system idle iowait irq softirq steal guest guest_nice
-	p.write("stat", fmt.Sprintf("cpu  %d 0 0 %d 0 0 0 %d 0 0\ncpu0 1 0 0 1 0 0 0 0 0 0\n", p.user, p.idle, p.steal))
+	s.write("stat", fmt.Sprintf("cpu  %d 0 0 %d 0 0 0 %d 0 0\ncpu0 1 0 0 1 0 0 0 0 0 0\n", s.user, s.idle, s.steal))
 }
 
 func newMonitor(p *fakeProc) *Monitor {

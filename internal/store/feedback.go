@@ -15,12 +15,12 @@ type FeedbackRepo struct {
 }
 
 // List returns one page, newest first, and the total count.
-func (r *FeedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error) {
-	total, err := r.coll.CountDocuments(ctx, matchAll())
+func (s *FeedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error) {
+	total, err := s.coll.CountDocuments(ctx, matchAll())
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: count feedback: %w", err)
 	}
-	cur, err := r.coll.Find(ctx, matchAll(), pageNewestFirst(p))
+	cur, err := s.coll.Find(ctx, matchAll(), pageNewestFirst(p))
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list feedback: %w", err)
 	}
@@ -36,8 +36,8 @@ func (r *FeedbackRepo) List(ctx context.Context, p service.Page) ([]*service.Fee
 }
 
 // Add saves one review or suggestion.
-func (r *FeedbackRepo) Add(ctx context.Context, f *service.Feedback) error {
-	if _, err := r.coll.InsertOne(ctx, feedbackToStore(f)); err != nil {
+func (s *FeedbackRepo) Add(ctx context.Context, f *service.Feedback) error {
+	if _, err := s.coll.InsertOne(ctx, feedbackToStore(f)); err != nil {
 		return fmt.Errorf("store: add feedback: %w", err)
 	}
 	return nil

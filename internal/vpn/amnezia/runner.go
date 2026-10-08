@@ -26,19 +26,19 @@ type DockerRunner struct {
 
 // Exec runs one command in the container and returns its stdout.
 // Errors carry the command and stderr, never stdin (it may hold secrets).
-func (r *DockerRunner) Exec(ctx context.Context, in ExecInput) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+func (s *DockerRunner) Exec(ctx context.Context, in ExecInput) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
 
 	args := append(
 		[]string{
 			"exec",
 			"-i",
-			r.Container,
+			s.Container,
 		},
 		in.Args...,
 	)
-	cmd := exec.CommandContext(ctx, r.bin(), args...)
+	cmd := exec.CommandContext(ctx, s.bin(), args...)
 	cmd.Stdin = strings.NewReader(in.Stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -48,7 +48,7 @@ func (r *DockerRunner) Exec(ctx context.Context, in ExecInput) (string, error) {
 	// On timeout only the docker CLI is killed: the command inside the
 	// container may still finish, so callers must treat the result as unknown.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return "", fmt.Errorf("amnezia: %s: timed out after %s", strings.Join(in.Args, " "), r.Timeout)
+		return "", fmt.Errorf("amnezia: %s: timed out after %s", strings.Join(in.Args, " "), s.Timeout)
 	}
 	if err != nil {
 		return "", fmt.Errorf("amnezia: %s: %w: %s", strings.Join(in.Args, " "), err, strings.TrimSpace(stderr.String()))
@@ -74,9 +74,9 @@ func DetectContainer(ctx context.Context, bin string) (string, error) {
 	return "", errors.New("amnezia: no amnezia-awg2 or amnezia-awg container is running")
 }
 
-func (r *DockerRunner) bin() string {
-	if r.Bin == "" {
+func (s *DockerRunner) bin() string {
+	if s.Bin == "" {
 		return "docker"
 	}
-	return r.Bin
+	return s.Bin
 }
