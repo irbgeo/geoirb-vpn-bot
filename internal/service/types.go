@@ -134,7 +134,6 @@ type Deps struct {
 	Feedback FeedbackRepository
 	VPN      VPN
 	Settings Settings
-	Now      func() time.Time // nil = time.Now
 }
 
 // Settings are the per-server values the service needs.

@@ -55,10 +55,10 @@ type FeedbackRepository interface {
 	List(ctx context.Context, p Page) ([]*Feedback, int64, error)
 }
 
-// VPN is the VPN server, in keys and configs (implemented by
-// *amnezia.VPN). A change either fully happens or is undone before the
-// error is returned: the server never keeps half of it. Only the key's
-// place in the app's client list may lag (logged, not an error).
+// VPN is the VPN server, in keys and configs (implemented by the value
+// amnezia.NewVPN returns). A change either fully happens or is undone
+// before the error is returned: the server never keeps half of it. Only
+// the key's place in the app's client list may lag (logged, not an error).
 type VPN interface {
 	// GenKeys makes a fresh key set.
 	GenKeys(ctx context.Context) (VPNKeys, error)

@@ -7,6 +7,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -26,13 +27,13 @@ const unfinishedLookbackDays = 30
 const payloadVersion = "v1"
 
 // Tariffs lists what a RoleUser can buy.
-func (s *Service) Tariffs() []Tariff {
+func (s *service) Tariffs() []Tariff {
 	return s.cfg.Tariffs
 }
 
 // Invoice checks a purchase and prices it. Only RoleUser buys access:
 // unlimited and admin keys never expire.
-func (s *Service) Invoice(ctx context.Context, in PurchaseInput) (*Invoice, error) {
+func (s *service) Invoice(ctx context.Context, in PurchaseInput) (*Invoice, error) {
 	t, ok := s.tariff(in.Days)
 	if !ok {
 		return nil, ErrNoTariff
@@ -60,7 +61,7 @@ func (s *Service) Invoice(ctx context.Context, in PurchaseInput) (*Invoice, erro
 // CheckPurchase answers Telegram's pre-checkout query: the payer is the
 // user the invoice was made for, the tariff and price still hold, and the
 // role still buys. A failed check means Telegram charges nothing.
-func (s *Service) CheckPurchase(ctx context.Context, in PaymentInput) error {
+func (s *service) CheckPurchase(ctx context.Context, in PaymentInput) error {
 	_, err := s.purchase(ctx, in)
 	return err
 }
@@ -76,7 +77,7 @@ func (s *Service) CheckPurchase(ctx context.Context, in PaymentInput) error {
 //
 // On error nothing was bought and the caller refunds. A crash in the
 // middle leaves an unapplied record: UnfinishedPayments finds it.
-func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) {
+func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -119,7 +120,7 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 			PeerKey:   pu.PublicKey,
 			Stars:     in.Stars,
 			Days:      pu.Days,
-			CreatedAt: s.now(),
+			CreatedAt: time.Now(),
 		}
 		_, err = s.payments.Add(ctx, pay)
 		if err != nil {
@@ -153,8 +154,8 @@ func (s *Service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 // UnfinishedPayments returns recent payments that were neither applied
 // nor refunded (the bot stopped in the middle). Admins see them at
 // startup and refund them from the user card.
-func (s *Service) UnfinishedPayments(ctx context.Context) ([]*Payment, error) {
-	ps, err := s.payments.Since(ctx, s.now().AddDate(0, 0, -unfinishedLookbackDays))
+func (s *service) UnfinishedPayments(ctx context.Context) ([]*Payment, error) {
+	ps, err := s.payments.Since(ctx, time.Now().AddDate(0, 0, -unfinishedLookbackDays))
 	if err != nil {
 		return nil, err
 	}
@@ -168,21 +169,21 @@ func (s *Service) UnfinishedPayments(ctx context.Context) ([]*Payment, error) {
 }
 
 // Payments returns a user's payments, newest first.
-func (s *Service) Payments(ctx context.Context, userID int64) ([]*Payment, error) {
+func (s *service) Payments(ctx context.Context, userID int64) ([]*Payment, error) {
 	return s.payments.ByUser(ctx, userID)
 }
 
 // MarkRefunded records that the Stars of a charge were returned. A charge
 // that never got a record (refused before saving) is fine.
-func (s *Service) MarkRefunded(ctx context.Context, chargeID string) error {
+func (s *service) MarkRefunded(ctx context.Context, chargeID string) error {
 	paymentMark := PaymentMark{
 		ChargeID: chargeID,
-		At:       s.now(),
+		At:       time.Now(),
 	}
 	return s.payments.MarkRefunded(ctx, paymentMark)
 }
 
-func (s *Service) tariff(days int) (Tariff, bool) {
+func (s *service) tariff(days int) (Tariff, bool) {
 	for _, t := range s.cfg.Tariffs {
 		if t.Days == days {
 			return t, true
@@ -192,7 +193,7 @@ func (s *Service) tariff(days int) (Tariff, bool) {
 }
 
 // checkBuyer: the user exists, is a RoleUser, and owns the chosen key.
-func (s *Service) checkBuyer(ctx context.Context, in PurchaseInput) error {
+func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) error {
 	u, err := s.User(ctx, in.UserID)
 	if err != nil {
 		return err
@@ -244,7 +245,7 @@ func firstTimed(ps []*Peer) *Peer {
 }
 
 // purchase parses and checks an invoice payload against the payment.
-func (s *Service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput, error) {
+func (s *service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput, error) {
 	f := strings.Split(in.Payload, "|")
 	if len(f) != 5 || f[0] != payloadVersion {
 		return nil, ErrBadPayload
@@ -276,7 +277,7 @@ func (s *Service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 
 // pickKey fills in the key a purchase extends when the invoice named
 // none: the user's first key that can end, or "" for a new key.
-func (s *Service) pickKey(ctx context.Context, pu *PurchaseInput) error {
+func (s *service) pickKey(ctx context.Context, pu *PurchaseInput) error {
 	if pu.PublicKey != "" {
 		return nil
 	}
@@ -294,7 +295,7 @@ func (s *Service) pickKey(ctx context.Context, pu *PurchaseInput) error {
 // applyPurchase adds the paid days: to the chosen key, else to the user's
 // first key, else to a new key. Buying ends any chance of a trial. The
 // caller holds s.mu.
-func (s *Service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayResult, error) {
+func (s *service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayResult, error) {
 	key := pu.PublicKey // picked by pickKey; "" = a new key
 
 	res := &PayResult{}
@@ -322,7 +323,7 @@ func (s *Service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayRes
 
 // markTrialUsed: after a purchase there is no free trial any more. A
 // failure only means a later trial check still sees the key.
-func (s *Service) markTrialUsed(ctx context.Context, userID int64) {
+func (s *service) markTrialUsed(ctx context.Context, userID int64) {
 	err := s.users.SetTrialUsed(ctx, userID)
 	if err != nil {
 		log.Printf("service: mark trial used for %d: %v", userID, err)

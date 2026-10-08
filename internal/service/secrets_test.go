@@ -3,95 +3,100 @@ package service
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestReadsDoNotReturnSecrets(t *testing.T) {
-	e := newEnv()
-	ctx := context.Background()
-	register(t, e, RoleUser)
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		e.register(t, RoleUser)
 
-	issued := e.issue(t, 30)
-	noSecrets(t, issued)
-	require.NotEmpty(t, e.peers.m[issued.PublicKey].PSK, "the DB keeps them")
+		issued := e.issue(t, 30)
+		noSecrets(t, issued)
+		require.NotEmpty(t, e.peers.m[issued.PublicKey].PSK, "the DB keeps them")
 
-	extended, err := e.svc.Extend(
-		ctx,
-		ExtendInput{
+		extended, err := e.svc.Extend(
+			ctx,
+			ExtendInput{
+				PublicKey: issued.PublicKey,
+				Days:      1,
+			},
+		)
+		require.NoError(t, err)
+		noSecrets(t, extended)
+
+		key, err := e.svc.Key(ctx, issued.PublicKey)
+		require.NoError(t, err)
+		noSecrets(t, key)
+
+		own := UserKey{
+			UserID:    42,
 			PublicKey: issued.PublicKey,
-			Days:      1,
-		},
-	)
-	require.NoError(t, err)
-	noSecrets(t, extended)
+		}
+		kc, err := e.svc.UserConfig(ctx, own)
+		require.NoError(t, err)
+		noSecrets(t, kc.Peer)
 
-	key, err := e.svc.Key(ctx, issued.PublicKey)
-	require.NoError(t, err)
-	noSecrets(t, key)
+		infos, err := e.svc.Access(ctx, 42)
+		require.NoError(t, err)
+		for _, k := range infos {
+			noSecrets(t, k.Peer)
+		}
 
-	own := UserKey{
-		UserID:    42,
-		PublicKey: issued.PublicKey,
-	}
-	kc, err := e.svc.UserConfig(ctx, own)
-	require.NoError(t, err)
-	noSecrets(t, kc.Peer)
+		st, err := e.svc.Stats(ctx)
+		require.NoError(t, err)
+		for _, k := range st.TopTraffic {
+			noSecrets(t, k.Peer)
+		}
 
-	infos, err := e.svc.Access(ctx, 42)
-	require.NoError(t, err)
-	for _, k := range infos {
-		noSecrets(t, k.Peer)
-	}
+		reissued, err := e.svc.ReissueKey(ctx, own)
+		require.NoError(t, err)
+		noSecrets(t, reissued)
 
-	st, err := e.svc.Stats(ctx)
-	require.NoError(t, err)
-	for _, k := range st.TopTraffic {
-		noSecrets(t, k.Peer)
-	}
+		res := e.pay(t, "c1")
+		noSecrets(t, res.Peer)
+		repeat := e.pay(t, "c1")
+		noSecrets(t, repeat.Peer)
 
-	reissued, err := e.svc.ReissueKey(ctx, own)
-	require.NoError(t, err)
-	noSecrets(t, reissued)
-
-	res := pay(t, e, "c1")
-	noSecrets(t, res.Peer)
-	repeat := pay(t, e, "c1")
-	noSecrets(t, repeat.Peer)
-
-	e.setRole(t, 42, RoleUnlimited)
-	created, err := e.svc.CreateKey(
-		ctx,
-		CreateKeyInput{
-			UserID: 42,
-		},
-	)
-	require.NoError(t, err)
-	noSecrets(t, created)
+		e.setRole(42, RoleUnlimited)
+		created, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		noSecrets(t, created)
+	})
 }
 
 func TestMaintainAndReconcileDoNotReturnSecrets(t *testing.T) {
-	e := newEnv()
-	ctx := context.Background()
-	seed(t, e, now.Add(-time.Minute))
-	remind := seed(t, e, now.Add(12*time.Hour))
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		e.seed(t, now.Add(-time.Minute))
+		remind := e.seed(t, now.Add(12*time.Hour))
 
-	m, err := e.svc.Maintain(ctx)
-	require.NoError(t, err)
-	require.Len(t, m.Expired, 1)
-	require.Len(t, m.Remind1d, 1)
-	noSecrets(t, m.Expired...)
-	noSecrets(t, m.Remind1d...)
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Len(t, m.Expired, 1)
+		require.Len(t, m.Remind1d, 1)
+		noSecrets(t, m.Expired...)
+		noSecrets(t, m.Remind1d...)
 
-	stored := e.peers.m[remind.PublicKey]
-	stored.Enabled = false // disabled in the DB, still on the server
-	e.peers.m[remind.PublicKey] = stored
+		stored := e.peers.m[remind.PublicKey]
+		stored.Enabled = false // disabled in the DB, still on the server
+		e.peers.m[remind.PublicKey] = stored
 
-	r, err := e.svc.Reconcile(ctx)
-	require.NoError(t, err)
-	require.Len(t, r.DisabledButOnServer, 1)
-	noSecrets(t, r.DisabledButOnServer...)
+		r, err := e.svc.Reconcile(ctx)
+		require.NoError(t, err)
+		require.Len(t, r.DisabledButOnServer, 1)
+		noSecrets(t, r.DisabledButOnServer...)
+	})
 }
 
 // noSecrets fails if a key read from the service carries its private key

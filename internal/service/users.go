@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -32,36 +33,24 @@ var (
 
 // Register creates the user on first /start (as RoleUser) or refreshes the
 // username. The role is never changed here: it is set by hand in the DB.
-func (s *Service) Register(ctx context.Context, in RegisterInput) (*User, error) {
+func (s *service) Register(ctx context.Context, in RegisterInput) (*User, error) {
 	user := &User{
 		ID:        in.ID,
 		Username:  in.Username,
 		Role:      RoleUser,
-		CreatedAt: s.now(),
+		CreatedAt: time.Now(),
 	}
 	return s.users.Register(ctx, user)
 }
 
-// User returns the user, or ErrNotFound.
-func (s *Service) User(ctx context.Context, id int64) (*User, error) {
-	u, err := s.users.Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if u == nil {
-		return nil, ErrNotFound
-	}
-	return u, nil
-}
-
 // Users returns one page of users grouped by role (users, unlimited,
 // admins), newest first inside a role, and the total count.
-func (s *Service) Users(ctx context.Context, p Page) ([]*User, int64, error) {
+func (s *service) Users(ctx context.Context, p Page) ([]*User, int64, error) {
 	return s.users.List(ctx, p)
 }
 
 // Admins returns every user with RoleAdmin (they get service alerts).
-func (s *Service) Admins(ctx context.Context) ([]*User, error) {
+func (s *service) Admins(ctx context.Context) ([]*User, error) {
 	return s.users.ByRole(ctx, RoleAdmin)
 }
 
@@ -74,7 +63,7 @@ func (s *Service) Admins(ctx context.Context) ([]*User, error) {
 //
 // Counting and issuing run under one lock, so two quick taps can't create
 // an extra key.
-func (s *Service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, error) {
+func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, error) {
 	userID := in.UserID
 	name, err := cleanKeyName(in.Name)
 	if err != nil {
@@ -122,7 +111,7 @@ func (s *Service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 // CheckCreateKey says whether CreateKey would give the user a key now
 // (nil) or which error it would return, without issuing anything: the bot
 // asks before walking the user through installing an app.
-func (s *Service) CheckCreateKey(ctx context.Context, userID int64) error {
+func (s *service) CheckCreateKey(ctx context.Context, userID int64) error {
 	u, err := s.User(ctx, userID)
 	if err != nil {
 		return err
@@ -136,6 +125,18 @@ func (s *Service) CheckCreateKey(ctx context.Context, userID int64) error {
 		Keys: len(have),
 	}
 	return canCreate(keyQuota)
+}
+
+// User returns the user, or ErrNotFound.
+func (s *service) User(ctx context.Context, id int64) (*User, error) {
+	u, err := s.users.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if u == nil {
+		return nil, ErrNotFound
+	}
+	return u, nil
 }
 
 // cleanKeyName trims the name and squeezes inner spaces; "" stays "" (the
@@ -183,7 +184,7 @@ func displayName(u *User) string {
 
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the
 // trial as used. The caller holds s.mu.
-func (s *Service) startTrial(ctx context.Context, in trialInput) (*Peer, error) {
+func (s *service) startTrial(ctx context.Context, in trialInput) (*Peer, error) {
 	u := in.User
 	if u.TrialUsed {
 		return nil, ErrTrialUsed

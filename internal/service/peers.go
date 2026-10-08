@@ -4,13 +4,14 @@ import (
 	"context"
 	"log"
 	"net/netip"
+	"time"
 )
 
 // Issue creates a new key: fresh keys, the lowest free IP, a peer on the
 // server and a DB record. The DB record is saved inside the server update,
 // so a DB failure leaves the server untouched; a failed server apply
 // removes the DB record again.
-func (s *Service) Issue(ctx context.Context, in IssueInput) (*Peer, error) {
+func (s *service) Issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.issue(ctx, in)
@@ -20,7 +21,7 @@ func (s *Service) Issue(ctx context.Context, in IssueInput) (*Peer, error) {
 // Extend adds days to a key: counted from the end date, or from now if the
 // key already expired. A disabled key is enabled again with the same keys
 // and IP. A key that never expires stays so.
-func (s *Service) Extend(ctx context.Context, in ExtendInput) (*Peer, error) {
+func (s *service) Extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.extend(ctx, in)
@@ -30,7 +31,7 @@ func (s *Service) Extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 // Disable is the admin's block: it removes the key from the server and
 // marks it Blocked, so buying can't turn it back on. The key stays in the
 // DB (with its IP reserved) so Enable or Extend can bring it back.
-func (s *Service) Disable(ctx context.Context, publicKey string) error {
+func (s *service) Disable(ctx context.Context, publicKey string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -46,7 +47,7 @@ func (s *Service) Disable(ctx context.Context, publicKey string) error {
 }
 
 // Enable puts a disabled key back on the server.
-func (s *Service) Enable(ctx context.Context, publicKey string) error {
+func (s *service) Enable(ctx context.Context, publicKey string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -54,7 +55,7 @@ func (s *Service) Enable(ctx context.Context, publicKey string) error {
 	if err != nil || p.Enabled {
 		return err
 	}
-	if !p.ExpiresAt.IsZero() && !p.ExpiresAt.After(s.now()) {
+	if !p.ExpiresAt.IsZero() && !p.ExpiresAt.After(time.Now()) {
 		return ErrExpired // Maintain would disable it again within a minute
 	}
 	p.Blocked = false
@@ -62,7 +63,7 @@ func (s *Service) Enable(ctx context.Context, publicKey string) error {
 }
 
 // Delete removes the key from the server and the DB for good.
-func (s *Service) Delete(ctx context.Context, publicKey string) error {
+func (s *service) Delete(ctx context.Context, publicKey string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -74,7 +75,7 @@ func (s *Service) Delete(ctx context.Context, publicKey string) error {
 }
 
 // ClientConfig renders the .conf file for a key.
-func (s *Service) ClientConfig(ctx context.Context, publicKey string) (string, error) {
+func (s *service) ClientConfig(ctx context.Context, publicKey string) (string, error) {
 	p, err := s.ourPeer(ctx, publicKey)
 	if err != nil {
 		return "", err
@@ -83,13 +84,13 @@ func (s *Service) ClientConfig(ctx context.Context, publicKey string) (string, e
 }
 
 // Key returns one of the bot's keys, or ErrNotFound.
-func (s *Service) Key(ctx context.Context, publicKey string) (*Peer, error) {
+func (s *service) Key(ctx context.Context, publicKey string) (*Peer, error) {
 	p, err := s.ourPeer(ctx, publicKey)
 	return p.public(), err
 }
 
 // issue is Issue without the lock, for callers that already hold it.
-func (s *Service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
+func (s *service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	keys, err := s.vpn.GenKeys(ctx)
 	if err != nil {
 		return nil, err
@@ -102,7 +103,7 @@ func (s *Service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
+	now := time.Now()
 	p := &Peer{
 		PublicKey:  keys.Public,
 		ServerID:   s.cfg.ServerID,
@@ -145,7 +146,7 @@ func (s *Service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 
 // reservedIPs are the IPs of every DB key on this server, enabled or not:
 // a disabled key has no peer on the server but keeps its IP.
-func (s *Service) reservedIPs(ctx context.Context) ([]netip.Addr, error) {
+func (s *service) reservedIPs(ctx context.Context) ([]netip.Addr, error) {
 	ips, err := s.peers.ServerIPs(ctx, s.cfg.ServerID)
 	if err != nil {
 		return nil, err
@@ -162,7 +163,7 @@ func (s *Service) reservedIPs(ctx context.Context) ([]netip.Addr, error) {
 
 // keyName is in.Name, or "tg:<username or ID>" for a Telegram user's key
 // issued without a name.
-func (s *Service) keyName(ctx context.Context, in IssueInput) (string, error) {
+func (s *service) keyName(ctx context.Context, in IssueInput) (string, error) {
 	if in.Name != "" || in.UserID == 0 {
 		return in.Name, nil
 	}
@@ -175,7 +176,7 @@ func (s *Service) keyName(ctx context.Context, in IssueInput) (string, error) {
 
 // countKeys updates the owner's KeysCount. A failure is only logged: the
 // count is fixed at the next start (Reconcile), and limits never read it.
-func (s *Service) countKeys(ctx context.Context, d KeysDelta) {
+func (s *service) countKeys(ctx context.Context, d KeysDelta) {
 	if d.UserID == 0 {
 		return
 	}
@@ -186,14 +187,14 @@ func (s *Service) countKeys(ctx context.Context, d KeysDelta) {
 }
 
 // extend is Extend without the lock, for callers that already hold it.
-func (s *Service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
+func (s *service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	p, err := s.ourPeer(ctx, in.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 	if !p.ExpiresAt.IsZero() {
 		from := p.ExpiresAt
-		now := s.now()
+		now := time.Now()
 		if from.Before(now) {
 			from = now
 		}
@@ -210,7 +211,7 @@ func (s *Service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 }
 
 // ourPeer loads a key from the DB, or ErrNotFound.
-func (s *Service) ourPeer(ctx context.Context, publicKey string) (*Peer, error) {
+func (s *service) ourPeer(ctx context.Context, publicKey string) (*Peer, error) {
 	p, err := s.peers.Get(ctx, publicKey)
 	if err != nil {
 		return nil, err
@@ -225,7 +226,7 @@ func (s *Service) ourPeer(ctx context.Context, publicKey string) (*Peer, error) 
 // the save fails, the peer is taken off again: the server must not run a
 // key the DB calls disabled (it would never be expired). A failed add
 // undoes itself (see VPN). The caller holds s.mu.
-func (s *Service) enableAndSave(ctx context.Context, p *Peer) error {
+func (s *service) enableAndSave(ctx context.Context, p *Peer) error {
 	wasEnabled := p.Enabled
 	if !wasEnabled {
 		err := s.addToServer(ctx, p)
@@ -247,7 +248,7 @@ func (s *Service) enableAndSave(ctx context.Context, p *Peer) error {
 
 // addToServer adds the key's peer back, unless its IP was taken meanwhile
 // (e.g. by a peer created in the Amnezia app).
-func (s *Service) addToServer(ctx context.Context, p *Peer) error {
+func (s *service) addToServer(ctx context.Context, p *Peer) error {
 	if !p.hasSecrets() {
 		return ErrUnreadable // no PSK to put on the server
 	}
@@ -256,7 +257,7 @@ func (s *Service) addToServer(ctx context.Context, p *Peer) error {
 
 // undoEnable takes a key back off when its enabled state could not be
 // saved, even when ctx is cancelled (the failure may be ctx itself).
-func (s *Service) undoEnable(ctx context.Context, p *Peer) {
+func (s *service) undoEnable(ctx context.Context, p *Peer) {
 	err := s.vpn.RemovePeer(context.WithoutCancel(ctx), p.vpnPeer())
 	if err != nil {
 		log.Printf("service: roll back %s on the server: %v", p.IP, err)
@@ -265,7 +266,7 @@ func (s *Service) undoEnable(ctx context.Context, p *Peer) {
 
 // disablePeer removes an enabled key from the server and marks it
 // disabled. The caller holds s.mu.
-func (s *Service) disablePeer(ctx context.Context, p *Peer) error {
+func (s *service) disablePeer(ctx context.Context, p *Peer) error {
 	err := s.vpn.RemovePeer(ctx, p.vpnPeer())
 	if err != nil {
 		return err
@@ -276,7 +277,7 @@ func (s *Service) disablePeer(ctx context.Context, p *Peer) error {
 
 // deletePeer removes a loaded key from the server and the DB. The caller
 // holds s.mu.
-func (s *Service) deletePeer(ctx context.Context, p *Peer) error {
+func (s *service) deletePeer(ctx context.Context, p *Peer) error {
 	if p.Enabled {
 		err := s.vpn.RemovePeer(ctx, p.vpnPeer())
 		if err != nil {
@@ -296,7 +297,7 @@ func (s *Service) deletePeer(ctx context.Context, p *Peer) error {
 }
 
 // renderConfig builds the .conf text for a loaded key.
-func (s *Service) renderConfig(ctx context.Context, p *Peer) (string, error) {
+func (s *service) renderConfig(ctx context.Context, p *Peer) (string, error) {
 	if p.PrivateKey == "" {
 		return "", ErrNoPrivateKey
 	}

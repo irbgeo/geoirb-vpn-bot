@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -15,12 +16,12 @@ var ErrBadFeedback = errors.New("service: feedback is empty or too long")
 
 // Feedbacks returns one page of reviews and suggestions, newest first,
 // and the total count.
-func (s *Service) Feedbacks(ctx context.Context, p Page) ([]*Feedback, int64, error) {
+func (s *service) Feedbacks(ctx context.Context, p Page) ([]*Feedback, int64, error) {
 	return s.feedback.List(ctx, p)
 }
 
 // AddFeedback saves a user's review or suggestion, trimmed.
-func (s *Service) AddFeedback(ctx context.Context, in FeedbackInput) error {
+func (s *service) AddFeedback(ctx context.Context, in FeedbackInput) error {
 	text := strings.TrimSpace(in.Text)
 	if text == "" || utf8.RuneCountInString(text) > MaxFeedbackLen {
 		return ErrBadFeedback
@@ -29,7 +30,7 @@ func (s *Service) AddFeedback(ctx context.Context, in FeedbackInput) error {
 		UserID:    in.UserID,
 		Username:  in.Username,
 		Text:      text,
-		CreatedAt: s.now(),
+		CreatedAt: time.Now(),
 	}
 	return s.feedback.Add(ctx, feedback)
 }

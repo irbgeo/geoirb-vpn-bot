@@ -8,7 +8,7 @@ import (
 // Reconcile compares the DB with the server config: enabled keys must be
 // on the server, disabled ones must not. It only reports; it never
 // deletes or adds keys. It also resets users' KeysCount from the DB keys.
-func (s *Service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
+func (s *service) Reconcile(ctx context.Context) (*ReconcileReport, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

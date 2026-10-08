@@ -21,7 +21,7 @@ const (
 // A failed subnet reading is logged and left at zero: the key notices
 // matter more, and their marks are already saved.
 // ponytail: scans every key of the server each run — at most 254.
-func (s *Service) Maintain(ctx context.Context) (*Maintenance, error) {
+func (s *service) Maintain(ctx context.Context) (*Maintenance, error) {
 	m, err := s.maintainKeys(ctx)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func (s *Service) Maintain(ctx context.Context) (*Maintenance, error) {
 }
 
 // maintainKeys expires keys and picks reminders, under s.mu.
-func (s *Service) maintainKeys(ctx context.Context) (*Maintenance, error) {
+func (s *service) maintainKeys(ctx context.Context) (*Maintenance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (s *Service) maintainKeys(ctx context.Context) (*Maintenance, error) {
 		return nil, err
 	}
 	m := &Maintenance{}
-	now := s.now()
+	now := time.Now()
 keys:
 	for _, p := range ps {
 		if forever[p.UserID] && !p.ExpiresAt.IsZero() {
@@ -110,7 +110,7 @@ keys:
 // foreverOwners are the users whose keys never expire: unlimited and
 // admin. The role is set by hand in the DB, so a key issued with an end
 // date (e.g. a trial) is fixed here, within a minute of the change.
-func (s *Service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
+func (s *service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
 	ids := map[int64]bool{}
 	for _, r := range []Role{
 		RoleUnlimited,
@@ -129,7 +129,7 @@ func (s *Service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
 
 // makeForever drops a key's end date and reminders, and puts it back on
 // the server (same keys, same IP) if it was disabled. The caller holds s.mu.
-func (s *Service) makeForever(ctx context.Context, p *Peer) error {
+func (s *service) makeForever(ctx context.Context, p *Peer) error {
 	dropEnd(p)
 	return s.enableAndSave(ctx, p)
 }
@@ -143,7 +143,7 @@ func dropEnd(p *Peer) {
 
 // savePeer saves a reminder mark; false (logged) if it failed, so the
 // reminder is not sent and is tried again next run.
-func (s *Service) savePeer(ctx context.Context, p *Peer) bool {
+func (s *service) savePeer(ctx context.Context, p *Peer) bool {
 	err := s.peers.Save(ctx, p)
 	if err != nil {
 		log.Printf("service: save reminder for %s: %v", p.IP, err)
@@ -154,7 +154,7 @@ func (s *Service) savePeer(ctx context.Context, p *Peer) bool {
 
 // subnetUsage counts taken client IPs: peers on the server plus the IPs
 // reserved for the bot's keys (disabled ones have no peer).
-func (s *Service) subnetUsage(ctx context.Context) (used, total int, err error) {
+func (s *service) subnetUsage(ctx context.Context) (used, total int, err error) {
 	reserved, err := s.reservedIPs(ctx)
 	if err != nil {
 		return 0, 0, err

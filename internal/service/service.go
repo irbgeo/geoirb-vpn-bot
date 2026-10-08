@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"sync"
-	"time"
 )
 
 // ErrNotFound: the key is not in the bot's database. Peers created by hand
@@ -28,36 +27,30 @@ var ErrUnreadable = errors.New("service: key secrets are unreadable")
 // device it was made on has its private key; the bot can't build a config.
 var ErrNoPrivateKey = errors.New("service: key has no private key (imported)")
 
-// Service is the bot's business logic. It knows nothing about Telegram.
-type Service struct {
+// service is the bot's business logic. It knows nothing about Telegram.
+type service struct {
 	users    UserRepository
 	peers    PeerRepository
 	payments PaymentRepository
 	feedback FeedbackRepository
 	vpn      VPN
 	cfg      Settings
-	now      func() time.Time
 	// ponytail: one lock for every key change (issue, extend, disable…), so a
 	// payment and an admin action on the same key can't overwrite each other.
 	// Per-key locks if this ever becomes a bottleneck.
 	mu sync.Mutex
 }
 
-// New creates a Service.
+// New creates a service.
 func New(
 	d *Deps,
-) *Service {
-	now := d.Now
-	if now == nil {
-		now = time.Now
-	}
-	return &Service{
+) *service {
+	return &service{
 		users:    d.Users,
 		peers:    d.Peers,
 		payments: d.Payments,
 		feedback: d.Feedback,
 		vpn:      d.VPN,
 		cfg:      d.Settings,
-		now:      now,
 	}
 }

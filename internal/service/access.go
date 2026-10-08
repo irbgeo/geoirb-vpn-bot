@@ -13,7 +13,7 @@ const onlineWindow = 3 * time.Minute
 
 // Access returns the user's keys with live handshake and traffic, sorted
 // by IP.
-func (s *Service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
+func (s *service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 	ps, err := s.peers.ByUser(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -23,7 +23,7 @@ func (s *Service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 
 // UserConfig renders a key's config for its owner. Someone else's key is
 // reported as ErrNotFound, so a forged button can't fetch it.
-func (s *Service) UserConfig(ctx context.Context, k UserKey) (*KeyConfig, error) {
+func (s *service) UserConfig(ctx context.Context, k UserKey) (*KeyConfig, error) {
 	p, err := s.ownPeer(ctx, k)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func (s *Service) UserConfig(ctx context.Context, k UserKey) (*KeyConfig, error)
 }
 
 // withStats joins keys with `awg show dump` and sorts them by IP.
-func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) {
+func (s *service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) {
 	stats, err := s.vpn.Stats(ctx)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (s *Service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 	for _, st := range stats {
 		live[st.PublicKey] = st
 	}
-	now := s.now()
+	now := time.Now()
 	out := make([]KeyInfo, 0, len(ps))
 	for _, p := range ps {
 		st := live[p.PublicKey]
@@ -74,12 +74,12 @@ func parseIP(s string) netip.Addr {
 
 // onlineCount is how many peers on the server (keys and manual ones) had a
 // handshake within onlineWindow.
-func (s *Service) onlineCount(ctx context.Context) (int, error) {
+func (s *service) onlineCount(ctx context.Context) (int, error) {
 	stats, err := s.vpn.Stats(ctx)
 	if err != nil {
 		return 0, err
 	}
-	now := s.now()
+	now := time.Now()
 	n := 0
 	for _, st := range stats {
 		if st.onlineAt(now) {

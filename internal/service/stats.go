@@ -15,7 +15,7 @@ const (
 // Stats builds the admin overview: users, keys by state, online now,
 // subnet use, 30-day revenue and the heaviest keys by traffic. Traffic
 // counters restart when the VPN server restarts.
-func (s *Service) Stats(ctx context.Context) (*Stats, error) {
+func (s *service) Stats(ctx context.Context) (*Stats, error) {
 	page := Page{
 		Limit: 1,
 	}
@@ -34,7 +34,7 @@ func (s *Service) Stats(ctx context.Context) (*Stats, error) {
 	st := &Stats{
 		Users: users,
 	}
-	now := s.now()
+	now := time.Now()
 	for _, k := range keys {
 		if !k.Peer.Enabled {
 			st.Disabled++
@@ -64,7 +64,7 @@ func (s *Service) Stats(ctx context.Context) (*Stats, error) {
 }
 
 // BroadcastRecipients returns every Telegram user with an enabled key, once.
-func (s *Service) BroadcastRecipients(ctx context.Context) ([]int64, error) {
+func (s *service) BroadcastRecipients(ctx context.Context) ([]int64, error) {
 	ps, err := s.peers.ByServer(ctx, s.cfg.ServerID)
 	if err != nil {
 		return nil, err
@@ -80,8 +80,8 @@ func (s *Service) BroadcastRecipients(ctx context.Context) ([]int64, error) {
 }
 
 // addRevenue sums applied, not refunded payments of the last 30 days.
-func (s *Service) addRevenue(ctx context.Context, st *Stats) error {
-	ps, err := s.payments.Since(ctx, s.now().AddDate(0, 0, -statsRevenueDays))
+func (s *service) addRevenue(ctx context.Context, st *Stats) error {
+	ps, err := s.payments.Since(ctx, time.Now().AddDate(0, 0, -statsRevenueDays))
 	if err != nil {
 		return err
 	}
