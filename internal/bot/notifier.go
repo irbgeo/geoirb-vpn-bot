@@ -77,19 +77,31 @@ func (s *Notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 		},
 	} {
 		for _, p := range g.Peers {
-			s.sendKeyNotice(
-				ctx,
-				keyNotice{
-					Peer:    p,
-					Text:    g.Text(p),
-					NoOffer: g.NoOffer,
-				},
-			)
+			keyNotice := keyNotice{
+				Peer:    p,
+				Text:    g.Text(p),
+				NoOffer: g.NoOffer,
+			}
+			s.sendKeyNotice(ctx, keyNotice)
 		}
 	}
 	s.subnetAlert(ctx, m)
 	s.backupAlert(ctx)
 	s.onlineDropAlert(ctx, m)
+}
+
+// WatchServerLoad runs CheckServerLoad every minute until ctx is done.
+func (s *Notifier) WatchServerLoad(ctx context.Context) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.CheckServerLoad(ctx)
+		}
+	}
 }
 
 // CheckServerLoad tells admins when a server limit (connection table,
@@ -108,20 +120,6 @@ func (s *Notifier) CheckServerLoad(ctx context.Context) {
 	}
 }
 
-// WatchServerLoad runs CheckServerLoad every minute until ctx is done.
-func (s *Notifier) WatchServerLoad(ctx context.Context) {
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			s.CheckServerLoad(ctx)
-		}
-	}
-}
-
 // NotifyAdmins sends text to every admin. A failed send (e.g. an admin who
 // blocked the bot) is logged and the rest still get it.
 func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {
@@ -135,13 +133,11 @@ func (s *Notifier) NotifyAdmins(ctx context.Context, text string) {
 		return
 	}
 	for _, a := range admins {
-		err := s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: a.ID,
-				Text:   text,
-			},
-		)
+		outMessage := outMessage{
+			ChatID: a.ID,
+			Text:   text,
+		}
+		err := s.send.Send(ctx, outMessage)
 		if err != nil {
 			log.Printf("bot: notify admin %d: %v", a.ID, err)
 		}
@@ -187,7 +183,8 @@ func (s *Notifier) backupAlert(ctx context.Context) {
 		return
 	}
 	var last time.Time
-	if st, err := os.Stat(s.backupStamp); err == nil {
+	st, err := os.Stat(s.backupStamp)
+	if err == nil {
 		last = st.ModTime()
 	}
 	old := time.Since(last) > backupMaxAge

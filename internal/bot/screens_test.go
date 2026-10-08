@@ -24,7 +24,8 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 		"НЕ должны использовать VPN", "",
 	)
 	ast.Inspect(file, func(n ast.Node) bool {
-		if _, ok := n.(*ast.ImportSpec); ok {
+		_, ok := n.(*ast.ImportSpec)
+		if ok {
 			return false
 		}
 		lit, ok := n.(*ast.BasicLit)

@@ -19,19 +19,16 @@ func (s *Router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if strings.HasPrefix(cq.Data, cbBuyKey) {
 		key = strings.TrimPrefix(cq.Data, cbBuyKey)
 	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID: cq.ChatID(),
-			Text:   buyText,
-			Keyboard: tariffsKeyboard(
-				tariffsView{
-					Tariffs:   s.billing.Tariffs(),
-					PublicKey: key,
-				},
-			),
-		},
-	)
+	tariffsView := tariffsView{
+		Tariffs:   s.billing.Tariffs(),
+		PublicKey: key,
+	}
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     buyText,
+		Keyboard: tariffsKeyboard(tariffsView),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // invoice sends a Stars invoice for "buy:<days>[:<key>]".
@@ -41,50 +38,42 @@ func (s *Router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if err != nil {
 		return fmt.Errorf("bot: bad tariff button %q", cq.Data)
 	}
-	inv, err := s.billing.Invoice(
-		ctx,
-		service.PurchaseInput{
-			UserID:    cq.SenderID(),
-			Days:      days,
-			PublicKey: key,
-		},
-	)
+	purchaseInput := service.PurchaseInput{
+		UserID:    cq.SenderID(),
+		Days:      days,
+		PublicKey: key,
+	}
+	inv, err := s.billing.Invoice(ctx, purchaseInput)
 	if err != nil {
 		text, known := invoiceErrorText(err)
-		return s.replyError(
-			ctx,
-			userError{
-				ChatID: cq.ChatID(),
-				Err:    err,
-				Text:   text,
-				Known:  known,
-			},
-		)
+		userError := userError{
+			ChatID: cq.ChatID(),
+			Err:    err,
+			Text:   text,
+			Known:  known,
+		}
+		return s.replyError(ctx, userError)
 	}
-	return s.send.SendInvoice(
-		ctx,
-		&outInvoice{
-			ChatID:      cq.ChatID(),
-			Title:       invoiceTitle(inv.Days),
-			Description: invoiceDescription(inv.Days),
-			Payload:     inv.Payload,
-			Label:       tariffLabel(inv.Days),
-			Stars:       inv.Stars,
-		},
-	)
+	outInvoice := outInvoice{
+		ChatID:      cq.ChatID(),
+		Title:       invoiceTitle(inv.Days),
+		Description: invoiceDescription(inv.Days),
+		Payload:     inv.Payload,
+		Label:       tariffLabel(inv.Days),
+		Stars:       inv.Stars,
+	}
+	return s.send.SendInvoice(ctx, &outInvoice)
 }
 
 // preCheckout accepts the payment only if the purchase still holds;
 // otherwise Telegram charges nothing. Must answer within 10 seconds.
 func (s *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) error {
-	err := s.billing.CheckPurchase(
-		ctx,
-		service.PaymentInput{
-			PayerID: q.From.ID,
-			Payload: q.InvoicePayload,
-			Stars:   int(q.TotalAmount),
-		},
-	)
+	paymentInput := service.PaymentInput{
+		PayerID: q.From.ID,
+		Payload: q.InvoicePayload,
+		Stars:   int(q.TotalAmount),
+	}
+	err := s.billing.CheckPurchase(ctx, paymentInput)
 	a := preCheckoutAnswer{
 		ID: q.ID,
 		OK: err == nil,
@@ -100,48 +89,40 @@ func (s *Router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) err
 // go back: a user is never charged for nothing.
 func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
 	sp := m.SuccessfulPayment
-	res, err := s.billing.Pay(
-		ctx,
-		service.PaymentInput{
-			ChargeID: sp.TelegramPaymentChargeID,
-			PayerID:  m.From.ID,
-			Payload:  sp.InvoicePayload,
-			Stars:    int(sp.TotalAmount),
-		},
-	)
+	paymentInput := service.PaymentInput{
+		ChargeID: sp.TelegramPaymentChargeID,
+		PayerID:  m.From.ID,
+		Payload:  sp.InvoicePayload,
+		Stars:    int(sp.TotalAmount),
+	}
+	res, err := s.billing.Pay(ctx, paymentInput)
 	if errors.Is(err, service.ErrAlreadyRefunded) {
 		log.Printf("bot: payment %s was already refunded, not applied", sp.TelegramPaymentChargeID)
 		return nil
 	}
 	if err != nil {
-		return s.refund(
-			ctx,
-			failedPayment{
-				Message: m,
-				Cause:   err,
-			},
-		)
+		failedPayment := failedPayment{
+			Message: m,
+			Cause:   err,
+		}
+		return s.refund(ctx, failedPayment)
 	}
 	if res.Repeat {
 		return nil
 	}
 	// The user first: they are waiting for the result of their payment.
 	if res.NewKey {
-		err = s.deliverKey(
-			ctx,
-			keyDelivery{
-				ChatID: m.Chat.ID,
-				Peer:   res.Peer,
-			},
-		)
+		keyDelivery := keyDelivery{
+			ChatID: m.Chat.ID,
+			Peer:   res.Peer,
+		}
+		err = s.deliverKey(ctx, keyDelivery)
 	} else {
-		err = s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: m.Chat.ID,
-				Text:   extendedText(res.Peer),
-			},
-		)
+		outMessage := outMessage{
+			ChatID: m.Chat.ID,
+			Text:   extendedText(res.Peer),
+		}
+		err = s.send.Send(ctx, outMessage)
 	}
 	alert := paymentAlert{
 		Payer:       m.From,
@@ -154,13 +135,12 @@ func (s *Router) paid(ctx context.Context, m *tgbot.Message) error {
 		// timeout, Telegram down): the user must still hear that the
 		// payment worked and where the key is.
 		ctx = context.WithoutCancel(ctx)
-		if sendErr := s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: m.Chat.ID,
-				Text:   paidDeliveryFailedText,
-			},
-		); sendErr != nil {
+		outMessage := outMessage{
+			ChatID: m.Chat.ID,
+			Text:   paidDeliveryFailedText,
+		}
+		sendErr := s.send.Send(ctx, outMessage)
+		if sendErr != nil {
 			log.Printf("bot: tell %d the payment worked: %v", m.Chat.ID, sendErr)
 		}
 	}
@@ -181,26 +161,26 @@ func (s *Router) refund(ctx context.Context, f failedPayment) error {
 		Cause:    f.Cause,
 	}
 	text := refundedText
-	a.RefundErr = s.send.Refund(
-		ctx,
-		refundInput{
-			UserID:   a.UserID,
-			ChargeID: a.ChargeID,
-		},
-	)
+	refundInput := refundInput{
+		UserID:   a.UserID,
+		ChargeID: a.ChargeID,
+	}
+	a.RefundErr = s.send.Refund(ctx, refundInput)
 	if a.RefundErr != nil {
 		text = refundFailedText
-	} else if err := s.billing.MarkRefunded(ctx, a.ChargeID); err != nil {
-		log.Printf("bot: mark refunded %s: %v", a.ChargeID, err)
+	} else {
+		err := s.billing.MarkRefunded(ctx, a.ChargeID)
+		if err != nil {
+			log.Printf("bot: mark refunded %s: %v", a.ChargeID, err)
+		}
 	}
 	s.notify.NotifyAdmins(ctx, refundAlertText(a))
-	if sendErr := s.send.Send(
-		ctx,
-		outMessage{
-			ChatID: m.Chat.ID,
-			Text:   text,
-		},
-	); sendErr != nil {
+	outMessage := outMessage{
+		ChatID: m.Chat.ID,
+		Text:   text,
+	}
+	sendErr := s.send.Send(ctx, outMessage)
+	if sendErr != nil {
 		log.Printf("bot: %v", sendErr)
 	}
 	return f.Cause

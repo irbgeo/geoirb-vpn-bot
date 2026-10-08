@@ -61,18 +61,16 @@ func Commands() []tgbot.BotCommand {
 func ReconcileText(r *service.ReconcileReport) string {
 	var b strings.Builder
 	b.WriteString("⚠️ Сверка базы и сервера: есть расхождения.\n")
-	b.WriteString(peersSection(
-		peersGroup{
-			Title: "Включены в базе, но нет на сервере",
-			Peers: r.MissingOnServer,
-		},
-	))
-	b.WriteString(peersSection(
-		peersGroup{
-			Title: "Отключены в базе, но есть на сервере",
-			Peers: r.DisabledButOnServer,
-		},
-	))
+	missing := peersGroup{
+		Title: "Включены в базе, но нет на сервере",
+		Peers: r.MissingOnServer,
+	}
+	b.WriteString(peersSection(missing))
+	disabled := peersGroup{
+		Title: "Отключены в базе, но есть на сервере",
+		Peers: r.DisabledButOnServer,
+	}
+	b.WriteString(peersSection(disabled))
 	fmt.Fprintf(&b, "\nКлючей, созданных вручную: %d.\n", r.Manual)
 	b.WriteString("Бот ничего не менял автоматически.")
 	return b.String()
@@ -177,12 +175,6 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(rows...)
 }
 
-// menuRow is the "◀️ Меню" button: it turns its message back into the
-// main menu (backToMenu).
-func menuRow() []tgbot.InlineKeyboardButton {
-	return tgbot.Row(tgbot.Button("◀️ Меню", cbMenu))
-}
-
 // menuKeyboard is a keyboard with only the "◀️ Меню" button.
 func menuKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(menuRow())
@@ -231,24 +223,6 @@ func tariffsKeyboard(v tariffsView) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(rows...)
 }
 
-// tariffLabel: 30 → "1 месяц", 90 → "3 месяца", 365 → "12 месяцев",
-// anything else → "N дней".
-func tariffLabel(days int) string {
-	months := days / 30
-	if days == 365 {
-		months = 12
-	} else if days%30 != 0 {
-		return fmt.Sprintf("%d дней", days)
-	}
-	switch {
-	case months%10 == 1 && months%100 != 11:
-		return fmt.Sprintf("%d месяц", months)
-	case months%10 >= 2 && months%10 <= 4 && (months%100 < 12 || months%100 > 14):
-		return fmt.Sprintf("%d месяца", months)
-	}
-	return fmt.Sprintf("%d месяцев", months)
-}
-
 func invoiceTitle(days int) string {
 	return "Доступ на " + tariffLabel(days)
 }
@@ -267,14 +241,13 @@ func paymentAlertText(a paymentAlert) string {
 	if a.Result.NewKey {
 		what = "новый ключ"
 	}
+	user := service.User{
+		ID:       a.Payer.ID,
+		Username: a.Payer.Username,
+	}
 	text := fmt.Sprintf(
 		"💰 Оплата: %s (id %d) — %d ⭐, %s, %s.",
-		userLabel(
-			&service.User{
-				ID:       a.Payer.ID,
-				Username: a.Payer.Username,
-			},
-		),
+		userLabel(&user),
 		a.Payer.ID,
 		a.Stars,
 		tariffLabel(a.Result.Days),
@@ -362,16 +335,6 @@ func onlineDropText(d onlineDrop) string {
 	)
 }
 
-// loadMetricNames name the server limits for admins.
-func loadMetricNames() map[sysload.Metric]string {
-	return map[sysload.Metric]string{
-		sysload.Conntrack: "таблица соединений",
-		sysload.Memory:    "память",
-		sysload.Disk:      "диск",
-		sysload.CPU:       "процессор",
-	}
-}
-
 func loadAlertText(a sysload.Alert) string {
 	name := loadMetricNames()[a.Metric]
 	if a.Recovered {
@@ -389,6 +352,16 @@ func loadAlertText(a sysload.Alert) string {
 		text += " Могут перестать работать бэкапы и база."
 	}
 	return text
+}
+
+// loadMetricNames name the server limits for admins.
+func loadMetricNames() map[sysload.Metric]string {
+	return map[sysload.Metric]string{
+		sysload.Conntrack: "таблица соединений",
+		sysload.Memory:    "память",
+		sysload.Disk:      "диск",
+		sysload.CPU:       "процессор",
+	}
 }
 
 func extendKeyboard(p *service.Peer) *tgbot.InlineKeyboardMarkup {
@@ -601,18 +574,6 @@ func keyStatus(k service.KeyInfo) string {
 	return "⚪️ не в сети"
 }
 
-func keyUntil(p *service.Peer) string {
-	if p.ExpiresAt.IsZero() {
-		return "бессрочно"
-	}
-	return "до " + mskTime(p.ExpiresAt)
-}
-
-// mskTime formats a moment in Moscow time, saying so.
-func mskTime(t time.Time) string {
-	return t.In(msk).Format("02.01.2006 15:04") + " по Москве"
-}
-
 // humanBytes: 1536 → "1.5 КБ".
 func humanBytes(n int64) string {
 	const unit = 1024
@@ -634,20 +595,19 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %s", float64(n)/float64(div), units[exp])
 }
 
-// keyLabel names a key on buttons: its name, or its IP when it has none.
-func keyLabel(p *service.Peer) string {
-	if p.Name != "" {
-		return p.Name
-	}
-	return p.IP
-}
-
 func keyCaption(p *service.Peer) string {
 	until := "Ключ бессрочный."
 	if !p.ExpiresAt.IsZero() {
 		until = "Ключ действует " + keyUntil(p) + "."
 	}
 	return "🔑 " + keyLabel(p) + "\n" + until + "\nИмпортируйте файл в приложение AmneziaVPN или AmneziaWG."
+}
+
+func keyUntil(p *service.Peer) string {
+	if p.ExpiresAt.IsZero() {
+		return "бессрочно"
+	}
+	return "до " + mskTime(p.ExpiresAt)
 }
 
 // configFileName turns "tg:bob #2" into "key_bob_2.conf": only ASCII
@@ -685,29 +645,17 @@ func usersKeyboard(v usersView) *tgbot.InlineKeyboardMarkup {
 		label := fmt.Sprintf("%s · %s", userLabel(u), u.Role)
 		rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminUser+strconv.FormatInt(u.ID, 10))))
 	}
-	if nav := navRow(
-		navView{
-			Prefix: cbAdminUsers,
-			Page:   v.Page,
-			Total:  v.Total,
-		},
-	); nav != nil {
+	navView := navView{
+		Prefix: cbAdminUsers,
+		Page:   v.Page,
+		Total:  v.Total,
+	}
+	nav := navRow(navView)
+	if nav != nil {
 		rows = append(rows, nav)
 	}
 	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
-}
-
-// navRow is "◀️ ▶️" for a paged list, or nil when there is one page.
-func navRow(v navView) []tgbot.InlineKeyboardButton {
-	var nav []tgbot.InlineKeyboardButton
-	if v.Page > 0 {
-		nav = append(nav, tgbot.Button("◀️", v.Prefix+strconv.FormatInt(v.Page-1, 10)))
-	}
-	if v.Page+1 < pages(v.Total) {
-		nav = append(nav, tgbot.Button("▶️", v.Prefix+strconv.FormatInt(v.Page+1, 10)))
-	}
-	return nav
 }
 
 // feedbackListCut: how much of one review the list shows, so a page of
@@ -728,17 +676,35 @@ func feedbackListText(v feedbackView) string {
 
 func feedbackKeyboard(v feedbackView) *tgbot.InlineKeyboardMarkup {
 	var rows [][]tgbot.InlineKeyboardButton
-	if nav := navRow(
-		navView{
-			Prefix: cbAdminFb,
-			Page:   v.Page,
-			Total:  v.Total,
-		},
-	); nav != nil {
+	navView := navView{
+		Prefix: cbAdminFb,
+		Page:   v.Page,
+		Total:  v.Total,
+	}
+	nav := navRow(navView)
+	if nav != nil {
 		rows = append(rows, nav)
 	}
 	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
+}
+
+// navRow is "◀️ ▶️" for a paged list, or nil when there is one page.
+func navRow(v navView) []tgbot.InlineKeyboardButton {
+	var nav []tgbot.InlineKeyboardButton
+	if v.Page > 0 {
+		nav = append(nav, tgbot.Button("◀️", v.Prefix+strconv.FormatInt(v.Page-1, 10)))
+	}
+	if v.Page+1 < pages(v.Total) {
+		nav = append(nav, tgbot.Button("▶️", v.Prefix+strconv.FormatInt(v.Page+1, 10)))
+	}
+	return nav
+}
+
+// menuRow is the "◀️ Меню" button: it turns its message back into the
+// main menu (backToMenu).
+func menuRow() []tgbot.InlineKeyboardButton {
+	return tgbot.Row(tgbot.Button("◀️ Меню", cbMenu))
 }
 
 // feedbackAlertText tells admins about a new review, in full.
@@ -767,14 +733,6 @@ func pages(total int64) int64 {
 	return max(1, (total+adminPageSize-1)/adminPageSize)
 }
 
-// userLabel is "@username", or "id 123" for users without one.
-func userLabel(u *service.User) string {
-	if u.Username != "" {
-		return "@" + u.Username
-	}
-	return "id " + strconv.FormatInt(u.ID, 10)
-}
-
 func userCardText(u *service.User) string {
 	trial := "не использован"
 	if u.TrialUsed {
@@ -789,6 +747,14 @@ func userCardText(u *service.User) string {
 		trial,
 		mskTime(u.CreatedAt),
 	)
+}
+
+// userLabel is "@username", or "id 123" for users without one.
+func userLabel(u *service.User) string {
+	if u.Username != "" {
+		return "@" + u.Username
+	}
+	return "id " + strconv.FormatInt(u.ID, 10)
 }
 
 // userCardKeyboard: per key [disable|enable] [+30 days], [config] [delete];
@@ -833,6 +799,14 @@ func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(rows...)
 }
 
+// keyLabel names a key on buttons: its name, or its IP when it has none.
+func keyLabel(p *service.Peer) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return p.IP
+}
+
 const (
 	issueTermText = "🔑 Выдать ключ без оплаты. На какой срок?"
 )
@@ -873,7 +847,8 @@ func paymentsText(ps []*service.Payment) string {
 		}
 		b.WriteString("\n")
 	}
-	if older := len(ps) - cardPaymentsLimit; older > 0 {
+	older := len(ps) - cardPaymentsLimit
+	if older > 0 {
 		fmt.Fprintf(&b, "…и ещё %d старых\n", older)
 	}
 	return b.String()
@@ -905,6 +880,24 @@ func refundConfirmKeyboard(ref paymentRef) *tgbot.InlineKeyboardMarkup {
 
 func refundedToUserText(p *service.Payment) string {
 	return fmt.Sprintf("↩️ Вам вернули %d ⭐ за «%s».", p.Stars, tariffLabel(p.Days))
+}
+
+// tariffLabel: 30 → "1 месяц", 90 → "3 месяца", 365 → "12 месяцев",
+// anything else → "N дней".
+func tariffLabel(days int) string {
+	months := days / 30
+	if days == 365 {
+		months = 12
+	} else if days%30 != 0 {
+		return fmt.Sprintf("%d дней", days)
+	}
+	switch {
+	case months%10 == 1 && months%100 != 11:
+		return fmt.Sprintf("%d месяц", months)
+	case months%10 >= 2 && months%10 <= 4 && (months%100 < 12 || months%100 > 14):
+		return fmt.Sprintf("%d месяца", months)
+	}
+	return fmt.Sprintf("%d месяцев", months)
 }
 
 func deleteConfirmText(p *service.Peer) string {
@@ -995,6 +988,11 @@ func backupAlertText(last time.Time) string {
 	}
 	return "⚠️ Свежего бэкапа нет: последний удачный бэкап " + when + ". " +
 		"Проверьте на сервере: journalctl -u geoirb-vpn-bot-backup"
+}
+
+// mskTime formats a moment in Moscow time, saying so.
+func mskTime(t time.Time) string {
+	return t.In(msk).Format("02.01.2006 15:04") + " по Москве"
 }
 
 func reconcileFailedText(err error) string {

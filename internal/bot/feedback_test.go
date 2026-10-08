@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	tgbot "github.com/irbgeo/go-tgbot"
 	"github.com/stretchr/testify/require"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
@@ -81,19 +80,12 @@ func TestFeedbackCancelledByMenu(t *testing.T) {
 func TestFeedbackIsInEveryonesMenu(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	require.NoError(t, r.Handle(context.Background(), startUpdate("/menu")))
-	require.True(t, containsButton(s.sent[0].Keyboard, cbFeedback))
-}
-
-// containsButton reports whether the keyboard has a button with this data.
-func containsButton(kb *tgbot.InlineKeyboardMarkup, data string) bool {
-	for _, row := range kb.InlineKeyboard {
-		for _, b := range row {
-			if b.CallbackData == data {
-				return true
-			}
-		}
-	}
-	return false
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: s.sent[0].Keyboard,
+			Data:     cbFeedback,
+		},
+	))
 }
 
 func TestNewFeedbackIsSentToAdmins(t *testing.T) {
@@ -138,18 +130,33 @@ func TestAdminFeedbackList(t *testing.T) {
 	require.Contains(t, page.Text, "28.09.2026 10:00 по Москве")
 	require.LessOrEqual(t, len([]rune(page.Text)), 4096, "a page fits one Telegram message")
 	require.Contains(t, page.Text, "…", "long feedback is cut in the list")
-	require.True(t, containsButton(page.Keyboard, "a:fb:1"), "next page")
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: page.Keyboard,
+			Data:     "a:fb:1",
+		},
+	), "next page")
 	require.True(t, hasMenuButton(page.Keyboard))
 
 	require.NoError(t, r.Handle(ctx, press("a:fb:1")))
 	require.Contains(t, s.edits[1].Text, "@u10")
-	require.True(t, containsButton(s.edits[1].Keyboard, "a:fb:0"), "previous page")
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: s.edits[1].Keyboard,
+			Data:     "a:fb:0",
+		},
+	), "previous page")
 }
 
 func TestAdminMenuHasFeedback(t *testing.T) {
 	r, s := newRouter(adminService())
 	require.NoError(t, r.Handle(context.Background(), startUpdate("/menu")))
-	require.True(t, containsButton(s.sent[0].Keyboard, "a:fb:0"))
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: s.sent[0].Keyboard,
+			Data:     "a:fb:0",
+		},
+	))
 }
 
 func TestFeedbackListIsForAdminsOnly(t *testing.T) {
@@ -157,4 +164,16 @@ func TestFeedbackListIsForAdminsOnly(t *testing.T) {
 	require.NoError(t, r.Handle(context.Background(), press("a:fb:0")))
 	require.Empty(t, s.edits)
 	require.Empty(t, s.sent)
+}
+
+// containsButton reports whether q.Keyboard has a button with q.Data.
+func containsButton(q buttonQuery) bool {
+	for _, row := range q.Keyboard.InlineKeyboard {
+		for _, b := range row {
+			if b.CallbackData == q.Data {
+				return true
+			}
+		}
+	}
+	return false
 }

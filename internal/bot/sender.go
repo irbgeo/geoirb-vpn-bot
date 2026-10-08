@@ -70,15 +70,10 @@ func (s *telegramSender) Send(ctx context.Context, m outMessage) error {
 // Edit replaces a message's text and buttons in place. "Message is not
 // modified" (same content twice) is not an error.
 func (s *telegramSender) Edit(ctx context.Context, m editMessage) error {
-	_, err := s.client.EditMessageText(
-		ctx,
-		m.ChatID,
-		m.MessageID,
-		m.Text,
-		&tgbot.EditMessageTextOptions{
-			ReplyMarkup: m.Keyboard,
-		},
-	)
+	editMessageTextOptions := tgbot.EditMessageTextOptions{
+		ReplyMarkup: m.Keyboard,
+	}
+	_, err := s.client.EditMessageText(ctx, m.ChatID, m.MessageID, m.Text, &editMessageTextOptions)
 	var apiErr *tgbot.APIError
 	if errors.As(err, &apiErr) && apiErr.IsNotModified() {
 		return nil
@@ -88,27 +83,19 @@ func (s *telegramSender) Edit(ctx context.Context, m editMessage) error {
 
 // SendDocument uploads a file.
 func (s *telegramSender) SendDocument(ctx context.Context, f outFile) error {
-	_, err := s.client.SendDocument(
-		ctx,
-		f.ChatID,
-		inputFile(f),
-		&tgbot.SendDocumentOptions{
-			Caption: f.Caption,
-		},
-	)
+	sendDocumentOptions := tgbot.SendDocumentOptions{
+		Caption: f.Caption,
+	}
+	_, err := s.client.SendDocument(ctx, f.ChatID, inputFile(f), &sendDocumentOptions)
 	return err
 }
 
 // SendPhoto uploads an image.
 func (s *telegramSender) SendPhoto(ctx context.Context, f outFile) error {
-	_, err := s.client.SendPhoto(
-		ctx,
-		f.ChatID,
-		inputFile(f),
-		&tgbot.SendPhotoOptions{
-			Caption: f.Caption,
-		},
-	)
+	sendPhotoOptions := tgbot.SendPhotoOptions{
+		Caption: f.Caption,
+	}
+	_, err := s.client.SendPhoto(ctx, f.ChatID, inputFile(f), &sendPhotoOptions)
 	return err
 }
 

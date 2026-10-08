@@ -11,21 +11,6 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// hasMenuButton reports whether the keyboard has the "back to menu" button.
-func hasMenuButton(kb *tgbot.InlineKeyboardMarkup) bool {
-	if kb == nil {
-		return false
-	}
-	for _, row := range kb.InlineKeyboard {
-		for _, b := range row {
-			if b.CallbackData == cbMenu {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func TestMenuButtonTurnsTheSameMessageIntoTheMenu(t *testing.T) {
 	r, s := newRouter(adminService())
 	u := press(cbMenu)
@@ -73,15 +58,51 @@ func TestScreensHaveTheMenuButton(t *testing.T) {
 		press string
 		edit  bool
 	}{
-		{"users list", "a:users:0", true},
-		{"user card", "a:user:7", true},
-		{"stats", "a:stats", false},
-		{"my access", cbMyAccess, false},
-		{"support", cbSupport, false},
-		{"terms", cbTerms, false},
-		{"tariffs", cbBuy, false},
-		{"step 1: apps", cbCreateKey, false},
-		{"step 3: lists", cbBypass, false},
+		{
+			name:  "users list",
+			press: "a:users:0",
+			edit:  true,
+		},
+		{
+			name:  "user card",
+			press: "a:user:7",
+			edit:  true,
+		},
+		{
+			name:  "stats",
+			press: "a:stats",
+			edit:  false,
+		},
+		{
+			name:  "my access",
+			press: cbMyAccess,
+			edit:  false,
+		},
+		{
+			name:  "support",
+			press: cbSupport,
+			edit:  false,
+		},
+		{
+			name:  "terms",
+			press: cbTerms,
+			edit:  false,
+		},
+		{
+			name:  "tariffs",
+			press: cbBuy,
+			edit:  false,
+		},
+		{
+			name:  "step 1: apps",
+			press: cbCreateKey,
+			edit:  false,
+		},
+		{
+			name:  "step 3: lists",
+			press: cbBypass,
+			edit:  false,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := adminService()
@@ -101,6 +122,21 @@ func TestNoKeysScreenHasTheMenuButton(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	require.NoError(t, r.Handle(context.Background(), press(cbMyAccess)))
 	require.True(t, hasMenuButton(s.sent[0].Keyboard))
+}
+
+// hasMenuButton reports whether the keyboard has the "back to menu" button.
+func hasMenuButton(kb *tgbot.InlineKeyboardMarkup) bool {
+	if kb == nil {
+		return false
+	}
+	for _, row := range kb.InlineKeyboard {
+		for _, b := range row {
+			if b.CallbackData == cbMenu {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 var errBoomBot = errors.New("boom")

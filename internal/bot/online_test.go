@@ -11,38 +11,17 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// onlineNotifier is a Notifier with one admin and a deliver func that
-// reports n clients online, then lets a minute pass.
-func onlineNotifier() (*fakeSender, func(n int)) {
-	s := &fakeSender{
-		fail: map[int64]bool{},
-	}
-	svc := &fakeService{
-		admins: []*service.User{
-			{
-				ID: 1,
-			},
-		},
-	}
-	n := NewNotifier(
-		&NotifierDeps{
-			Users:  svc,
-			Sender: s,
-		},
-	)
-	deliver := func(online int) {
-		m := maintenance()
-		m.Online = online
-		n.DeliverMaintenance(context.Background(), m)
-		time.Sleep(time.Minute)
-	}
-	return s, deliver
-}
-
 func TestOnlineDropAlertsOnceUntilItRecovers(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, deliver := onlineNotifier()
-		for _, n := range []int{10, 9, 8, 6, 4, 3} {
+		for _, n := range []int{
+			10,
+			9,
+			8,
+			6,
+			4,
+			3,
+		} {
 			deliver(n)
 		}
 		require.Empty(t, s.sent, "3 is still over a quarter of 10")
@@ -90,4 +69,32 @@ func TestUnknownOnlineKeepsState(t *testing.T) {
 		deliver(2)
 		require.Len(t, s.sent, 1, "the peak before it is kept")
 	})
+}
+
+// onlineNotifier is a Notifier with one admin and a deliver func that
+// reports n clients online, then lets a minute pass.
+func onlineNotifier() (*fakeSender, func(n int)) {
+	s := &fakeSender{
+		fail: map[int64]bool{},
+	}
+	svc := &fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	}
+	n := NewNotifier(
+		&NotifierDeps{
+			Users:  svc,
+			Sender: s,
+		},
+	)
+	deliver := func(online int) {
+		m := maintenance()
+		m.Online = online
+		n.DeliverMaintenance(context.Background(), m)
+		time.Sleep(time.Minute)
+	}
+	return s, deliver
 }

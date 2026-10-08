@@ -13,85 +13,69 @@ import (
 // askFeedback waits for one message with a review or suggestion; the
 // "◀️ Меню" button cancels.
 func (s *Router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	s.dialogs.set(
-		pendingInput{
-			ChatID: cq.ChatID(),
-			UserID: cq.SenderID(),
-			Kind:   pendingFeedback,
-		},
-	)
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   cq.ChatID(),
-			Text:     askFeedbackText,
-			Keyboard: menuKeyboard(),
-		},
-	)
+	pendingInput := pendingInput{
+		ChatID: cq.ChatID(),
+		UserID: cq.SenderID(),
+		Kind:   pendingFeedback,
+	}
+	s.dialogs.set(pendingInput)
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     askFeedbackText,
+		Keyboard: menuKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // feedbackText saves the text the user sent after "Отзывы и предложения".
 // A message without text or a bad text asks again; anything else ends the
 // question. Only the user who asked answers.
 func (s *Router) feedbackText(ctx context.Context, m *tgbot.Message) error {
-	if p, _ := s.dialogs.peek(m.Chat.ID); p.UserID != m.From.ID {
+	p, _ := s.dialogs.peek(m.Chat.ID)
+	if p.UserID != m.From.ID {
 		return nil
 	}
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID:   m.Chat.ID,
-				Text:     needFeedbackTextText,
-				Keyboard: menuKeyboard(),
-			},
-		)
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     needFeedbackTextText,
+			Keyboard: menuKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
 	}
-	err := s.feedback.AddFeedback(
-		ctx,
-		service.FeedbackInput{
-			UserID:   m.From.ID,
-			Username: m.From.Username,
-			Text:     m.Text,
-		},
-	)
+	feedbackInput := service.FeedbackInput{
+		UserID:   m.From.ID,
+		Username: m.From.Username,
+		Text:     m.Text,
+	}
+	err := s.feedback.AddFeedback(ctx, feedbackInput)
 	switch {
 	case errors.Is(err, service.ErrBadFeedback):
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID:   m.Chat.ID,
-				Text:     badFeedbackText,
-				Keyboard: menuKeyboard(),
-			},
-		)
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     badFeedbackText,
+			Keyboard: menuKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
 	case err != nil:
-		return s.replyError(
-			ctx,
-			userError{
-				ChatID: m.Chat.ID,
-				Err:    err,
-				Text:   feedbackFailedText,
-			},
-		)
+		userError := userError{
+			ChatID: m.Chat.ID,
+			Err:    err,
+			Text:   feedbackFailedText,
+		}
+		return s.replyError(ctx, userError)
 	}
 	s.dialogs.drop(m.Chat.ID)
-	s.notify.NotifyAdmins(
-		ctx,
-		feedbackAlertText(
-			&service.Feedback{
-				UserID:   m.From.ID,
-				Username: m.From.Username,
-				Text:     strings.TrimSpace(m.Text),
-			},
-		),
-	)
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   m.Chat.ID,
-			Text:     feedbackThanksText,
-			Keyboard: menuKeyboard(),
-		},
-	)
+	feedback := service.Feedback{
+		UserID:   m.From.ID,
+		Username: m.From.Username,
+		Text:     strings.TrimSpace(m.Text),
+	}
+	s.notify.NotifyAdmins(ctx, feedbackAlertText(&feedback))
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     feedbackThanksText,
+		Keyboard: menuKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }

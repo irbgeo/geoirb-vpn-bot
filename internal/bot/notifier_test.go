@@ -16,13 +16,6 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 )
 
-func maintenance() *service.Maintenance {
-	return &service.Maintenance{
-		SubnetUsed:  10,
-		SubnetTotal: 254,
-	}
-}
-
 func TestDeliverExpiredToOwnerWithExtendButton(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	m := maintenance()
@@ -288,5 +281,12 @@ func TestLoadAlertTextForEveryMetric(t *testing.T) {
 			},
 		)
 		require.NotContains(t, text, string(m), "a Russian name, not the code name")
+	}
+}
+
+func maintenance() *service.Maintenance {
+	return &service.Maintenance{
+		SubnetUsed:  10,
+		SubnetTotal: 254,
 	}
 }

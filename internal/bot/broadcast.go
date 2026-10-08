@@ -9,20 +9,17 @@ import (
 
 // adminBroadcastAsk waits for the broadcast text.
 func (s *Router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
-	s.dialogs.set(
-		pendingInput{
-			ChatID: a.ChatID,
-			Kind:   pendingBroadcast,
-		},
-	)
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   a.ChatID,
-			Text:     askBroadcastText,
-			Keyboard: cancelKeyboard(),
-		},
-	)
+	pendingInput := pendingInput{
+		ChatID: a.ChatID,
+		Kind:   pendingBroadcast,
+	}
+	s.dialogs.set(pendingInput)
+	outMessage := outMessage{
+		ChatID:   a.ChatID,
+		Text:     askBroadcastText,
+		Keyboard: cancelKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // adminMaintenance is one toggle button: it previews "maintenance
@@ -46,13 +43,11 @@ func (s *Router) adminMaintenance(ctx context.Context, a adminAction) error {
 func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
 	ids, err := s.ops.BroadcastRecipients(ctx)
 	if err != nil {
-		return s.reportError(
-			ctx,
-			errorReport{
-				ChatID: p.ChatID,
-				Err:    err,
-			},
-		)
+		errorReport := errorReport{
+			ChatID: p.ChatID,
+			Err:    err,
+		}
+		return s.reportError(ctx, errorReport)
 	}
 	p.Kind = readyBroadcast
 	p.At = time.Time{} // a fresh preview gets a fresh pendingTTL
@@ -61,14 +56,12 @@ func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 		Recipients: len(ids),
 		Text:       p.Text,
 	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   p.ChatID,
-			Text:     broadcastPreviewText(preview),
-			Keyboard: broadcastKeyboard(),
-		},
-	)
+	outMessage := outMessage{
+		ChatID:   p.ChatID,
+		Text:     broadcastPreviewText(preview),
+		Keyboard: broadcastKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // adminBroadcast sends the confirmed preview in the background, so the
@@ -78,60 +71,52 @@ func (s *Router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 // When it can't start (another mass send runs, recipients fail) the
 // preview stays, so "send" can be pressed again.
 func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
-	p, res := s.dialogs.take(
-		dialogTake{
-			ChatID: a.ChatID,
-			Kind:   readyBroadcast,
-		},
-	)
+	dialogTake := dialogTake{
+		ChatID: a.ChatID,
+		Kind:   readyBroadcast,
+	}
+	p, res := s.dialogs.take(dialogTake)
 	switch res {
 	case takeNone:
 		return nil
 	case takeExpired:
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: a.ChatID,
-				Text:   previewExpiredText,
-			},
-		)
+		outMessage := outMessage{
+			ChatID: a.ChatID,
+			Text:   previewExpiredText,
+		}
+		return s.send.Send(ctx, outMessage)
 	}
 	if p.Maint != maintKeep && s.maint.on() == (p.Maint == maintStart) {
-		return s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: a.ChatID,
-				Text:   maintAlreadyText(p.Maint == maintStart),
-			},
-		)
+		outMessage := outMessage{
+			ChatID: a.ChatID,
+			Text:   maintAlreadyText(p.Maint == maintStart),
+		}
+		return s.send.Send(ctx, outMessage)
 	}
-	started, err := s.startMassSend(
-		ctx,
-		massSend{
-			AdminChat: a.ChatID,
-			Started:   broadcastStartedText,
-			Before: func() error {
-				if p.Maint == maintKeep {
-					return nil
-				}
-				// flip before sending: the admin's next /menu shows the new button
-				if err := s.maint.set(p.Maint == maintStart); err != nil {
-					return fmt.Errorf("bot: maintenance flag: %w", err)
-				}
+	massSend := massSend{
+		AdminChat: a.ChatID,
+		Started:   broadcastStartedText,
+		Before: func() error {
+			if p.Maint == maintKeep {
 				return nil
-			},
-			Deliver: func(ctx context.Context, id int64) error {
-				return s.send.Send(
-					ctx,
-					outMessage{
-						ChatID: id,
-						Text:   p.Text,
-					},
-				)
-			},
-			Report: broadcastReportText,
+			}
+			// flip before sending: the admin's next /menu shows the new button
+			err := s.maint.set(p.Maint == maintStart)
+			if err != nil {
+				return fmt.Errorf("bot: maintenance flag: %w", err)
+			}
+			return nil
 		},
-	)
+		Deliver: func(ctx context.Context, id int64) error {
+			outMessage := outMessage{
+				ChatID: id,
+				Text:   p.Text,
+			}
+			return s.send.Send(ctx, outMessage)
+		},
+		Report: broadcastReportText,
+	}
+	started, err := s.startMassSend(ctx, massSend)
 	if !started {
 		s.dialogs.set(p) // keep the preview: "send" works again later
 	}
@@ -144,13 +129,11 @@ func (s *Router) adminBroadcast(ctx context.Context, a adminAction) error {
 // or a step failed (the error is reported in the admin chat and returned).
 func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, err error) {
 	if !s.jobs.reserve() {
-		return false, s.send.Send(
-			ctx,
-			outMessage{
-				ChatID: m.AdminChat,
-				Text:   massSendBusyText,
-			},
-		)
+		outMessage := outMessage{
+			ChatID: m.AdminChat,
+			Text:   massSendBusyText,
+		}
+		return false, s.send.Send(ctx, outMessage)
 	}
 	ids, err := s.ops.BroadcastRecipients(ctx)
 	if err == nil && m.Before != nil {
@@ -158,31 +141,25 @@ func (s *Router) startMassSend(ctx context.Context, m massSend) (started bool, e
 	}
 	if err != nil {
 		s.jobs.release()
-		return false, s.reportError(
-			ctx,
-			errorReport{
-				ChatID: m.AdminChat,
-				Err:    err,
-			},
-		)
-	}
-	err = s.send.Send(
-		ctx,
-		outMessage{
+		errorReport := errorReport{
 			ChatID: m.AdminChat,
-			Text:   m.Started,
-		},
-	)
+			Err:    err,
+		}
+		return false, s.reportError(ctx, errorReport)
+	}
+	outMessage := outMessage{
+		ChatID: m.AdminChat,
+		Text:   m.Started,
+	}
+	err = s.send.Send(ctx, outMessage)
+	broadcastJob := broadcastJob{
+		AdminChat:  m.AdminChat,
+		Recipients: ids,
+		Deliver:    m.Deliver,
+		Report:     m.Report,
+	}
 	s.jobs.run(func(life context.Context) {
-		s.runBroadcast(
-			life,
-			broadcastJob{
-				AdminChat:  m.AdminChat,
-				Recipients: ids,
-				Deliver:    m.Deliver,
-				Report:     m.Report,
-			},
-		)
+		s.runBroadcast(life, broadcastJob)
 	})
 	return true, err
 }
@@ -201,20 +178,19 @@ send:
 			case <-time.After(s.pause):
 			}
 		}
-		if err := job.Deliver(ctx, id); err != nil {
+		err := job.Deliver(ctx, id)
+		if err != nil {
 			log.Printf("bot: broadcast to %d: %v", id, err)
 			res.Failed++
 		} else {
 			res.Sent++
 		}
 	}
-	err := s.send.Send(
-		context.WithoutCancel(ctx),
-		outMessage{
-			ChatID: job.AdminChat,
-			Text:   job.Report(res),
-		},
-	)
+	outMessage := outMessage{
+		ChatID: job.AdminChat,
+		Text:   job.Report(res),
+	}
+	err := s.send.Send(context.WithoutCancel(ctx), outMessage)
 	if err != nil {
 		log.Printf("bot: broadcast report: %v", err)
 	}

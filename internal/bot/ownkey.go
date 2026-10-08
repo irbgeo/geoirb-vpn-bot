@@ -38,13 +38,11 @@ func (s *Router) askOwnKeyAction(ctx context.Context, cq *tgbot.CallbackQuery) e
 
 // reissueKey gives the key new secrets and sends its new config.
 func (s *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	p, err := s.keys.ReissueKey(
-		ctx,
-		service.UserKey{
-			UserID:    cq.SenderID(),
-			PublicKey: strings.TrimPrefix(cq.Data, cbReissue),
-		},
-	)
+	userKey := service.UserKey{
+		UserID:    cq.SenderID(),
+		PublicKey: strings.TrimPrefix(cq.Data, cbReissue),
+	}
+	p, err := s.keys.ReissueKey(ctx, userKey)
 	if err != nil {
 		ownKeyFailedInput := ownKeyFailedInput{
 			Query: cq,
@@ -54,29 +52,27 @@ func (s *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error 
 	}
 	conf, err := s.keys.ClientConfig(ctx, p.PublicKey)
 	if err == nil {
-		err = s.sendConfig(
-			ctx,
-			configDelivery{
-				ChatID: cq.ChatID(),
-				Key: &service.KeyConfig{
-					Peer: p,
-					Conf: conf,
-				},
-			},
-		)
+		keyConfig := service.KeyConfig{
+			Peer: p,
+			Conf: conf,
+		}
+		configDelivery := configDelivery{
+			ChatID: cq.ChatID(),
+			Key:    &keyConfig,
+		}
+		err = s.sendConfig(ctx, configDelivery)
 	}
 	text := reissuedText
 	if err != nil {
 		text = keyDeliveryFailedText // the new key exists: "My access" has it
 	}
-	if sendErr := s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   cq.ChatID(),
-			Text:     text,
-			Keyboard: myAccessKeyboard(),
-		},
-	); sendErr != nil && err == nil {
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     text,
+		Keyboard: myAccessKeyboard(),
+	}
+	sendErr := s.send.Send(ctx, outMessage)
+	if sendErr != nil && err == nil {
 		err = sendErr
 	}
 	return err
@@ -84,13 +80,11 @@ func (s *Router) reissueKey(ctx context.Context, cq *tgbot.CallbackQuery) error 
 
 // deleteOwnKey deletes one of the user's keys for good.
 func (s *Router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	err := s.keys.DeleteOwnKey(
-		ctx,
-		service.UserKey{
-			UserID:    cq.SenderID(),
-			PublicKey: strings.TrimPrefix(cq.Data, cbDelete),
-		},
-	)
+	userKey := service.UserKey{
+		UserID:    cq.SenderID(),
+		PublicKey: strings.TrimPrefix(cq.Data, cbDelete),
+	}
+	err := s.keys.DeleteOwnKey(ctx, userKey)
 	if err != nil {
 		ownKeyFailedInput := ownKeyFailedInput{
 			Query: cq,
@@ -98,14 +92,12 @@ func (s *Router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) erro
 		}
 		return s.ownKeyFailed(ctx, ownKeyFailedInput)
 	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   cq.ChatID(),
-			Text:     keyDeletedText,
-			Keyboard: menuKeyboard(),
-		},
-	)
+	outMessage := outMessage{
+		ChatID:   cq.ChatID(),
+		Text:     keyDeletedText,
+		Keyboard: menuKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // ownKeyFailed explains a failed reissue or delete; a key that is gone (a
@@ -115,13 +107,11 @@ func (s *Router) ownKeyFailed(ctx context.Context, in ownKeyFailedInput) error {
 	if !known {
 		text = ownKeyFailedText
 	}
-	return s.replyError(
-		ctx,
-		userError{
-			ChatID: in.Query.ChatID(),
-			Err:    in.Err,
-			Text:   text,
-			Known:  known,
-		},
-	)
+	userError := userError{
+		ChatID: in.Query.ChatID(),
+		Err:    in.Err,
+		Text:   text,
+		Known:  known,
+	}
+	return s.replyError(ctx, userError)
 }

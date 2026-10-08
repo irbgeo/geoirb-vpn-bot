@@ -2,9 +2,8 @@ package bot
 
 import (
 	"context"
-	"time"
-
 	"strconv"
+	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
 

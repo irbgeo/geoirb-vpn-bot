@@ -109,19 +109,19 @@ func (s *jobs) reserve() bool {
 	return true
 }
 
-// release gives the slot back without running anything.
-func (s *jobs) release() {
-	s.mu.Lock()
-	s.busy = false
-	s.mu.Unlock()
-}
-
 // run starts fn in the reserved slot and frees it when fn returns.
 func (s *jobs) run(fn func(ctx context.Context)) {
 	s.wg.Go(func() {
 		defer s.release()
 		fn(s.life)
 	})
+}
+
+// release gives the slot back without running anything.
+func (s *jobs) release() {
+	s.mu.Lock()
+	s.busy = false
+	s.mu.Unlock()
 }
 
 // close stops running jobs (they report what went out) and waits for them.
@@ -169,7 +169,8 @@ func (s *maintFlag) set(on bool) error {
 	if on {
 		return os.WriteFile(s.path, nil, 0o644)
 	}
-	if err := os.Remove(s.path); err != nil && !errors.Is(err, os.ErrNotExist) {
+	err := os.Remove(s.path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil

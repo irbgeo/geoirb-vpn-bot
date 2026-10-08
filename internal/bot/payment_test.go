@@ -109,18 +109,6 @@ func TestBlockedKeyPurchaseExplains(t *testing.T) {
 	require.Contains(t, preCheckoutErrorText(service.ErrBlocked), "отключил администратор")
 }
 
-func preCheckout() tgbot.Update {
-	return tgbot.Update{
-		PreCheckoutQuery: &tgbot.PreCheckoutQuery{
-			ID:             "pc1",
-			From:           tgbot.User{ID: 42},
-			Currency:       "XTR",
-			TotalAmount:    150,
-			InvoicePayload: "PAYLOAD",
-		},
-	}
-}
-
 func TestPreCheckout(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	require.NoError(t, r.Handle(context.Background(), preCheckout()))
@@ -143,27 +131,6 @@ func TestPreCheckout(t *testing.T) {
 	require.NoError(t, r.Handle(context.Background(), preCheckout()))
 	require.False(t, s.answers[0].OK, "Telegram won't charge")
 	require.Contains(t, s.answers[0].Error, "устарел")
-}
-
-func paid() tgbot.Update {
-	return tgbot.Update{
-		Message: &tgbot.Message{
-			Chat: tgbot.Chat{
-				ID:   42,
-				Type: "private",
-			},
-			From: &tgbot.User{
-				ID:       42,
-				Username: "bob",
-			},
-			SuccessfulPayment: &tgbot.SuccessfulPayment{
-				Currency:                "XTR",
-				TotalAmount:             150,
-				InvoicePayload:          "PAYLOAD",
-				TelegramPaymentChargeID: "charge1",
-			},
-		},
-	}
 }
 
 func TestPaymentExtendsKey(t *testing.T) {
@@ -371,4 +338,37 @@ func TestBuyButtonHasNoKey(t *testing.T) {
 
 	require.NoError(t, r.Handle(context.Background(), press("buy")))
 	require.Equal(t, "buy:30", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData)
+}
+
+func preCheckout() tgbot.Update {
+	return tgbot.Update{
+		PreCheckoutQuery: &tgbot.PreCheckoutQuery{
+			ID:             "pc1",
+			From:           tgbot.User{ID: 42},
+			Currency:       "XTR",
+			TotalAmount:    150,
+			InvoicePayload: "PAYLOAD",
+		},
+	}
+}
+
+func paid() tgbot.Update {
+	return tgbot.Update{
+		Message: &tgbot.Message{
+			Chat: tgbot.Chat{
+				ID:   42,
+				Type: "private",
+			},
+			From: &tgbot.User{
+				ID:       42,
+				Username: "bob",
+			},
+			SuccessfulPayment: &tgbot.SuccessfulPayment{
+				Currency:                "XTR",
+				TotalAmount:             150,
+				InvoicePayload:          "PAYLOAD",
+				TelegramPaymentChargeID: "charge1",
+			},
+		},
+	}
 }

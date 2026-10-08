@@ -9,29 +9,25 @@ func (s *Router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
 	}
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   a.ChatID,
-			Text:     configsAskText(len(ids)),
-			Keyboard: configsKeyboard(),
-		},
-	)
+	outMessage := outMessage{
+		ChatID:   a.ChatID,
+		Text:     configsAskText(len(ids)),
+		Keyboard: configsKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // adminConfigs tells every user with an enabled key to get a fresh config
 // from "My access", in the background like a broadcast (the same one-at-a-
 // time slot, so a double press doesn't send everything twice).
 func (s *Router) adminConfigs(ctx context.Context, a adminAction) error {
-	_, err := s.startMassSend(
-		ctx,
-		massSend{
-			AdminChat: a.ChatID,
-			Started:   configsStartedText,
-			Deliver:   s.sendConfigsNotice,
-			Report:    configsReportText,
-		},
-	)
+	massSend := massSend{
+		AdminChat: a.ChatID,
+		Started:   configsStartedText,
+		Deliver:   s.sendConfigsNotice,
+		Report:    configsReportText,
+	}
+	_, err := s.startMassSend(ctx, massSend)
 	return err
 }
 
@@ -39,12 +35,10 @@ func (s *Router) adminConfigs(ctx context.Context, a adminAction) error {
 // a button to "My access": nothing is sent unasked, and the user takes it
 // when they are ready to re-add it in the app.
 func (s *Router) sendConfigsNotice(ctx context.Context, userID int64) error {
-	return s.send.Send(
-		ctx,
-		outMessage{
-			ChatID:   userID,
-			Text:     configsNoticeText,
-			Keyboard: myAccessKeyboard(),
-		},
-	)
+	outMessage := outMessage{
+		ChatID:   userID,
+		Text:     configsNoticeText,
+		Keyboard: myAccessKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }

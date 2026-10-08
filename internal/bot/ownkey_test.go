@@ -11,35 +11,22 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-func ownKeyService() *fakeService {
-	return &fakeService{
-		role: service.RoleUser,
-		access: []service.KeyInfo{
-			{
-				Peer: &service.Peer{
-					PublicKey: "PUB=",
-					Name:      "iPhone",
-					IP:        "10.8.1.10",
-					Enabled:   true,
-					ExpiresAt: time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC),
-				},
-			},
-		},
-		reissued: &service.Peer{
-			PublicKey:  "NEW=",
-			Name:       "iPhone",
-			IP:         "10.8.1.10",
-			PrivateKey: "NEWPRIV=",
-		},
-	}
-}
-
 func TestMyAccessHasReissueAndDeletePerKey(t *testing.T) {
 	r, s := newRouter(ownKeyService())
 	require.NoError(t, r.Handle(context.Background(), press(cbMyAccess)))
 	kb := s.sent[0].Keyboard
-	require.True(t, containsButton(kb, cbReissueAsk+"PUB="))
-	require.True(t, containsButton(kb, cbDeleteAsk+"PUB="))
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: kb,
+			Data:     cbReissueAsk + "PUB=",
+		},
+	))
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: kb,
+			Data:     cbDeleteAsk + "PUB=",
+		},
+	))
 }
 
 func TestReissueAsksThenSendsTheNewConfig(t *testing.T) {
@@ -51,7 +38,12 @@ func TestReissueAsksThenSendsTheNewConfig(t *testing.T) {
 	ask := s.sent[0]
 	require.Contains(t, ask.Text, "iPhone")
 	require.Contains(t, ask.Text, "перестанет работать")
-	require.True(t, containsButton(ask.Keyboard, cbReissue+"PUB="))
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: ask.Keyboard,
+			Data:     cbReissue + "PUB=",
+		},
+	))
 	require.True(t, hasMenuButton(ask.Keyboard), "cancel")
 	require.Empty(t, svc.reissuedFor, "nothing before the confirm")
 
@@ -79,7 +71,12 @@ func TestDeleteAsksWithTheLostDaysThenDeletes(t *testing.T) {
 	ask := s.sent[0]
 	require.Contains(t, ask.Text, "iPhone")
 	require.Contains(t, ask.Text, "20.10.2026", "the paid days that will be lost")
-	require.True(t, containsButton(ask.Keyboard, cbDelete+"PUB="))
+	require.True(t, containsButton(
+		buttonQuery{
+			Keyboard: ask.Keyboard,
+			Data:     cbDelete + "PUB=",
+		},
+	))
 	require.Empty(t, svc.deletedOwn)
 
 	require.NoError(t, r.Handle(ctx, press(cbDelete+"PUB=")))
@@ -114,4 +111,27 @@ func TestAskForAKeyNotInMyAccess(t *testing.T) {
 	r, s := newRouter(ownKeyService())
 	require.NoError(t, r.Handle(context.Background(), press(cbDeleteAsk+"OTHER=")))
 	require.Contains(t, s.sent[0].Text, "не найден")
+}
+
+func ownKeyService() *fakeService {
+	return &fakeService{
+		role: service.RoleUser,
+		access: []service.KeyInfo{
+			{
+				Peer: &service.Peer{
+					PublicKey: "PUB=",
+					Name:      "iPhone",
+					IP:        "10.8.1.10",
+					Enabled:   true,
+					ExpiresAt: time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC),
+				},
+			},
+		},
+		reissued: &service.Peer{
+			PublicKey:  "NEW=",
+			Name:       "iPhone",
+			IP:         "10.8.1.10",
+			PrivateKey: "NEWPRIV=",
+		},
+	}
 }

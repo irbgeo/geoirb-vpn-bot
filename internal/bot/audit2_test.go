@@ -14,16 +14,6 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-func inGroup(u tgbot.Update) tgbot.Update {
-	if u.Message != nil {
-		u.Message.Chat.Type = "group"
-	}
-	if u.CallbackQuery != nil {
-		u.CallbackQuery.Message.Chat.Type = "supergroup"
-	}
-	return u
-}
-
 func TestGroupChatsAreIgnored(t *testing.T) {
 	svc := adminService()
 	r, s := newRouter(svc)
@@ -249,4 +239,14 @@ func TestKeyLimitTextsFollowTheConstant(t *testing.T) {
 		),
 		n,
 	)
+}
+
+func inGroup(u tgbot.Update) tgbot.Update {
+	if u.Message != nil {
+		u.Message.Chat.Type = "group"
+	}
+	if u.CallbackQuery != nil {
+		u.CallbackQuery.Message.Chat.Type = "supergroup"
+	}
+	return u
 }
