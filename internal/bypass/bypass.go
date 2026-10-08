@@ -21,6 +21,11 @@ var lists embed.FS
 // Lists serves the built-in lists.
 type Lists struct{}
 
+// New creates Lists.
+func New() Lists {
+	return Lists{}
+}
+
 // Files returns the lists, the computer one first. ReadFile copies, so each
 // call gets its own bytes.
 func (s Lists) Files(context.Context) ([]File, error) {

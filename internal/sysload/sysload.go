@@ -16,7 +16,6 @@ import (
 // limit, so a value going up and down around it doesn't alert every minute.
 const recoverGap = 10
 
-// limits: CPU must be high for 5 checks (minutes) in a row, short peaks are
 // Monitor keeps what it needs between checks: the last CPU counters and
 // which metrics are high. Not safe for concurrent use (one worker calls it).
 type Monitor struct {
@@ -78,55 +77,33 @@ func (s *Monitor) Check() ([]Alert, error) {
 func (s *Monitor) usage() (map[Metric]int, error) {
 	u := map[Metric]int{}
 	var errs []error
-	if p, err := s.conntrack(); err != nil {
+	p, err := s.conntrack()
+	if err != nil {
 		errs = append(errs, err)
 	} else {
 		u[Conntrack] = p
 	}
-	if p, err := s.memory(); err != nil {
+	p, err = s.memory()
+	if err != nil {
 		errs = append(errs, err)
 	} else {
 		u[Memory] = p
 	}
 	if s.disk != "" {
-		if p, err := diskUsed(s.disk); err != nil {
+		p, err = diskUsed(s.disk)
+		if err != nil {
 			errs = append(errs, err)
 		} else {
 			u[Disk] = p
 		}
 	}
-	if p, ok, err := s.cpu(); err != nil {
+	p, ok, err := s.cpu()
+	if err != nil {
 		errs = append(errs, err)
 	} else if ok {
 		u[CPU] = p
 	}
 	return u, errors.Join(errs...)
-}
-
-// normal; the rest alert at once.
-func limits() []limit {
-	return []limit{
-		{
-			Metric:  Conntrack,
-			Percent: 80,
-			Checks:  1,
-		},
-		{
-			Metric:  Memory,
-			Percent: 90,
-			Checks:  1,
-		},
-		{
-			Metric:  Disk,
-			Percent: 90,
-			Checks:  1,
-		},
-		{
-			Metric:  CPU,
-			Percent: 85,
-			Checks:  5,
-		},
-	}
 }
 
 func (s *Monitor) conntrack() (int, error) {
@@ -184,6 +161,21 @@ func (s *Monitor) memory() (int, error) {
 	}.percent(), nil
 }
 
+// diskUsed is the used share of the file system at path, as df shows it
+// (space kept for root doesn't count as free).
+func diskUsed(path string) (int, error) {
+	var st syscall.Statfs_t
+	err := syscall.Statfs(path, &st)
+	if err != nil {
+		return 0, fmt.Errorf("sysload: statfs %s: %w", path, err)
+	}
+	used := st.Blocks - st.Bfree
+	return share{
+		Part:  used,
+		Whole: used + st.Bavail,
+	}.percent(), nil
+}
+
 // cpu is the busy share since the last call; ok is false on the first call.
 func (s *Monitor) cpu() (p int, ok bool, err error) {
 	now, err := s.cpuTimes()
@@ -228,24 +220,37 @@ func (s *Monitor) cpuTimes() (cpuTimes, error) {
 	return t, nil
 }
 
-// diskUsed is the used share of the file system at path, as df shows it
-// (space kept for root doesn't count as free).
-func diskUsed(path string) (int, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, fmt.Errorf("sysload: statfs %s: %w", path, err)
-	}
-	used := st.Blocks - st.Bfree
-	return share{
-		Part:  used,
-		Whole: used + st.Bavail,
-	}.percent(), nil
-}
-
 // percent is Part as a share of Whole, 0 when Whole is 0.
 func (s share) percent() int {
 	if s.Whole == 0 {
 		return 0
 	}
 	return int(s.Part * 100 / s.Whole)
+}
+
+// limits: CPU must be high for 5 checks (minutes) in a row, short peaks are
+// normal; the rest alert at once.
+func limits() []limit {
+	return []limit{
+		{
+			Metric:  Conntrack,
+			Percent: 80,
+			Checks:  1,
+		},
+		{
+			Metric:  Memory,
+			Percent: 90,
+			Checks:  1,
+		},
+		{
+			Metric:  Disk,
+			Percent: 90,
+			Checks:  1,
+		},
+		{
+			Metric:  CPU,
+			Percent: 85,
+			Checks:  5,
+		},
+	}
 }

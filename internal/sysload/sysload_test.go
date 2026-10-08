@@ -31,19 +31,34 @@ func newFakeProc(t *testing.T) *fakeProc {
 	return p
 }
 
-func (s *fakeProc) write(name, text string) {
-	require.NoError(s.t, os.WriteFile(filepath.Join(s.root, name), []byte(text), 0o644))
+// procFile is one file of a fakeProc: its path under the root and content.
+type procFile struct {
+	name string
+	text string
+}
+
+func (s *fakeProc) write(f procFile) {
+	require.NoError(s.t, os.WriteFile(filepath.Join(s.root, f.name), []byte(f.text), 0o644))
 }
 
 // conntrack sets the table to count of 1000.
 func (s *fakeProc) conntrack(count int) {
-	s.write("sys/net/netfilter/nf_conntrack_count", fmt.Sprintf("%d\n", count))
-	s.write("sys/net/netfilter/nf_conntrack_max", "1000\n")
+	s.write(procFile{
+		name: "sys/net/netfilter/nf_conntrack_count",
+		text: fmt.Sprintf("%d\n", count),
+	})
+	s.write(procFile{
+		name: "sys/net/netfilter/nf_conntrack_max",
+		text: "1000\n",
+	})
 }
 
 // memory sets used memory to percent of 1000000 kB.
 func (s *fakeProc) memory(percent int) {
-	s.write("meminfo", fmt.Sprintf("MemTotal:        1000000 kB\nMemFree:          1000 kB\nMemAvailable:    %d kB\n", 1000000-percent*10000))
+	s.write(procFile{
+		name: "meminfo",
+		text: fmt.Sprintf("MemTotal:        1000000 kB\nMemFree:          1000 kB\nMemAvailable:    %d kB\n", 1000000-percent*10000),
+	})
 }
 
 // cpu adds 100 jiffies to the counters, busy of them busy: half user,
@@ -53,7 +68,10 @@ func (s *fakeProc) cpu(busy int) {
 	s.steal += busy / 2
 	s.idle += 100 - busy
 	// cpu user nice system idle iowait irq softirq steal guest guest_nice
-	s.write("stat", fmt.Sprintf("cpu  %d 0 0 %d 0 0 0 %d 0 0\ncpu0 1 0 0 1 0 0 0 0 0 0\n", s.user, s.idle, s.steal))
+	s.write(procFile{
+		name: "stat",
+		text: fmt.Sprintf("cpu  %d 0 0 %d 0 0 0 %d 0 0\ncpu0 1 0 0 1 0 0 0 0 0 0\n", s.user, s.idle, s.steal),
+	})
 }
 
 func newMonitor(p *fakeProc) *Monitor {

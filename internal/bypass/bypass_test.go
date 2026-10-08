@@ -9,7 +9,7 @@ import (
 )
 
 func TestListsAreBuiltInAmneziaImportFormat(t *testing.T) {
-	files, err := Lists{}.Files(context.Background())
+	files, err := New().Files(context.Background())
 	require.NoError(t, err)
 
 	var names []string
@@ -35,11 +35,11 @@ func TestListsAreBuiltInAmneziaImportFormat(t *testing.T) {
 }
 
 func TestListsAreCopies(t *testing.T) {
-	a, err := Lists{}.Files(context.Background())
+	a, err := New().Files(context.Background())
 	require.NoError(t, err)
 	a[0].Data[0] = 'X'
 
-	b, err := Lists{}.Files(context.Background())
+	b, err := New().Files(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, byte('['), b[0].Data[0], "a caller can't change the lists for the next one")
 }
@@ -57,7 +57,7 @@ var forbidden = []string{
 }
 
 func TestListsHaveNoDNSServersOrOverlyWideRanges(t *testing.T) {
-	files, err := Lists{}.Files(context.Background())
+	files, err := New().Files(context.Background())
 	require.NoError(t, err)
 	for _, f := range files {
 		var entries []struct {

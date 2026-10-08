@@ -53,7 +53,8 @@ type Config struct {
 // Load reads the config from the environment and checks it.
 func Load() (*Config, error) {
 	var c Config
-	if err := envconfig.Process("", &c); err != nil {
+	err := envconfig.Process("", &c)
+	if err != nil {
 		return nil, fmt.Errorf("config: %w", err)
 	}
 	for name, v := range map[string]string{

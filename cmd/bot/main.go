@@ -99,6 +99,7 @@ func main() {
 		Load:        load,
 	}
 	notifier := bot.NewNotifier(&notifierDeps)
+	lists := bypass.New()
 	deps := bot.Deps{
 		Users:    svc,
 		Keys:     svc,
@@ -107,7 +108,7 @@ func main() {
 		Feedback: svc,
 		Sender:   sender,
 		Notifier: notifier,
-		Bypass:   bypass.Lists{},
+		Bypass:   lists,
 		Config:   cfg,
 	}
 	router := bot.New(&deps)
