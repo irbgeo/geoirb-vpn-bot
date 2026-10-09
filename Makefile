@@ -1,4 +1,4 @@
-.PHONY: lint test build deploy backup backup-pull diagram diagram-open
+.PHONY: lint test build deploy deploy-exit backup backup-pull diagram diagram-open
 
 lint:
 	golangci-lint run --fix
@@ -9,6 +9,7 @@ test:
 	./scripts/server-env_test.sh
 	./scripts/awg-conntrack_test.sh
 	./scripts/tunnel-keys_test.sh
+	./deploy/exit/install_test.sh
 
 # Linux binary for the VPN server (deploy.sh builds with OUT=<its package>).
 OUT ?= bot
@@ -18,6 +19,10 @@ build:
 # Build and install/update the bot on the VPN server (systemd).
 deploy:
 	./scripts/deploy.sh
+
+# Install the exit side of the tunnel on secret/exit-access.yaml's host.
+deploy-exit:
+	./scripts/deploy-exit.sh
 
 # Run the server backup now and list the archives.
 backup:
