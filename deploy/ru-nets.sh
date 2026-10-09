@@ -8,7 +8,8 @@
 set -euo pipefail
 URL="${RU_NETS_URL:-https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest}"
 MIN="${RU_NETS_MIN:-1000}" # fewer prefixes = a broken download
-STAMP="${ROOT:-}/var/lib/geoirb-vpn-bot/ru-nets.stamp"
+STATE="${ROOT:-}/var/lib/geoirb-vpn-bot"
+STAMP="$STATE/ru-nets.stamp"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -47,6 +48,8 @@ fi
 } >"$tmp/ru4.nft"
 nft -f "$tmp/ru4.nft"
 
-mkdir -p "$(dirname "$STAMP")"
+# Kept for the next boot: geoirb-vpn-routes.service loads it before the tunnels.
+mkdir -p "$STATE"
+install -m 644 "$tmp/ru4.nft" "$STATE/ru4.nft"
 touch "$STAMP"
 echo "ru-nets: $n RU prefixes loaded"

@@ -14,6 +14,9 @@ H1 = @H1@
 H2 = @H2@
 H3 = @H3@
 H4 = @H4@
+# Table 100 (deploy/geoirb-vpn-routes.service): marked client traffic; the
+# route goes away with the interface. No uid rules: the bot owns those.
+PostUp = ip route replace default dev %i table 100
 
 [Peer]
 PublicKey = @EXIT_PUBLIC@

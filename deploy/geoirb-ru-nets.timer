@@ -2,10 +2,11 @@
 Description=Weekly update of the Russian networks set
 
 [Timer]
-# at boot too: the set is empty after a reboot
-OnBootSec=1min
+# No boot run: geoirb-vpn-routes.service restores the last good set at boot.
 OnCalendar=weekly
 RandomizedDelaySec=1h
+# a weekly run missed while the server was off runs after the next boot
+Persistent=true
 
 [Install]
 WantedBy=timers.target

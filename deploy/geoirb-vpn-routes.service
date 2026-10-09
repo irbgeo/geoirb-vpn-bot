@@ -1,26 +1,24 @@
 # Split routing of VPN clients (deploy/geoirb-vpn.nft): marked client
 # packets go to table 100 = the exit tunnel, and never fall back to the
-# main table (fail closed: no tunnel, no foreign traffic). The bot's own
-# ip rules (prio 100/101) belong to the bot's tunnel watcher, not to this unit.
+# main table (fail closed: no tunnel, no foreign traffic). Runs before both
+# tunnels and has no ExecStop, so the rule and the `unreachable` route stay
+# across tunnel restarts. The `default dev awg-exit` route comes from the
+# tunnel conf's PostUp and goes away with the interface. The bot's own ip
+# rules (prio 100/101) belong to the bot's tunnel watcher, not to this unit.
 [Unit]
 Description=Split routing of VPN clients: Russian networks direct, the rest via awg-exit
-After=geoirb-awg0.service geoirb-awg-exit.service
-# The kernel drops the awg-exit route with the interface: a stop or restart
-# of the tunnel is passed on here, and a start of it starts this unit.
-PartOf=geoirb-awg-exit.service
+Before=geoirb-awg0.service geoirb-awg-exit.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=nft -f /etc/geoirb-vpn/geoirb-vpn.nft
+# the RU set from the last good ru-nets run (an empty set after a reboot
+# would send RU traffic through the exit until the timer runs)
+ExecStart=sh -c 'f=/var/lib/geoirb-vpn-bot/ru4.nft; [ ! -s "$$f" ] || nft -f "$$f"'
 ExecStart=ip route replace unreachable default metric 4096 table 100
-ExecStart=-ip rule del fwmark 0x1 lookup 100 prio 110
-ExecStart=ip rule add fwmark 0x1 lookup 100 prio 110
-# "-": with the tunnel down the rest stays in place (fail closed)
-ExecStart=-ip route replace default dev awg-exit table 100
-ExecStop=-ip rule del fwmark 0x1 lookup 100 prio 110
-ExecStop=-ip route del default dev awg-exit table 100
-ExecStop=-ip route del unreachable default metric 4096 table 100
+# added only when missing: never deleted, so there is no window without it
+ExecStart=sh -c 'ip rule show prio 110 | grep -q "fwmark 0x1 lookup 100" || ip rule add fwmark 0x1 lookup 100 prio 110'
 
 [Install]
-WantedBy=multi-user.target geoirb-awg-exit.service
+WantedBy=multi-user.target

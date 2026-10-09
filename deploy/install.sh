@@ -26,7 +26,10 @@ fi
 
 # The module comes from ppa:amnezia/ppa (amneziawg-dkms), installed by hand.
 modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
-apt-get install -y -qq unbound nftables
+if ! dpkg -s unbound nftables >/dev/null 2>&1; then
+  apt-get update -qq
+  apt-get install -y -qq unbound nftables
+fi
 bash "$S/awg-tools.sh"
 
 id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
@@ -63,14 +66,15 @@ sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf"
 ROOT="$ROOT" bash "$S/awg0-init.sh"
 
 systemctl daemon-reload
+systemctl enable --quiet geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service
+# Split routing first (re-applied without a gap); it stays while the tunnel restarts.
+systemctl restart geoirb-vpn-routes.service
 # Stop first: `down` must run with the OLD tunnel conf, before it is replaced.
 systemctl stop geoirb-awg-exit.service 2>/dev/null || true
 install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
-systemctl enable --quiet geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service
 # start, never restart awg0: that would drop every connected client
 systemctl start geoirb-awg0.service
 systemctl start geoirb-awg-exit.service
-systemctl restart geoirb-vpn-routes.service
 
 # ufw (server-infra) drops forwarded and incoming traffic by default.
 if command -v ufw >/dev/null && ufw status | grep '^Status: active' >/dev/null; then
@@ -78,6 +82,9 @@ if command -v ufw >/dev/null && ufw status | grep '^Status: active' >/dev/null; 
   ufw allow in on awg0 to 10.8.0.1 port 53
 fi
 
+# Ubuntu's unbound-resolvconf points the host resolver at 127.0.0.1, where
+# this unbound does not listen.
+systemctl disable --quiet --now unbound-resolvconf.service 2>/dev/null || true
 systemctl enable --quiet unbound.service
 systemctl restart unbound.service
 systemctl enable --quiet --now geoirb-vpn-mss.service

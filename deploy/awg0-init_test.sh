@@ -48,10 +48,19 @@ check "H1-H4 are ranges" "4" "$(grep -cE '^[0-9]+-[0-9]+$' <<<"$hs")"
 check "H ranges valid and apart" "1" "$(tr - ' ' <<<"$hs" | sort -n | awk '
   $1 <= 4 || $2 <= $1 || $2 > 4294967295 || $1 <= prev { bad = 1 } { prev = $2 } END { if (!bad) print 1 }')"
 check "I1 commented, QUIC-like" "1" "$(grep -cE '^# I1 = <b 0x(c[0-9a-f]00000001)[0-9a-f]+>$' "$CONF")"
-check "I1 is 1200 bytes" "2400" "$(sed -n 's/^# I1 = <b 0x\([0-9a-f]*\)>$/\1/p' "$CONF" | tr -d '\n' | wc -c | tr -d ' ')"
+i1len="$(sed -n 's/^# I1 = <b 0x\([0-9a-f]*\)>$/\1/p' "$CONF" | tr -d '\n' | wc -c | tr -d ' ')"
+check "I1 is 64-128 bytes" "1" "$([[ "$i1len" -ge 128 && "$i1len" -le 256 ]] && echo 1)"
 check "no active I1" "0" "$(grep -c '^I1' "$CONF")"
 
 cp "$CONF" "$TMP/first"
+
+# awg genkey fails: no conf with an empty key.
+printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/awg"
+rm "$CONF"
+run >/dev/null 2>&1
+check "genkey failure fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "genkey failure: no conf" "0" "$([[ -e "$CONF" ]] && echo 1 || echo 0)"
+cp "$TMP/first" "$CONF"
 out="$(run)"
 check "second run exits 0" "0" "$?"
 check "second run says kept" "1" "$(grep -c kept <<<"$out")"

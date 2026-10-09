@@ -22,6 +22,8 @@ mkdir "$TMP/bin"
 for c in modprobe sysctl nft ip useradd usermod apt-get chown git make iptables; do
   printf '#!/usr/bin/env bash\necho "%s $*" >>"$CALLS"\n' "$c" >"$TMP/bin/$c"
 done
+# dpkg -s: packages missing unless $DPKG_OK is set.
+printf '#!/usr/bin/env bash\n[[ -n "${DPKG_OK:-}" ]]\n' >"$TMP/bin/dpkg"
 # id: vpnbot is missing, so useradd runs.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/id"
 # awg: --version prints the pinned tag (no build); genkey for awg0-init.
@@ -67,6 +69,15 @@ check "awg-exit stopped with the old conf" "1" "$(grep -c '^systemctl stop geoir
 check "awg-exit started after the stop" "1" "$([[ "$(line '^systemctl stop geoirb-awg-exit')" -lt "$(line '^systemctl start geoirb-awg-exit')" ]] && echo 1)"
 check "awg0 started, not restarted" "1 0" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls") $(grep -c '^systemctl restart geoirb-awg0' "$TMP/calls")"
 check "routes reloaded" "1" "$(grep -c '^systemctl restart geoirb-vpn-routes' "$TMP/calls")"
+check "routes not stopped" "0" "$(grep -c '^systemctl stop geoirb-vpn-routes' "$TMP/calls")"
+check "routes before the tunnels" "1" "$([[ "$(line '^systemctl restart geoirb-vpn-routes')" -lt "$(line '^systemctl start geoirb-awg0')" ]] && echo 1)"
+U="$SD/geoirb-vpn-routes.service"
+check "routes unit: no PartOf, no ExecStop" "0" "$(grep -cE '^(PartOf|ExecStop)' "$U")"
+check "routes unit: Before both tunnels" "1" "$(grep -cx 'Before=geoirb-awg0.service geoirb-awg-exit.service' "$U")"
+check "routes unit: wanted by multi-user only" "WantedBy=multi-user.target" "$(grep '^WantedBy' "$U")"
+check "routes unit: loads the saved RU set" "1" "$(grep -c 'ru4.nft' "$U")"
+check "unbound-resolvconf off" "1" "$(grep -c '^systemctl disable --quiet --now unbound-resolvconf.service' "$TMP/calls")"
+check "apt-get update before install" "1 1" "$(grep -c '^apt-get update' "$TMP/calls") $([[ "$(line '^apt-get update')" -lt "$(line '^apt-get install')" ]] && echo 1)"
 check "units enabled" "1" "$(grep -c '^systemctl enable.*geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service' "$TMP/calls")"
 check "unbound restarted" "1" "$(grep -c '^systemctl restart unbound' "$TMP/calls")"
 check "ru-nets timer on" "1" "$(grep -c '^systemctl enable --quiet --now geoirb-ru-nets.timer' "$TMP/calls")"
@@ -82,12 +93,13 @@ check "bot installed" "NEWBOT" "$(cat "$OPT/bot")"
 # Update: the backup sees the old binary; ufw inactive adds no rules.
 echo OLDBOT >"$OPT/bot"
 cp "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first"
-run inactive
+run inactive DPKG_OK=1
 check "update exits 0" "0" "$?"
 check "update: backup of the old state" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service .*bot=OLDBOT' "$TMP/calls")"
 check "update: one backup" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service' "$TMP/calls")"
 check "update: awg0.conf kept" "1" "$(cmp -s "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first" && echo 1)"
 check "ufw inactive: no rules" "0" "$(grep -c '^ufw .*allow' "$TMP/calls")"
+check "packages present: no apt-get" "0" "$(grep -c '^apt-get' "$TMP/calls")"
 
 # The env on the server has another BOT_TOKEN/DB_SECRET_KEY.
 printf 'BOT_TOKEN=2:b\nDB_SECRET_KEY=other\n' >"$R/etc/geoirb-vpn-bot/env"

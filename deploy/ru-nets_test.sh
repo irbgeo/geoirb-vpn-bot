@@ -55,6 +55,10 @@ add element inet geoirb ru4 {
 }" "$(cat "$TMP/nft.in")"
 check "nft called once" "1" "$(grep -c '^nft -f' "$TMP/calls")"
 check "stamp touched" "1" "$([[ -f "$STAMP" ]] && echo 1)"
+SAVED="$TMP/root/var/lib/geoirb-vpn-bot/ru4.nft"
+check "elements saved for boot" "$(cat "$TMP/nft.in")" "$(cat "$SAVED" 2>/dev/null)"
+check "saved file mode" "644" "$(stat -c %a "$SAVED" 2>/dev/null || stat -f %Lp "$SAVED")"
+cp "$SAVED" "$TMP/saved.first"
 
 touch -t 200001010000 "$STAMP"
 run
@@ -66,6 +70,7 @@ run RU_NETS_MIN=3 CURL_FAIL=1
 check "failed download fails" "1" "$?"
 check "failed download: nft not called" "0" "$(grep -c . "$TMP/calls")"
 check "failed download: stamp kept" "1" "$([[ "$STAMP" -ot "$TMP/ripe" ]] && echo 1)"
+check "failed runs keep the saved set" "1" "$(cmp -s "$SAVED" "$TMP/saved.first" && echo 1)"
 
 echo
 [[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }

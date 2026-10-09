@@ -31,10 +31,12 @@ for i in 0 1 2 3; do
   hs+=("$lo-$((lo + $(rand 1000 $((q / 2 - 1)))))")
 done
 
-# I1: a 1200-byte packet shaped like a QUIC v1 Initial (long header, 8-byte
-# DCID, no SCID/token, length 1182), random bytes after the header. Commented:
-# the server does not send it, the bot un-comments it for clients.
-i1="c$(hex 1 | cut -c2)00000001 08$(hex 8) 00 00 449e$(hex 1182)"
+# I1: 64-128 bytes starting like a QUIC v1 Initial (long-header byte
+# 0xc0-0xcf, version 1, 8-byte DCID), random bytes after. Trade-off: a real
+# Initial is >= 1200 bytes, but that makes client configs too long for a QR
+# code. Commented: the server does not send it, the bot un-comments it for clients.
+i1="c$(hex 1 | cut -c2)00000001 08$(hex 8)$(hex "$(rand 50 114)")"
+key="$(awg genkey)"
 
 umask 077
 {
@@ -42,7 +44,7 @@ umask 077
   echo "Address = 10.8.0.1/22"
   echo "ListenPort = 443"
   echo "MTU = 1380"
-  echo "PrivateKey = $(awg genkey)"
+  echo "PrivateKey = $key"
   echo "Jc = $(rand 4 8)"
   echo "Jmin = 40"
   echo "Jmax = 70"
