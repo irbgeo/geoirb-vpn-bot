@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/netip"
 	"time"
@@ -15,7 +16,30 @@ func (s *service) Issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.issue(ctx, in)
-	return p.public(), err
+	if err != nil {
+		return nil, err
+	}
+	s.useUpTrial(ctx, in.UserID)
+	return p.public(), nil
+}
+
+// useUpTrial: a key issued by an admin counts as the plain user's free
+// trial, so deleting it does not give a new one. Best effort, like startTrial.
+func (s *service) useUpTrial(ctx context.Context, userID int64) {
+	if userID == 0 {
+		return
+	}
+	u, err := s.User(ctx, userID)
+	if errors.Is(err, ErrNotFound) {
+		return
+	}
+	if err != nil {
+		log.Printf("service: trial check for %d: %v", userID, err)
+		return
+	}
+	if u.Role == RoleUser && !u.TrialUsed {
+		s.markTrialUsed(ctx, userID)
+	}
 }
 
 // Extend adds days to a key: counted from the end date, or from now if the

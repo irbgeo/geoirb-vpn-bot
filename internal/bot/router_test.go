@@ -932,6 +932,7 @@ func TestMyAccessExtendButtonOnlyForPayingUsers(t *testing.T) {
 						Peer: &service.Peer{
 							PublicKey: "PUB1=",
 							Name:      "tg:bob",
+							ExpiresAt: time.Now().Add(24 * time.Hour),
 						},
 					},
 				},
@@ -945,4 +946,36 @@ func TestMyAccessExtendButtonOnlyForPayingUsers(t *testing.T) {
 			require.Equal(t, cbBuyKey+"PUB1=", row[1].CallbackData)
 		}
 	}
+}
+
+func TestMyAccessBuyButtonOnlyForTimedKeys(t *testing.T) {
+	forever := &service.Peer{
+		PublicKey: "PUB1=",
+		Name:      "tg:bob",
+	}
+	timed := &service.Peer{
+		PublicKey: "PUB2=",
+		Name:      "tg:bob #2",
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	r, s := newRouter(
+		&fakeService{
+			role: service.RoleUser,
+			access: []service.KeyInfo{
+				{Peer: forever},
+				{Peer: timed},
+			},
+		},
+	)
+
+	require.NoError(t, r.Handle(context.Background(), press("my")))
+
+	var got []string
+	for _, row := range s.sent[0].Keyboard.InlineKeyboard {
+		for _, b := range row {
+			got = append(got, b.CallbackData)
+		}
+	}
+	require.NotContains(t, got, "buyk:PUB1=")
+	require.Contains(t, got, "buyk:PUB2=")
 }

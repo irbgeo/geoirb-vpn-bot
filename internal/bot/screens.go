@@ -194,7 +194,7 @@ func accessKeyboard(v accessView) *tgbot.InlineKeyboardMarkup {
 	rows := make([][]tgbot.InlineKeyboardButton, 0, len(v.Keys))
 	for _, k := range v.Keys {
 		row := tgbot.Row(tgbot.Button("📄 Конфиг: "+keyLabel(k.Peer), cbConfig+k.Peer.PublicKey))
-		if v.CanBuy {
+		if v.CanBuy && !k.Peer.ExpiresAt.IsZero() { // a forever key has nothing to extend
 			row = append(row, tgbot.Button("💳 Продлить", cbBuyKey+k.Peer.PublicKey))
 		}
 		rows = append(
@@ -777,13 +777,18 @@ func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
 	rows := make([][]tgbot.InlineKeyboardButton, 0, 2*len(keys)+1)
 	for _, k := range keys {
 		pub, name := k.Peer.PublicKey, keyLabel(k.Peer)
-		extend := tgbot.Button(fmt.Sprintf("➕ %d дней: %s", adminExtendDays, name), cbAdminExt+pub)
-		first := tgbot.Row(tgbot.Button("⛔️ Отключить: "+name, cbAdminDis+pub), extend)
-		switch {
-		case !k.Peer.Enabled && keyEnded(k.Peer):
-			first = tgbot.Row(extend) // enabling an ended key is undone within a minute
-		case !k.Peer.Enabled:
-			first = tgbot.Row(tgbot.Button("✅ Включить: "+name, cbAdminEn+pub), extend)
+		dis := tgbot.Button("⛔️ Отключить: "+name, cbAdminDis+pub)
+		first := []tgbot.InlineKeyboardButton{dis}
+		if !k.Peer.Enabled {
+			first = []tgbot.InlineKeyboardButton{tgbot.Button("✅ Включить: "+name, cbAdminEn+pub)}
+		}
+		// A forever key has nothing to extend.
+		if !k.Peer.ExpiresAt.IsZero() {
+			extend := tgbot.Button(fmt.Sprintf("➕ %d дней: %s", adminExtendDays, name), cbAdminExt+pub)
+			first = append(first, extend)
+			if !k.Peer.Enabled && keyEnded(k.Peer) {
+				first = tgbot.Row(extend) // enabling an ended key is undone within a minute
+			}
 		}
 		rows = append(
 			rows,

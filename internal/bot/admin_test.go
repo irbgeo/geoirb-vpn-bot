@@ -39,6 +39,7 @@ func adminService() *fakeService {
 					Name:      "tg:u7",
 					IP:        "10.8.1.10",
 					Enabled:   true,
+					ExpiresAt: time.Now().Add(24 * time.Hour),
 				},
 			},
 		},
@@ -785,4 +786,25 @@ func TestUnfinishedPaymentNamesTheKeyToCheck(t *testing.T) {
 	)
 	require.Contains(t, text, "ABCDEFGH")
 	require.Contains(t, text, "могли уже добавиться")
+}
+
+func TestAdminCardForeverKeyHasNoExtend(t *testing.T) {
+	svc := adminService()
+	forever := svc.access[0]
+	forever.Peer.ExpiresAt = time.Time{}
+	timed := &service.Peer{
+		PublicKey: "PUB2=",
+		UserID:    7,
+		Name:      "tg:u7 #2",
+		IP:        "10.8.1.11",
+		Enabled:   true,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	svc.access = append(svc.access, service.KeyInfo{Peer: timed})
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press("a:user:7")))
+	got := buttons(s.edits[0])
+	require.NotContains(t, got, "a:ext:"+forever.Peer.PublicKey)
+	require.Contains(t, got, "a:ext:PUB2=")
 }

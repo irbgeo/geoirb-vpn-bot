@@ -386,3 +386,39 @@ func keys(ps []*Peer) []string {
 	}
 	return out
 }
+
+func TestIssueUsesUpPlainUsersTrial(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+
+		p, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		require.True(t, e.users().m[42].TrialUsed)
+
+		require.NoError(t, e.svc.Delete(ctx, p.PublicKey))
+		require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 42), ErrTrialUsed)
+	})
+}
+
+func TestIssueKeepsTrialOfUnlimitedUser(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUnlimited)
+
+		_, err := e.svc.Issue(
+			context.Background(),
+			IssueInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		require.False(t, e.users().m[42].TrialUsed)
+	})
+}
