@@ -11,14 +11,16 @@ check() { # check <name> <expected> <actual>
 }
 mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 
-TAG="$(sed -n 's/^AWG_TOOLS_TAG="\([^"]*\)".*/\1/p' "$DIR/../awg-tools.sh")"
+TAG="$(sed -n 's/^AWG_TOOLS_TAG="${AWG_TOOLS_TAG-\([^}]*\)}".*/\1/p' "$DIR/../awg-tools.sh")"
 
 mkdir "$TMP/bin"
 # Every fake logs its name and args; `awg --version` prints $AWG_VERSION.
-for c in systemctl sysctl iptables make apt-get git; do
+for c in modprobe systemctl sysctl iptables make apt-get git; do
   printf '#!/usr/bin/env bash\necho "%s $*" >>"$CALLS"\n' "$c" >"$TMP/bin/$c"
 done
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\necho "$AWG_VERSION"\n' >"$TMP/bin/awg"
+# stop also logs the conf it sees, to prove the stop comes before the conf is replaced.
+printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null)" >>"$CALLS"\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
 # Package as deploy-exit.sh lays it out: flat directory.
@@ -31,6 +33,7 @@ run() { # run <awg version output>
   CALLS="$TMP/calls" AWG_VERSION="$1" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$TMP/pkg/install.sh" >/dev/null 2>&1
 }
 
+mkdir -p "$TMP/root/etc/geoirb-vpn"; echo OLD >"$TMP/root/etc/geoirb-vpn/awg-exit.conf"
 run "amneziawg-tools $TAG"
 check "install exits 0" "0" "$?"
 CONF="$TMP/root/etc/geoirb-vpn/awg-exit.conf"
@@ -39,7 +42,9 @@ check "conf mode" "600" "$(mode "$CONF")"
 check "unit installed" "1" "$([[ -f "$TMP/root/etc/systemd/system/geoirb-awg-exit.service" ]] && echo 1)"
 check "sysctl file installed" "1" "$([[ -f "$TMP/root/etc/sysctl.d/99-geoirb-vpn.conf" ]] && echo 1)"
 check "enable called" "1" "$(grep -c '^systemctl enable.* geoirb-awg-exit' "$TMP/calls")"
-check "restart called" "1" "$(grep -c '^systemctl restart geoirb-awg-exit' "$TMP/calls")"
+check "start called" "1" "$(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
+check "stop before start" "1" "$([[ "$(grep -n '^systemctl stop geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^systemctl start geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"
+check "stop saw the old conf" "1" "$(grep -c '^systemctl stop geoirb-awg-exit.service conf=OLD' "$TMP/calls")"
 check "awg-tools skipped on pinned tag" "0" "$(grep -c '^\(make\|git\|apt-get\)' "$TMP/calls")"
 
 run "amneziawg-tools v0.0.1"

@@ -17,15 +17,18 @@ cp "$ROOT/deploy/exit/install.sh" "$ROOT/deploy/exit/geoirb-awg-exit.service" \
   "$ROOT/deploy/awg-tools.sh" "$ROOT/deploy/99-geoirb-vpn.conf" "$TMP/pkg/"
 
 echo "▶ Installing on $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
-# The package (with the private key) goes through stdin, never argv.
+# One ssh login (the server throttles quick repeated ones). The package, with
+# the private key, goes through stdin, never argv. The last lines print the
+# status; a service that is not active or an interface that is missing fails.
 tar -C "$TMP/pkg" -cz . | remote "sudo bash -euo pipefail -c '
 S=\$(mktemp -d /tmp/geoirb-awg-exit.XXXXXX)
 trap \"rm -rf \$S\" EXIT
 tar -xz -C \$S
 bash \$S/install.sh
-'"
-
-echo "▶ Status"
 sleep 3
-remote "sudo bash -c 'systemctl is-active geoirb-awg-exit.service && awg show awg-exit 2>/dev/null | head -3 || awg show | head -3'"
+st=\$(systemctl is-active geoirb-awg-exit.service || true)
+echo \"geoirb-awg-exit: \$st\"
+awg show awg-exit | head -3
+[ \"\$st\" = active ] && awg show awg-exit >/dev/null
+'"
 echo "✔ Exit server ready"

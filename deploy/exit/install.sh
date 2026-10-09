@@ -7,7 +7,11 @@ set -euo pipefail
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${ROOT:-}"
 
+modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
 bash "$S/awg-tools.sh"
+
+# Stop first: `down` must run the OLD conf's PostDown, before the conf is replaced.
+systemctl stop geoirb-awg-exit.service 2>/dev/null || true
 
 install -d -m 700 "$ROOT/etc/geoirb-vpn"
 install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
@@ -18,4 +22,4 @@ sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf" || echo "warning: sysctl se
 
 systemctl daemon-reload
 systemctl enable --quiet geoirb-awg-exit.service
-systemctl restart geoirb-awg-exit.service
+systemctl start geoirb-awg-exit.service
