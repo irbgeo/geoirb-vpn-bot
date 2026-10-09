@@ -1,7 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"log"
+	"os"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -205,4 +209,30 @@ func keysOf(ps []*Peer) []string {
 		out = append(out, p.PublicKey)
 	}
 	return out
+}
+
+func TestMaintainLogsSkippedKeyOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		p, err := e.svc.CreateKey(ctx, CreateKeyInput{UserID: 42})
+		require.NoError(t, err)
+		row := e.peers.m[p.PublicKey]
+		row.PSK = "" // unreadable secrets: it can't go back on the server
+		row.Enabled = false
+		row.ExpiresAt = now.Add(-time.Hour)
+		e.peers.m[p.PublicKey] = row
+		e.setRole(42, RoleUnlimited)
+
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+		defer log.SetOutput(os.Stderr)
+		for range 3 {
+			_, err = e.svc.Maintain(ctx)
+			require.NoError(t, err)
+		}
+
+		require.Equal(t, 1, strings.Count(buf.String(), "forever"), buf.String())
+	})
 }

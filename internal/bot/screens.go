@@ -1000,8 +1000,8 @@ func keyEnded(p *service.Peer) bool {
 }
 
 // adminErrorText explains a failed admin action. known is true for the
-// expected cases; an unknown error is shown as is, since the admin may
-// need it.
+// expected cases; an unknown error gets a generic text (the caller logs the
+// raw error, which stays out of the chat).
 func adminErrorText(err error) (text string, known bool) {
 	switch {
 	case errors.Is(err, service.ErrExpired):
@@ -1012,8 +1012,14 @@ func adminErrorText(err error) (text string, known bool) {
 		return "⚠️ Не найдено — возможно, ключ или пользователь уже удалены.", true
 	case errors.Is(err, errPaymentNotFound):
 		return "⚠️ Оплата не найдена — откройте карточку ещё раз.", true
+	case errors.Is(err, service.ErrIPTaken):
+		return "⚠️ IP этого ключа уже занят другим ключом на сервере. Проверьте сверку (Reconcile) в журнале.", true
+	case errors.Is(err, service.ErrUnreadable):
+		return "⚠️ Данные ключа повреждены (не расшифровываются): вернуть его на сервер нельзя. Удалите ключ и выдайте новый.", true
+	case errors.Is(err, service.ErrBlocked):
+		return "⚠️ Ключ отключён администратором: сначала включите его.", true
 	}
-	return "⚠️ Не получилось: " + err.Error(), false
+	return "⚠️ Не получилось, подробности в журнале бота.", false
 }
 
 // backupAlertText: the last good backup is too old (zero = none found).

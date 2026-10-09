@@ -68,10 +68,14 @@ keys:
 			}
 			err = s.makeForever(ctx, p)
 			if err != nil {
-				log.Printf("service: make %s forever: %v", p.IP, err)
 				if errors.Is(err, ErrIPTaken) || errors.Is(err, ErrUnreadable) {
-					continue // only this key can't go back on: the rest go on
+					// only this key can't go back on: the rest go on
+					if s.skipLogged.first(p.PublicKey, err.Error()) {
+						log.Printf("service: make %s forever: %v", p.IP, err)
+					}
+					continue
 				}
+				log.Printf("service: make %s forever: %v", p.IP, err)
 				break keys // the server is likely down: the next run retries
 			}
 			m.MadeForever = append(m.MadeForever, p)

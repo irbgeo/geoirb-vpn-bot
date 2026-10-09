@@ -39,6 +39,8 @@ type service struct {
 	// payment and an admin action on the same key can't overwrite each other.
 	// Per-key locks if this ever becomes a bottleneck.
 	mu sync.Mutex
+	// skipLogged keeps the log to one line per skipped key and error kind.
+	skipLogged logOnce
 }
 
 // New creates a service.
