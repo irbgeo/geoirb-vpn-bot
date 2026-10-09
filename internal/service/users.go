@@ -113,19 +113,6 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	return p.public(), err
 }
 
-// nextKeyNumber returns the smallest n >= 1 such that "base #n" is not in names.
-func nextKeyNumber(names []string, base string) int {
-	used := make(map[string]bool, len(names))
-	for _, n := range names {
-		used[n] = true
-	}
-	n := 1
-	for used[fmt.Sprintf("%s #%d", base, n)] {
-		n++
-	}
-	return n
-}
-
 // CheckCreateKey says whether CreateKey would give the user a key now
 // (nil) or which error it would return, without issuing anything: the bot
 // asks before walking the user through installing an app.
@@ -198,6 +185,19 @@ func displayName(u *User) string {
 		return u.Username
 	}
 	return strconv.FormatInt(u.ID, 10)
+}
+
+// nextKeyNumber returns the smallest n >= 1 such that "base #n" is not in names.
+func nextKeyNumber(names []string, base string) int {
+	used := make(map[string]bool, len(names))
+	for _, n := range names {
+		used[n] = true
+	}
+	n := 1
+	for used[fmt.Sprintf("%s #%d", base, n)] {
+		n++
+	}
+	return n
 }
 
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the

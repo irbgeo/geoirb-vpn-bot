@@ -116,22 +116,21 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	if pay == nil {
-		// PeerKey is the key to extend ("" = a new key), known before the
-		// days are added: if the bot stops in the middle, admins see which
-		// key to check before refunding.
-		pay = &Payment{
-			ChargeID:  in.ChargeID,
-			UserID:    pu.UserID,
-			PeerKey:   pu.PublicKey,
-			Stars:     in.Stars,
-			Days:      pu.Days,
-			CreatedAt: time.Now(),
-		}
-		_, err = s.payments.Add(ctx, pay)
-		if err != nil {
-			return nil, err
-		}
+	// Every recorded charge returned above: this one is new.
+	// PeerKey is the key to extend ("" = a new key), known before the
+	// days are added: if the bot stops in the middle, admins see which
+	// key to check before refunding.
+	pay = &Payment{
+		ChargeID:  in.ChargeID,
+		UserID:    pu.UserID,
+		PeerKey:   pu.PublicKey,
+		Stars:     in.Stars,
+		Days:      pu.Days,
+		CreatedAt: time.Now(),
+	}
+	_, err = s.payments.Add(ctx, pay)
+	if err != nil {
+		return nil, err
 	}
 
 	res, err := s.applyPurchase(ctx, pu)

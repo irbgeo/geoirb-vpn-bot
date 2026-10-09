@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -209,6 +210,40 @@ func keysOf(ps []*Peer) []string {
 		out = append(out, p.PublicKey)
 	}
 	return out
+}
+
+// The once-only log is keyed by the error kind, not its text: a wrapped
+// ErrIPTaken with a new message each run still logs once.
+func TestMaintainLogsSkippedKindOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		p, err := e.svc.CreateKey(ctx, CreateKeyInput{UserID: 42})
+		require.NoError(t, err)
+		row := e.peers.m[p.PublicKey]
+		row.Enabled = false
+		row.ExpiresAt = now.Add(-time.Hour)
+		e.peers.m[p.PublicKey] = row
+		delete(e.vpn.peers, p.PublicKey)
+		e.setRole(42, RoleUnlimited)
+		run := 0
+		e.vpn.onChange = func() {
+			run++
+			e.vpn.err = fmt.Errorf("%w: run %d", ErrIPTaken, run)
+		}
+
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+		defer log.SetOutput(os.Stderr)
+		for range 3 {
+			_, err = e.svc.Maintain(ctx)
+			require.NoError(t, err)
+		}
+
+		require.Equal(t, 3, run)
+		require.Equal(t, 1, strings.Count(buf.String(), "forever"), buf.String())
+	})
 }
 
 func TestMaintainLogsSkippedKeyOnce(t *testing.T) {

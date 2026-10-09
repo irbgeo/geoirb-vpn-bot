@@ -13,9 +13,9 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// vpn is service.VPN on an Amnezia server. It keeps the config file, the
-// live interface together, and
-// undoes a change that failed half way before returning its error.
+// vpn is service.VPN on an Amnezia server. It keeps the config file and the
+// live interface together, and undoes a change that failed half way before
+// returning its error.
 type vpn struct {
 	srv *server
 }

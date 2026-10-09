@@ -68,15 +68,15 @@ keys:
 			}
 			err = s.makeForever(ctx, p)
 			if err != nil {
-				if errors.Is(err, ErrIPTaken) || errors.Is(err, ErrUnreadable) {
-					// only this key can't go back on: the rest go on
-					if s.skipLogged.first(p.PublicKey, err.Error()) {
-						log.Printf("service: make %s forever: %v", p.IP, err)
-					}
-					continue
+				// A skip kind: only this key can't go back on, the rest go on.
+				kind := skipKind(err)
+				if kind == "" || s.skipLogged.first(p.PublicKey, kind) {
+					log.Printf("service: make %s forever: %v", p.IP, err)
 				}
-				log.Printf("service: make %s forever: %v", p.IP, err)
-				break keys // the server is likely down: the next run retries
+				if kind == "" {
+					break keys // the server is likely down: the next run retries
+				}
+				continue
 			}
 			m.MadeForever = append(m.MadeForever, p)
 			continue
@@ -164,4 +164,17 @@ func (s *service) subnetUsage(ctx context.Context) (used, total int, err error) 
 		return 0, 0, err
 	}
 	return s.vpn.SubnetUsage(ctx, reserved)
+}
+
+// skipKind names an error that skips only one key in maintainKeys ("" for
+// any other error). It keys the once-only log, so a changing message does
+// not log again.
+func skipKind(err error) string {
+	switch {
+	case errors.Is(err, ErrIPTaken):
+		return "ip-taken"
+	case errors.Is(err, ErrUnreadable):
+		return "unreadable"
+	}
+	return ""
 }
