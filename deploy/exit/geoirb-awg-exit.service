@@ -1,5 +1,5 @@
 [Unit]
-Description=AmneziaWG tunnel from the RU entry server (exit side)
+Description=AmneziaWG tunnel between the RU entry and the exit server (awg-exit)
 After=network-online.target
 Wants=network-online.target
 

@@ -18,7 +18,7 @@ OUT ?= bot
 build:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o "$(OUT)" ./cmd/bot
 
-# Build and install/update the bot on the VPN server (systemd).
+# Build and install/update the bot and the host VPN on the RU server (systemd).
 deploy:
 	./scripts/deploy.sh
 
