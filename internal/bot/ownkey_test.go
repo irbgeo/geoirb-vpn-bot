@@ -107,6 +107,15 @@ func TestOwnKeyActionOnAGoneKey(t *testing.T) {
 	require.Empty(t, s.files)
 }
 
+func TestReissueUnreadableKeyExplains(t *testing.T) {
+	svc := ownKeyService()
+	svc.ownKeyErr = service.ErrUnreadable
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press(cbReissue+"PUB=")))
+	require.Equal(t, keyUnreadableText, s.sent[len(s.sent)-1].Text)
+}
+
 func TestAskForAKeyNotInMyAccess(t *testing.T) {
 	r, s := newRouter(ownKeyService())
 	require.NoError(t, r.Handle(context.Background(), press(cbDeleteAsk+"OTHER=")))

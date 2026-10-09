@@ -104,7 +104,9 @@ func (s *router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) erro
 // second press, another user's key) is not an error.
 func (s *router) ownKeyFailed(ctx context.Context, in ownKeyFailedInput) error {
 	text, known := keyNotFoundText, errors.Is(in.Err, service.ErrNotFound)
-	if !known {
+	if errors.Is(in.Err, service.ErrUnreadable) {
+		text, known = keyUnreadableText, true
+	} else if !known {
 		text = ownKeyFailedText
 	}
 	userError := userError{

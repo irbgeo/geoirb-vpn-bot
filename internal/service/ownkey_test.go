@@ -78,6 +78,30 @@ func TestReissueFailureKeepsTheOldKey(t *testing.T) {
 	})
 }
 
+func TestReissueUnreadableKeyRefused(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		old := ownKey(t, e)
+		row := e.peers.m[old.PublicKey]
+		row.PSK = ""
+		e.peers.m[old.PublicKey] = row
+		before := e.vpn.hasPeer(old.PublicKey)
+
+		_, err := e.svc.ReissueKey(
+			context.Background(),
+			UserKey{
+				UserID:    42,
+				PublicKey: old.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrUnreadable)
+		require.Len(t, e.peers.m, 1)
+		require.Equal(t, row, e.peers.m[old.PublicKey], "the row is unchanged")
+		require.Equal(t, before, e.vpn.hasPeer(old.PublicKey))
+		require.Equal(t, old.IP, e.peers.m[old.PublicKey].IP)
+	})
+}
+
 func TestOwnKeyActionsNeedTheOwner(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()

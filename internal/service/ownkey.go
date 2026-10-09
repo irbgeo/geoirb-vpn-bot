@@ -7,8 +7,9 @@ import (
 
 // ReissueKey gives a user's key new secrets (a lost phone, a leaked
 // file): the old ones stop working at once. IP, name, term, reminders and
-// an admin block stay. The returned key carries the new private key, so the
-// caller can send the new config.
+// an admin block stay. It returns the public view of the new key; the caller
+// renders the config from the stored secrets. A key without readable secrets
+// is ErrUnreadable.
 func (s *service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -16,6 +17,9 @@ func (s *service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 	old, err := s.ownPeer(ctx, k)
 	if err != nil {
 		return nil, err
+	}
+	if !old.hasSecrets() {
+		return nil, ErrUnreadable
 	}
 	keys, err := s.vpn.GenKeys(ctx)
 	if err != nil {
