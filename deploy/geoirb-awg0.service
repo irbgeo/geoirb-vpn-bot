@@ -1,0 +1,15 @@
+[Unit]
+Description=AmneziaWG server for VPN clients (awg0, UDP 443)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The conf is the bot's (it adds and removes peers live with `awg syncconf`).
+ExecStartPre=-/usr/bin/awg-quick down /etc/amnezia/amneziawg/awg0.conf
+ExecStart=/usr/bin/awg-quick up /etc/amnezia/amneziawg/awg0.conf
+ExecStop=/usr/bin/awg-quick down /etc/amnezia/amneziawg/awg0.conf
+
+[Install]
+WantedBy=multi-user.target

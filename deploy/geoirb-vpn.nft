@@ -1,0 +1,31 @@
+# Split routing of VPN clients on the RU server, loaded by
+# geoirb-vpn-routes.service (`nft -f`). Client packets (awg0) to an address
+# outside ru4 and outside the VPN subnet get mark 0x1 -> ip rule -> table 100
+# (default dev awg-exit). Everything from clients is masqueraded: to the
+# exit (it only knows 10.255.255.1) and on the direct way out.
+# Safe to load again: the set is declared, never flushed here, so the RU
+# networks deploy/ru-nets.sh put into it stay; only the chains are rebuilt.
+table inet geoirb {
+	set ru4 {
+		type ipv4_addr
+		flags interval
+		auto-merge
+	}
+	chain pre {
+		type filter hook prerouting priority mangle;
+	}
+	chain post {
+		type nat hook postrouting priority srcnat;
+	}
+}
+flush chain inet geoirb pre
+flush chain inet geoirb post
+table inet geoirb {
+	chain pre {
+		iifname "awg0" ip daddr != @ru4 ip daddr != 10.8.0.0/22 meta mark set 0x1
+	}
+	chain post {
+		ip saddr 10.8.0.0/22 oifname "awg-exit" masquerade
+		ip saddr 10.8.0.0/22 oifname != "awg-exit" oifname != "awg0" masquerade
+	}
+}
