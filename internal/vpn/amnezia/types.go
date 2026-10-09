@@ -71,21 +71,6 @@ type peerStat struct {
 	TX              int64
 }
 
-// clientEntry is one client to show in the Amnezia app (clientsTable).
-type clientEntry struct {
-	PublicKey  string
-	Name       string
-	AllowedIPs string
-	CreatedAt  time.Time
-}
-
-// tableEntry is one clientsTable item. UserData stays a map so the fields
-// the app writes (traffic, handshake) survive a rewrite.
-type tableEntry struct {
-	ClientID string         `json:"clientId"`
-	UserData map[string]any `json:"userData"`
-}
-
 // persistInput is a file to save atomically inside the container.
 type persistInput struct {
 	Path    string

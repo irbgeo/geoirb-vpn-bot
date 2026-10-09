@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,10 @@ const confFile = "/etc/amnezia/amneziawg/awg0.conf"
 
 var errBoom = errors.New("boom")
 
-// box fakes the whole container for VPN: the config file, clientsTable,
+// persistPath picks the target file out of the atomic-save command.
+var persistPath = regexp.MustCompile(`f="([^"]+)"`)
+
+// box fakes the whole container for VPN: the config file,
 // the live interface (syncconf calls) and the ways docker can fail.
 type box struct {
 	files   map[string]string
@@ -30,15 +34,16 @@ type box struct {
 	confErr     error
 	confWritten bool
 	dump        string
-	vpn         *vpn
+	// tableTouched is set if any command mentions the old clientsTable.
+	tableTouched bool
+	vpn          *vpn
 }
 
 func newBox(t *testing.T) *box {
 	t.Helper()
 	b := &box{
 		files: map[string]string{
-			confFile:  serverConfText,
-			tablePath: clientsTable,
+			confFile: serverConfText,
 		},
 	}
 	srv, err := Open(
@@ -50,11 +55,15 @@ func newBox(t *testing.T) *box {
 	)
 	require.NoError(t, err)
 	b.vpn = NewVPN(srv)
+	t.Cleanup(func() { require.False(t, b.tableTouched, "no clientsTable commands") })
 	return b
 }
 
 func (s *box) handle(in execInput) (string, error) {
 	c := strings.Join(in.Args, " ")
+	if strings.Contains(c, "clientsTable") {
+		s.tableTouched = true
+	}
 	switch {
 	case in.Args[0] == "test":
 		return "", nil
@@ -95,10 +104,6 @@ func (s *box) onServer(t *testing.T, key string) bool {
 	return c.FindPeer(key) != nil
 }
 
-func (s *box) inApp(key string) bool {
-	return strings.Contains(s.files[tablePath], `"clientId": "`+key+`"`)
-}
-
 func newPeer() *service.VPNPeer {
 	return &service.VPNPeer{
 		PublicKey: "NEW=",
@@ -134,8 +139,6 @@ func TestAddPeerTakesTheLowestFreeIP(t *testing.T) {
 	require.Equal(t, "10.8.1.4", ip, ".1 and .2 are peers, .3 is reserved")
 	require.Contains(t, b.files[confFile], "PublicKey = NEW=\nPresharedKey = NEWPSK=\nAllowedIPs = 10.8.1.4/32")
 	require.Equal(t, 1, b.syncs)
-	require.True(t, b.inApp("NEW="))
-	require.Contains(t, b.files[tablePath], `"clientName": "tg:alice"`)
 }
 
 func TestAddPeerSaveFailureTouchesNothing(t *testing.T) {
@@ -153,7 +156,6 @@ func TestAddPeerSaveFailureTouchesNothing(t *testing.T) {
 	require.ErrorIs(t, err, errBoom)
 	require.Equal(t, serverConfText, b.files[confFile])
 	require.Zero(t, b.syncs)
-	require.False(t, b.inApp("NEW="))
 }
 
 func TestAddPeerRemovesAPeerLeftOnTheServer(t *testing.T) {
@@ -164,7 +166,6 @@ func TestAddPeerRemovesAPeerLeftOnTheServer(t *testing.T) {
 	_, err := addNew(context.Background(), b)
 	require.ErrorIs(t, err, errBoom)
 	require.False(t, b.onServer(t, "NEW="), "no peer without an owner")
-	require.False(t, b.inApp("NEW="))
 }
 
 func TestAddPeerRollbackResyncsWhenOnlyTheLiveInterfaceChanged(t *testing.T) {
@@ -205,7 +206,6 @@ func TestPutPeerIgnoresSimilarLookingIP(t *testing.T) {
 
 	require.NoError(t, b.vpn.PutPeer(context.Background(), p), "110.8.1.5 is not 10.8.1.5")
 	require.True(t, b.onServer(t, "NEW="))
-	require.True(t, b.inApp("NEW="))
 }
 
 func TestPutPeerTakesThePeerOffWhenItTimesOut(t *testing.T) {
@@ -217,7 +217,6 @@ func TestPutPeerTakesThePeerOffWhenItTimesOut(t *testing.T) {
 
 	require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), errBoom)
 	require.False(t, b.onServer(t, "NEW="))
-	require.False(t, b.inApp("NEW="))
 }
 
 func TestRemovePeer(t *testing.T) {
@@ -234,7 +233,6 @@ func TestRemovePeer(t *testing.T) {
 		),
 	)
 	require.False(t, b.onServer(t, "PUB1="))
-	require.False(t, b.inApp("PUB1="))
 	require.True(t, b.onServer(t, "PUB2="))
 }
 
@@ -259,8 +257,6 @@ func TestReplacePeer(t *testing.T) {
 	require.False(t, b.onServer(t, "PUB1="))
 	require.Contains(t, b.files[confFile], "PublicKey = NEW=\nPresharedKey = NEWPSK=\nAllowedIPs = 10.8.1.1/32")
 	require.Equal(t, 1, b.syncs, "one step")
-	require.False(t, b.inApp("PUB1="))
-	require.True(t, b.inApp("NEW="))
 }
 
 func TestReplacePeerFailureKeepsTheOldPeer(t *testing.T) {
@@ -271,8 +267,6 @@ func TestReplacePeerFailureKeepsTheOldPeer(t *testing.T) {
 	require.ErrorIs(t, b.vpn.ReplacePeer(context.Background(), replaceInput()), errBoom)
 	require.True(t, b.onServer(t, "PUB1="), "the old key still works")
 	require.False(t, b.onServer(t, "NEW="))
-	require.True(t, b.inApp("PUB1="))
-	require.False(t, b.inApp("NEW="))
 }
 
 func TestPeerKeysAndSubnetUsage(t *testing.T) {

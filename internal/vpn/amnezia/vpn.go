@@ -14,7 +14,7 @@ import (
 )
 
 // vpn is service.VPN on an Amnezia server. It keeps the config file, the
-// live interface and the app's client list (clientsTable) together, and
+// live interface together, and
 // undoes a change that failed half way before returning its error.
 type vpn struct {
 	srv *server
@@ -68,7 +68,6 @@ func (s *vpn) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 		s.undo(ctx, takeOffInput)
 		return err
 	}
-	s.showInApp(ctx, &p)
 	return nil
 }
 
@@ -92,8 +91,6 @@ func (s *vpn) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) err
 		}
 		return err
 	}
-	s.hideInApp(ctx, in.Old)
-	s.showInApp(ctx, in.New)
 	return nil
 }
 
@@ -123,21 +120,15 @@ func (s *vpn) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 		s.undo(ctx, takeOffInput)
 		return err
 	}
-	s.showInApp(ctx, p)
 	return nil
 }
 
-// RemovePeer takes a key off the server and the app's list.
+// RemovePeer takes a key off the server.
 func (s *vpn) RemovePeer(ctx context.Context, p *service.VPNPeer) error {
-	err := s.srv.Update(ctx, func(c *serverConf) error {
+	return s.srv.Update(ctx, func(c *serverConf) error {
 		c.RemovePeer(p.PublicKey)
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	s.hideInApp(ctx, p)
-	return nil
 }
 
 // PeerKeys returns the public key of every peer in the config.
@@ -224,7 +215,6 @@ func (s *vpn) undo(ctx context.Context, in *takeOffInput) {
 	if err != nil {
 		log.Printf("amnezia: roll back %s: %v", in.Peer.IP, err)
 	}
-	s.hideInApp(ctx, in.Peer)
 }
 
 // takeOff removes the peer from the config. A peer missing from the file
@@ -242,29 +232,6 @@ func (s *vpn) takeOff(ctx context.Context, in *takeOffInput) error {
 		c.RemovePeer(in.Peer.PublicKey)
 		return nil
 	})
-}
-
-// hideInApp drops the key from the Amnezia app's list; a failure is logged.
-func (s *vpn) hideInApp(ctx context.Context, p *service.VPNPeer) {
-	err := s.srv.RemoveClient(ctx, p.PublicKey)
-	if err != nil {
-		log.Printf("amnezia: clientsTable remove %s: %v", p.IP, err)
-	}
-}
-
-// showInApp lists the key in the Amnezia app. Failing here is not fatal:
-// the key works, it is only missing from the app's list.
-func (s *vpn) showInApp(ctx context.Context, p *service.VPNPeer) {
-	clientEntry := clientEntry{
-		PublicKey:  p.PublicKey,
-		Name:       p.Name,
-		AllowedIPs: p.IP + "/32",
-		CreatedAt:  p.CreatedAt,
-	}
-	err := s.srv.SetClient(ctx, clientEntry)
-	if err != nil {
-		log.Printf("amnezia: clientsTable set %s: %v", p.IP, err)
-	}
 }
 
 // allowedIPs splits "10.8.1.2/32, fd00::2/128" into its entries.

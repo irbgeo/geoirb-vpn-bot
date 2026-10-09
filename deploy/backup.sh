@@ -2,7 +2,7 @@
 # Runs on the VPN server as root (geoirb-vpn-bot-backup.timer, daily).
 # Makes /var/backups/geoirb-vpn-bot/geoirb-vpn-<UTC time>.tar.gz with:
 #   amnezia-awg.tar.gz          /opt/amnezia/awg from the Amnezia container
-#                               (awg0.conf, clientsTable, server keys)
+#                               (awg0.conf, server keys)
 #   mongo-geoirb_vpn.archive.gz mongodump of the bot database
 # and keeps the newest KEEP archives. DB_SECRET_KEY is NOT in the archive:
 # keep it separately, or the encrypted client keys in the dump can't be read.
