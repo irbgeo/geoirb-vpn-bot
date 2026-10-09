@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs on the VPN server as root (geoirb-vpn-bot-backup.timer, daily).
 # Makes /var/backups/geoirb-vpn-bot/geoirb-vpn-<UTC time>.tar.gz with:
-#   amnezia-awg.tar.gz          /opt/amnezia/awg from the Amnezia container
-#                               (awg0.conf, server keys)
+#   amnezia-awg.tar.gz          /etc/amnezia/amneziawg (awg0.conf: server key,
+#                               obfuscation, client peers)
 #   mongo-geoirb_vpn.archive.gz mongodump of the bot database
 # and keeps the newest KEEP archives. DB_SECRET_KEY is NOT in the archive:
 # keep it separately, or the encrypted client keys in the dump can't be read.
@@ -13,7 +13,6 @@ KEEP="${KEEP:-7}"
 ENV_FILE="${ENV_FILE:-/etc/geoirb-vpn-bot/env}"
 MONGO_CONTAINER="${MONGO_CONTAINER:-server-infra-mongo-1}"
 STAMP="$(grep -m1 '^BACKUP_STAMP=' "$ENV_FILE" | cut -d= -f2- || true)"
-. "$(dirname "$0")/awg-container.sh"
 MONGO_URI="$(grep -m1 '^MONGO_URI=' "$ENV_FILE" | cut -d= -f2- || true)"
 : "${MONGO_URI:?no MONGO_URI in $ENV_FILE}"
 
@@ -22,7 +21,7 @@ mkdir -p "$DEST"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-docker exec "$AWG_CONTAINER" tar -C /opt/amnezia -czf - awg >"$tmp/amnezia-awg.tar.gz"
+tar -C /etc/amnezia -czf - amneziawg >"$tmp/amnezia-awg.tar.gz"
 # The URI (with the password) goes in through a config file on stdin, so it
 # never shows up in `ps`.
 printf 'uri: %s\n' "$MONGO_URI" | docker exec -i "$MONGO_CONTAINER" sh -c \

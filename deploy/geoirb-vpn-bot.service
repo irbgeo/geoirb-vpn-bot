@@ -1,16 +1,11 @@
 [Unit]
 Description=geoirb VPN Telegram bot (sells and manages AmneziaWG keys)
-After=network-online.target docker.service
+After=network-online.target geoirb-awg0.service geoirb-awg-exit.service
 Wants=network-online.target
-# Wants, not Requires: a docker stop + start must not leave the bot stopped
-# (Restart=always does not act on a stop caused by a dependency).
-Wants=docker.service
 
 [Service]
 User=vpnbot
 Group=vpnbot
-# docker: the bot runs `docker exec` into the Amnezia container.
-SupplementaryGroups=docker
 EnvironmentFile=/etc/geoirb-vpn-bot/env
 ExecStart=/opt/geoirb-vpn-bot/bot
 Restart=always
@@ -18,15 +13,18 @@ RestartSec=5
 # Shutdown waits for in-flight payments, a broadcast and a maintenance run.
 TimeoutStopSec=60
 
-# The docker CLI keeps its config in $HOME.
+# Last-backup mark, maintenance flag, RU networks stamp.
 StateDirectory=geoirb-vpn-bot
-Environment=HOME=/var/lib/geoirb-vpn-bot
 
-# The bot is small (~20 MB); each docker exec starts a docker CLI too.
+# NET_ADMIN only: `awg` changes awg0 live, `ip rule` sends the bot's own
+# traffic through the exit tunnel (the tunnel watcher).
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
 MemoryMax=200M
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/run/docker.sock
+# awg0.conf, rewritten through .tmp/.bak files next to it
+ReadWritePaths=/etc/amnezia/amneziawg
 ProtectHome=yes
 PrivateTmp=yes
 ProtectKernelTunables=yes

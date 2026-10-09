@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Runs as root on the VPN server from the unpacked deploy package (scripts/
-# deploy.sh uploads it). Installs or updates the bot, its backup timer and
-# the host tuning. Order matters: a backup of the current state is taken
-# before the new binary can touch Mongo or the Amnezia config.
+# Runs as root on the RU VPN server from the unpacked deploy package (scripts/
+# deploy.sh uploads it). Installs or updates the bot, the host AmneziaWG
+# (awg0 for clients, awg-exit tunnel), split routing, DNS for clients, the
+# backup timer and the host tuning. Order matters: a backup of the current
+# state is taken before the new binary can touch Mongo or awg0.conf.
 # Env: LOCAL_HASH (hash of BOT_TOKEN/DB_SECRET_KEY in the package), FORCE=1
-# to replace them anyway.
+# to replace them anyway. ROOT is a path prefix for tests.
 set -euo pipefail
 S="$(cd "$(dirname "$0")" && pwd)"
 trap 'rm -rf "$S"' EXIT
-E=/etc/geoirb-vpn-bot/env
-OPT=/opt/geoirb-vpn-bot
+ROOT="${ROOT:-}"
+E="$ROOT/etc/geoirb-vpn-bot/env"
+OPT="$ROOT/opt/geoirb-vpn-bot"
+SD="$ROOT/etc/systemd/system"
 
 # The bot token and the key that encrypts client keys: a different one
 # would take over another bot or make every stored key unreadable.
@@ -21,30 +24,66 @@ if [[ -f "$E" ]]; then
   fi
 fi
 
-id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
-usermod -aG docker vpnbot
-install -d -m 755 "$OPT"
-install -m 750 "$S/backup.sh" "$S/awg-conntrack.sh" "$OPT/"
-install -m 640 "$S/awg-container.sh" "$OPT/"
-install -d -m 750 -o root -g vpnbot /etc/geoirb-vpn-bot
-install -m 640 -o root -g vpnbot "$S/env" "$E"
-install -m 644 "$S"/*.service "$S"/*.timer /etc/systemd/system/
+# The module comes from ppa:amnezia/ppa (amneziawg-dkms), installed by hand.
+modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
+apt-get install -y -qq unbound nftables
+bash "$S/awg-tools.sh"
 
-# VPN host tuning (conntrack size, TCP MSS clamp); no VPN restart needed.
-install -m 644 "$S/99-geoirb-vpn.conf" /etc/sysctl.d/
-install -m 644 "$S/nf_conntrack-modules.conf" /etc/modules-load.d/nf_conntrack.conf
-install -m 644 "$S/amneziawg-modules.conf" /etc/modules-load.d/amneziawg.conf
-install -m 644 "$S/nf_conntrack-modprobe.conf" /etc/modprobe.d/nf_conntrack.conf
+id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
+install -d -m 755 "$OPT"
+install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$OPT/"
+install -d -m 750 "$ROOT/etc/geoirb-vpn-bot"
+chown root:vpnbot "$ROOT/etc/geoirb-vpn-bot"
+install -m 640 "$S/env" "$E"
+chown root:vpnbot "$E"
+
+# Container-era leftovers (the Amnezia container's conntrack timer).
+systemctl disable --quiet --now geoirb-vpn-conntrack.timer 2>/dev/null || true
+rm -f "$SD"/geoirb-vpn-conntrack.* "$OPT/awg-conntrack.sh" "$OPT/awg-container.sh"
+
+install -d "$SD/unbound.service.d" "$ROOT/etc/unbound/unbound.conf.d" "$ROOT/etc/sysctl.d" \
+  "$ROOT/etc/modules-load.d" "$ROOT/etc/modprobe.d"
+install -m 644 "$S"/*.service "$S"/*.timer "$SD/"
+install -m 644 "$S/unbound-after-awg0.conf" "$SD/unbound.service.d/geoirb.conf"
+install -m 644 "$S/unbound-geoirb.conf" "$ROOT/etc/unbound/unbound.conf.d/geoirb.conf"
+install -d -m 700 "$ROOT/etc/geoirb-vpn"
+install -m 600 "$S/geoirb-vpn.nft" "$ROOT/etc/geoirb-vpn/"
+
+# Host tuning (forwarding, conntrack size); no VPN restart needed.
+install -m 644 "$S/99-geoirb-vpn.conf" "$ROOT/etc/sysctl.d/"
+install -m 644 "$S/nf_conntrack-modules.conf" "$ROOT/etc/modules-load.d/nf_conntrack.conf"
+install -m 644 "$S/amneziawg-modules.conf" "$ROOT/etc/modules-load.d/amneziawg.conf"
+install -m 644 "$S/nf_conntrack-modprobe.conf" "$ROOT/etc/modprobe.d/nf_conntrack.conf"
 modprobe nf_conntrack
 # the live value follows the shipped file, so both always agree
-sed -n 's/.*hashsize=//p' "$S/nf_conntrack-modprobe.conf" >/sys/module/nf_conntrack/parameters/hashsize
-sysctl -q -p /etc/sysctl.d/99-geoirb-vpn.conf
+sed -n 's/.*hashsize=//p' "$S/nf_conntrack-modprobe.conf" >"$ROOT/sys/module/nf_conntrack/parameters/hashsize"
+sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf"
+
+# awg0.conf: created on the first install only, never overwritten.
+ROOT="$ROOT" bash "$S/awg0-init.sh"
 
 systemctl daemon-reload
+# Stop first: `down` must run with the OLD tunnel conf, before it is replaced.
+systemctl stop geoirb-awg-exit.service 2>/dev/null || true
+install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+systemctl enable --quiet geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service
+# start, never restart awg0: that would drop every connected client
+systemctl start geoirb-awg0.service
+systemctl start geoirb-awg-exit.service
+systemctl restart geoirb-vpn-routes.service
+
+# ufw (server-infra) drops forwarded and incoming traffic by default.
+if command -v ufw >/dev/null && ufw status | grep '^Status: active' >/dev/null; then
+  ufw route allow in on awg0
+  ufw allow in on awg0 to 10.8.0.1 port 53
+fi
+
+systemctl enable --quiet unbound.service
+systemctl restart unbound.service
 systemctl enable --quiet --now geoirb-vpn-mss.service
-systemctl enable --quiet --now geoirb-vpn-conntrack.timer
-# a missing container must not stop the deploy; the timer tries again
-systemctl start geoirb-vpn-conntrack.service || echo "warning: conntrack timeout not copied into the Amnezia container yet" >&2
+systemctl enable --quiet --now geoirb-ru-nets.timer
+# fill the RU set now; a failed download must not stop the deploy (it retries)
+systemctl start geoirb-ru-nets.service || echo "warning: RU networks not loaded yet, see journalctl -u geoirb-ru-nets" >&2
 systemctl enable --quiet --now geoirb-vpn-bot-backup.timer
 
 # A backup of the state the running version left, before the new one

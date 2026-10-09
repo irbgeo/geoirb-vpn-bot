@@ -1,8 +1,0 @@
-[Unit]
-Description=Copy the host TCP conntrack timeout into the Amnezia container
-Wants=docker.service
-After=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/opt/geoirb-vpn-bot/awg-conntrack.sh

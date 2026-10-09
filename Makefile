@@ -7,9 +7,11 @@ lint:
 test:
 	go test -cover ./...
 	./scripts/server-env_test.sh
-	./scripts/awg-conntrack_test.sh
 	./scripts/tunnel-keys_test.sh
 	./deploy/exit/install_test.sh
+	./deploy/install_test.sh
+	./deploy/awg0-init_test.sh
+	./deploy/ru-nets_test.sh
 
 # Linux binary for the VPN server (deploy.sh builds with OUT=<its package>).
 OUT ?= bot
