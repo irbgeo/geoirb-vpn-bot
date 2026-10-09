@@ -1,0 +1,12 @@
+[Unit]
+Description=Fill the nftables set of Russian networks (RIPE NCC delegated stats)
+Wants=network-online.target
+# the set lives in the table that geoirb-vpn-routes.service loads
+After=network-online.target geoirb-vpn-routes.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/geoirb-vpn-bot/ru-nets.sh
+# a failed download (no network yet at boot) must not wait a week
+Restart=on-failure
+RestartSec=10min

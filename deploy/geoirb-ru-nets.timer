@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly update of the Russian networks set
+
+[Timer]
+# at boot too: the set is empty after a reboot
+OnBootSec=1min
+OnCalendar=weekly
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target
