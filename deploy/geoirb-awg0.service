@@ -2,6 +2,9 @@
 Description=AmneziaWG server for VPN clients (awg0, UDP 443)
 After=network-online.target
 Wants=network-online.target
+# No split routing = client traffic would leave unmarked from the RU IP.
+# Ordered after it by the routes unit's Before=.
+Requires=geoirb-vpn-routes.service
 
 [Service]
 Type=oneshot

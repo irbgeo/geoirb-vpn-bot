@@ -58,6 +58,8 @@ check "stamp touched" "1" "$([[ -f "$STAMP" ]] && echo 1)"
 SAVED="$TMP/root/var/lib/geoirb-vpn-bot/ru4.nft"
 check "elements saved for boot" "$(cat "$TMP/nft.in")" "$(cat "$SAVED" 2>/dev/null)"
 check "saved file mode" "644" "$(stat -c %a "$SAVED" 2>/dev/null || stat -f %Lp "$SAVED")"
+check "no temp file left" "" "$(ls "$(dirname "$SAVED")" | grep -v -e '^ru4.nft$' -e '^ru-nets.stamp$')"
+check "saved file complete" "}" "$(tail -1 "$SAVED")"
 cp "$SAVED" "$TMP/saved.first"
 
 touch -t 200001010000 "$STAMP"

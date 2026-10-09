@@ -50,6 +50,8 @@ nft -f "$tmp/ru4.nft"
 
 # Kept for the next boot: geoirb-vpn-routes.service loads it before the tunnels.
 mkdir -p "$STATE"
-install -m 644 "$tmp/ru4.nft" "$STATE/ru4.nft"
+# tmp + mv in the same dir: a crash never leaves a half-written file there
+install -m 644 "$tmp/ru4.nft" "$STATE/ru4.nft.tmp"
+mv "$STATE/ru4.nft.tmp" "$STATE/ru4.nft"
 touch "$STAMP"
 echo "ru-nets: $n RU prefixes loaded"
