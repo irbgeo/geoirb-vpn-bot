@@ -23,12 +23,14 @@ case "$host" in
 esac
 F
 chmod +x "$TMP/bin/sshpass"
-out="$(CALLS="$TMP/calls" PATH="$TMP/bin:$PATH" OLD_ACCESS_FILE="$TMP/old.yaml" ACCESS_FILE="$TMP/new.yaml" bash "$DIR/import-peers.sh" 2>&1)"
+mkdir "$TMP/t"
+out="$(TMPDIR=$TMP/t CALLS="$TMP/calls" PATH="$TMP/bin:$PATH" OLD_ACCESS_FILE="$TMP/old.yaml" ACCESS_FILE="$TMP/new.yaml" bash "$DIR/import-peers.sh" 2>&1)"
 check "exit 0" "0" "$?"
 check "one session per server" "u@old.example
 u@new.example" "$(cat "$TMP/calls")"
 check "conf reaches RU on stdin" "1" "$(grep -c SECRETPSK "$TMP/calls.stdin")"
 check "PSK not in argv" "0" "$(grep -c SECRETPSK "$TMP/calls.argv")"
 check "PSK not printed" "0" "$(grep -c SECRETPSK <<<"$out")"
+check "local temp dir removed" "0" "$(ls -A "$TMP/t" | wc -l | tr -d ' ')"
 echo
 [[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }

@@ -14,6 +14,7 @@ mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 mkdir "$TMP/bin"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" != syncconf ]] || cat "$3" >"$CALLS.synced"\n' >"$TMP/bin/awg"
 printf '#!/usr/bin/env bash\ncat "$2"\n' >"$TMP/bin/awg-quick"
+printf '#!/usr/bin/env bash\necho "systemctl $*" >>"$CALLS"\n[[ "$1" != is-active ]] || [[ -n "${BOT_ACTIVE:-}" ]]\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
 CONF="$TMP/root/etc/amnezia/amneziawg/awg0.conf"
@@ -53,33 +54,75 @@ AllowedIPs = 10.8.1.4/32
 PublicKey = dddddddddd=
 PresharedKey = psk-d
 AllowedIPs = 10.9.0.4/32
-C
 
-run() { CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$DIR/import-peers.sh" "$TMP/old.conf" 2>&1; }
+[Peer]
+PublicKey = eeeeeeeeee=
+PresharedKey = psk-e
+AllowedIPs = 10.8.0.3/32
+
+[Peer]
+PublicKey = ffffffffff=
+AllowedIPs = 10.8.1.9/32, 10.8.1.10/32
+
+[Peer]
+PublicKey = gggggggggg=
+AllowedIPs = 10.8.1.0/24
+
+[Peer]
+PublicKey =
+AllowedIPs = 10.8.1.11/32
+
+[Peer]
+PublicKey = hhhhhhhhhh=
+AllowedIPs = 10.8.3.255/32
+PersistentKeepalive = 25
+
+[Peer]
+PublicKey = iiiiiiiiii=
+AllowedIPs = 10.8.4.0/32
+C
+# last block without a trailing newline, CRLF on one block
+printf '\n[Peer]\r\nPublicKey = jjjjjjjjjj=\r\nAllowedIPs = 10.8.2.7/32' >>"$TMP/old.conf"
+
+run() { BOT_ACTIVE=1 CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$DIR/import-peers.sh" "$TMP/old.conf" 2>&1; }
 
 out="$(run)"
 check "exit 0" "0" "$?"
-check "summary" "imported 2, skipped 2" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
-check "peers in conf" "3" "$(grep -c '^\[Peer\]' "$CONF")"
+check "summary" "imported 4, skipped 7" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
+check "peers in conf" "5" "$(grep -c '^\[Peer\]' "$CONF")"
 check "duplicate once" "1" "$(grep -c 'bbbbbbbbbb=' "$CONF")"
-check "new peers added" "2" "$(grep -c '^PublicKey = \(aaaaaaaaaa\|cccccccccc\)=$' "$CONF")"
+check "new peers added" "4" "$(grep -c '^PublicKey = \(aaaaaaaaaa\|cccccccccc\|hhhhhhhhhh\|jjjjjjjjjj\)=$' "$CONF")"
+check "keepalive kept" "1" "$(grep -c '^PersistentKeepalive = 25$' "$CONF")"
+check "/22 top in" "1" "$(grep -c '^AllowedIPs = 10.8.3.255/32$' "$CONF")"
+check "/22 outside out" "0" "$(grep -c '10.8.4.0' "$CONF")"
+check "ip-taken skipped" "0" "$(grep -c 'eeeeeeeeee' "$CONF")"
+check "ip-taken listed" "1" "$(grep -c 'eeeeeeee(ip-taken)' <<<"$out")"
+check "not-32 listed" "2" "$(grep -o '\(ffffffff\|gggggggg\)(not-32)' <<<"$out" | wc -l | tr -d ' ')"
+check "empty key skipped" "1" "$(grep -c '(no-key)' <<<"$out")"
+check "CRLF stripped" "0" "$(grep -c $'\r' "$CONF")"
+check "last block imported" "1" "$(grep -c '^AllowedIPs = 10.8.2.7/32$' "$CONF")"
+check "bot stopped then started" "systemctl stop geoirb-vpn-bot
+systemctl start geoirb-vpn-bot" "$(grep -E 'systemctl (stop|start)' "$TMP/calls")"
 check "PSK kept verbatim" "1" "$(grep -c '^PresharedKey = psk-c$' "$CONF")"
 check "out-of-subnet skipped" "0" "$(grep -c 'dddddddddd' "$CONF")"
 check "skipped listed by prefix" "1" "$(grep -c 'dddddddd' <<<"$out")"
 check "no PSK printed" "0" "$(grep -c 'psk-' <<<"$out")"
 check "interface untouched" "$(printf '[Interface]\nAddress = 10.8.0.1/22\nPrivateKey = SERVERKEY\n')" "$(sed -n 1,3p "$CONF")"
 check "mode kept" "640" "$(mode "$CONF")"
-check ".bak is the old conf" "1" "$(grep -c '^\[Peer\]' "$CONF.bak")"
+check "one timestamped backup" "1" "$(ls "$CONF".bak-import-* | wc -l | tr -d ' ')"
+check "backup is the old conf" "1" "$(grep -c '^\[Peer\]' "$CONF".bak-import-*)"
 check "no tmp left" "0" "$(ls "$(dirname "$CONF")" | grep -c tmp)"
 check "one syncconf" "1" "$(grep -c '^awg syncconf awg0 ' "$TMP/calls")"
-check "syncconf got the conf" "3" "$(grep -c '^\[Peer\]' "$TMP/calls.synced")"
+check "syncconf got the conf" "5" "$(grep -c '^\[Peer\]' "$TMP/calls.synced")"
 
 cp "$CONF" "$TMP/after1"
 : >"$TMP/calls"
 out="$(run)"
-check "second run imports 0" "imported 0, skipped 4" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
+check "second run imports 0" "imported 0, skipped 11" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
 check "second run keeps conf" "1" "$(cmp -s "$CONF" "$TMP/after1" && echo 1)"
-check "second run one syncconf" "1" "$(grep -c '^awg syncconf' "$TMP/calls")"
+check "second run no syncconf" "0" "$(grep -c '^awg syncconf' "$TMP/calls")"
+check "second run no new backup" "1" "$(ls "$CONF".bak-import-* | wc -l | tr -d ' ')"
+check "bot restarted after 0 import" "1" "$(grep -c 'systemctl start geoirb-vpn-bot' "$TMP/calls")"
 
 rm "$CONF"
 CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$DIR/import-peers.sh" "$TMP/old.conf" >/dev/null 2>&1
