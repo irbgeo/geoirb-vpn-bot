@@ -1,0 +1,23 @@
+[Interface]
+Address = 10.255.255.2/30
+PrivateKey = @EXIT_PRIVATE@
+ListenPort = @PORT@
+MTU = 1380
+Jc = @JC@
+Jmin = @JMIN@
+Jmax = @JMAX@
+S1 = @S1@
+S2 = @S2@
+S3 = 0
+S4 = 0
+H1 = @H1@
+H2 = @H2@
+H3 = @H3@
+H4 = @H4@
+PostUp = sysctl -w net.ipv4.ip_forward=1; IF=$(ip -4 route show default | awk '{print $5; exit}'); iptables -t nat -A POSTROUTING -s 10.255.255.1 -o $IF -j MASQUERADE; iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t mangle -A FORWARD -o %i -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+PostDown = IF=$(ip -4 route show default | awk '{print $5; exit}'); iptables -t nat -D POSTROUTING -s 10.255.255.1 -o $IF -j MASQUERADE; iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t mangle -D FORWARD -o %i -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+
+[Peer]
+PublicKey = @RU_PUBLIC@
+PresharedKey = @PSK@
+AllowedIPs = 10.255.255.1/32

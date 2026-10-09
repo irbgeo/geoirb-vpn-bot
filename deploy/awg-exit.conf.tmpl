@@ -1,0 +1,23 @@
+[Interface]
+Address = 10.255.255.1/30
+PrivateKey = @RU_PRIVATE@
+MTU = 1380
+Table = off
+Jc = @JC@
+Jmin = @JMIN@
+Jmax = @JMAX@
+S1 = @S1@
+S2 = @S2@
+S3 = 0
+S4 = 0
+H1 = @H1@
+H2 = @H2@
+H3 = @H3@
+H4 = @H4@
+
+[Peer]
+PublicKey = @EXIT_PUBLIC@
+PresharedKey = @PSK@
+Endpoint = @EXIT_HOST@:@PORT@
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25

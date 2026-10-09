@@ -8,6 +8,7 @@ test:
 	go test -cover ./...
 	./scripts/server-env_test.sh
 	./scripts/awg-conntrack_test.sh
+	./scripts/tunnel-keys_test.sh
 
 # Linux binary for the VPN server (deploy.sh builds with OUT=<its package>).
 OUT ?= bot
