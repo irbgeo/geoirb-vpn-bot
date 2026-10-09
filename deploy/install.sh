@@ -34,7 +34,7 @@ bash "$S/awg-tools.sh"
 
 id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
 install -d -m 755 "$OPT"
-install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$OPT/"
+install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$OPT/"
 install -d -m 750 "$ROOT/etc/geoirb-vpn-bot"
 chown root:vpnbot "$ROOT/etc/geoirb-vpn-bot"
 install -m 640 "$S/env" "$E"
@@ -67,13 +67,18 @@ ROOT="$ROOT" bash "$S/awg0-init.sh"
 
 systemctl daemon-reload
 systemctl enable --quiet geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service
-# Split routing first (re-applied without a gap); it stays while the tunnel restarts.
-systemctl restart geoirb-vpn-routes.service
+# Split routing first; it stays while the tunnel restarts. Reload, never
+# restart: awg0 Requires= it, a restart would drop every client.
+if systemctl is-active --quiet geoirb-vpn-routes.service; then
+  systemctl reload geoirb-vpn-routes.service
+else
+  systemctl start geoirb-vpn-routes.service
+fi
 # Stop first: `down` must run with the OLD tunnel conf, before it is replaced.
 systemctl stop geoirb-awg-exit.service 2>/dev/null || true
 install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
 # start, never restart awg0: that would drop every connected client
-systemctl start geoirb-awg0.service
+systemctl is-active --quiet geoirb-awg0.service || systemctl start geoirb-awg0.service
 systemctl start geoirb-awg-exit.service
 
 # ufw (server-infra) drops forwarded and incoming traffic by default.

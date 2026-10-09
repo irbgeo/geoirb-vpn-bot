@@ -12,14 +12,10 @@ Before=geoirb-awg0.service geoirb-awg-exit.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=nft -f /etc/geoirb-vpn/geoirb-vpn.nft
-# the RU set from the last good ru-nets run (an empty set after a reboot
-# would send RU traffic through the exit until the timer runs). "-": a bad
-# saved set never blocks the rule and routes; the next ru-nets run refills it.
-ExecStart=-sh -c 'f=/var/lib/geoirb-vpn-bot/ru4.nft; [ ! -s "$$f" ] || nft -f "$$f"'
-ExecStart=ip route replace unreachable default metric 4096 table 100
-# added only when missing: never deleted, so there is no window without it
-ExecStart=sh -c 'ip rule show prio 110 | grep -q "fwmark 0x1 lookup 100" || ip rule add fwmark 0x1 lookup 100 prio 110'
+# reload (deploy) re-applies the same idempotent steps: a restart would also
+# restart geoirb-awg0.service (Requires=) and drop every client
+ExecStart=/opt/geoirb-vpn-bot/vpn-routes.sh
+ExecReload=/opt/geoirb-vpn-bot/vpn-routes.sh
 
 [Install]
 WantedBy=multi-user.target

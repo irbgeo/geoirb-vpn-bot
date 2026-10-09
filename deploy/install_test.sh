@@ -30,7 +30,7 @@ printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/id"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" == genkey ]] && echo KEY || echo "amneziawg-tools %s"\n' "$TAG" >"$TMP/bin/awg"
 printf '#!/usr/bin/env bash\necho "ufw $*" >>"$CALLS"\n[[ "$1" != status ]] || echo "Status: $UFW"\n' >"$TMP/bin/ufw"
 # systemctl also logs the awg-exit conf and the bot binary it sees, to prove the order.
-printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\n' >"$TMP/bin/systemctl"
+printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\ncase "$*" in\n  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;\n  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;\nesac\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
 run() { # run <ufw state> [env...]: installs a fresh copy of the package as deploy.sh lays it out.
@@ -43,6 +43,9 @@ run() { # run <ufw state> [env...]: installs a fresh copy of the package as depl
   local ufw="$1"; shift
   env CALLS="$TMP/calls" UFW="$ufw" ROOT="$R" PATH="$TMP/bin:$PATH" LOCAL_HASH="$HASH" "$@" \
     bash "$TMP/pkg/install.sh" >"$TMP/out" 2>&1
+  local rc=$?
+  cat "$TMP/calls" >>"$TMP/all-calls"
+  return $rc
 }
 HASH="$(printf 'BOT_TOKEN=1:a\nDB_SECRET_KEY=k\n' | sort | sha256sum | cut -d' ' -f1)"
 
@@ -67,15 +70,17 @@ check "awg-exit.conf replaced" "[Interface] NEW" "$(cat "$R/etc/geoirb-vpn/awg-e
 check "awg-exit.conf mode" "600" "$(mode "$R/etc/geoirb-vpn/awg-exit.conf")"
 check "awg-exit stopped with the old conf" "1" "$(grep -c '^systemctl stop geoirb-awg-exit.service conf=\[Interface\] OLD' "$TMP/calls")"
 check "awg-exit started after the stop" "1" "$([[ "$(line '^systemctl stop geoirb-awg-exit')" -lt "$(line '^systemctl start geoirb-awg-exit')" ]] && echo 1)"
-check "awg0 started, not restarted" "1 0" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls") $(grep -c '^systemctl restart geoirb-awg0' "$TMP/calls")"
-check "routes reloaded" "1" "$(grep -c '^systemctl restart geoirb-vpn-routes' "$TMP/calls")"
+check "inactive awg0 started" "1" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls")"
+check "inactive routes started" "1 0" "$(grep -c '^systemctl start geoirb-vpn-routes' "$TMP/calls") $(grep -c '^systemctl reload geoirb-vpn-routes' "$TMP/calls")"
 check "routes not stopped" "0" "$(grep -c '^systemctl stop geoirb-vpn-routes' "$TMP/calls")"
-check "routes before the tunnels" "1" "$([[ "$(line '^systemctl restart geoirb-vpn-routes')" -lt "$(line '^systemctl start geoirb-awg0')" ]] && echo 1)"
+check "routes before the tunnels" "1" "$([[ "$(line '^systemctl start geoirb-vpn-routes')" -lt "$(line '^systemctl start geoirb-awg0')" ]] && echo 1)"
+check "routes script in /opt" "1" "$(has "$OPT/vpn-routes.sh")"
 U="$SD/geoirb-vpn-routes.service"
 check "routes unit: no PartOf, no ExecStop" "0" "$(grep -cE '^(PartOf|ExecStop)' "$U")"
 check "routes unit: Before both tunnels" "1" "$(grep -cx 'Before=geoirb-awg0.service geoirb-awg-exit.service' "$U")"
 check "routes unit: wanted by multi-user only" "WantedBy=multi-user.target" "$(grep '^WantedBy' "$U")"
-check "routes unit: loads the saved RU set, failure ignored" "1" "$(grep -c '^ExecStart=-.*ru4.nft' "$U")"
+check "routes unit: start and reload run the same script" "ExecStart=/opt/geoirb-vpn-bot/vpn-routes.sh
+ExecReload=/opt/geoirb-vpn-bot/vpn-routes.sh" "$(grep -E '^Exec' "$U")"
 check "awg0 unit requires the routes unit" "1" "$(grep -cx 'Requires=geoirb-vpn-routes.service' "$SD/geoirb-awg0.service")"
 check "unbound-resolvconf off" "1" "$(grep -c '^systemctl disable --quiet --now unbound-resolvconf.service' "$TMP/calls")"
 check "apt-get update before install" "1 1" "$(grep -c '^apt-get update' "$TMP/calls") $([[ "$(line '^apt-get update')" -lt "$(line '^apt-get install')" ]] && echo 1)"
@@ -94,8 +99,10 @@ check "bot installed" "NEWBOT" "$(cat "$OPT/bot")"
 # Update: the backup sees the old binary; ufw inactive adds no rules.
 echo OLDBOT >"$OPT/bot"
 cp "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first"
-run inactive DPKG_OK=1
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
 check "update exits 0" "0" "$?"
+check "update: active routes reloaded, not started" "1 0" "$(grep -c '^systemctl reload geoirb-vpn-routes' "$TMP/calls") $(grep -c '^systemctl start geoirb-vpn-routes' "$TMP/calls")"
+check "update: active awg0 left alone" "0" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls")"
 check "update: backup of the old state" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service .*bot=OLDBOT' "$TMP/calls")"
 check "update: one backup" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service' "$TMP/calls")"
 check "update: awg0.conf kept" "1" "$(cmp -s "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first" && echo 1)"
@@ -110,6 +117,8 @@ check "hash guard: nothing done" "0" "$(grep -c . "$TMP/calls")"
 check "hash guard: env kept" "BOT_TOKEN=2:b" "$(head -1 "$R/etc/geoirb-vpn-bot/env")"
 run active FORCE=1
 check "FORCE=1 replaces" "0" "$?"
+
+check "never restarts routes or awg0" "0" "$(cat "$TMP"/all-calls | grep -c '^systemctl restart geoirb-\(vpn-routes\|awg0\)')"
 
 echo
 [[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }

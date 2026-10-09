@@ -12,6 +12,7 @@ test:
 	./deploy/install_test.sh
 	./deploy/awg0-init_test.sh
 	./deploy/ru-nets_test.sh
+	./deploy/vpn-routes_test.sh
 
 # Linux binary for the VPN server (deploy.sh builds with OUT=<its package>).
 OUT ?= bot
