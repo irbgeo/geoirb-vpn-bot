@@ -118,7 +118,7 @@ func TestMaintainMakesKeysOfUnlimitedUsersForever(t *testing.T) {
 		_, err = e.svc.Maintain(ctx) // ...and expiry disabled the key
 		require.NoError(t, err)
 		require.False(t, e.peers.m[trial.PublicKey].Enabled)
-		e.setRole(42, RoleUnlimited) // then the admin made them unlimited
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited}) // then the admin made them unlimited
 
 		m, err := e.svc.Maintain(ctx)
 		require.NoError(t, err)
@@ -226,7 +226,7 @@ func TestMaintainLogsSkippedKindOnce(t *testing.T) {
 		row.ExpiresAt = now.Add(-time.Hour)
 		e.peers.m[p.PublicKey] = row
 		delete(e.vpn.peers, p.PublicKey)
-		e.setRole(42, RoleUnlimited)
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited})
 		run := 0
 		e.vpn.onChange = func() {
 			run++
@@ -258,7 +258,7 @@ func TestMaintainLogsSkippedKeyOnce(t *testing.T) {
 		row.Enabled = false
 		row.ExpiresAt = now.Add(-time.Hour)
 		e.peers.m[p.PublicKey] = row
-		e.setRole(42, RoleUnlimited)
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited})
 
 		var buf bytes.Buffer
 		log.SetOutput(&buf)

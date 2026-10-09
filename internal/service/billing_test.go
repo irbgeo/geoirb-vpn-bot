@@ -36,7 +36,7 @@ func TestInvoiceForPlainUserOnly(t *testing.T) {
 		)
 		require.ErrorIs(t, err, ErrNoTariff)
 
-		e.setRole(42, RoleUnlimited)
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited})
 		_, err = e.svc.Invoice(
 			ctx,
 			PurchaseInput{

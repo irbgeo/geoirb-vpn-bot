@@ -62,7 +62,7 @@ func TestReadsDoNotReturnSecrets(t *testing.T) {
 		repeat := e.pay(t, "c1")
 		noSecrets(t, repeat.Peer)
 
-		e.setRole(42, RoleUnlimited)
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited})
 		created, err := e.svc.CreateKey(
 			ctx,
 			CreateKeyInput{

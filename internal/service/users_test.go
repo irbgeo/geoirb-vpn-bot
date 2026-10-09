@@ -48,7 +48,7 @@ func TestRegisterKeepsRoleAndUpdatesUsername(t *testing.T) {
 			},
 		)
 		require.NoError(t, err)
-		e.setRole(42, RoleAdmin)
+		e.setRole(roleInput{ID: 42, Role: RoleAdmin})
 
 		u, err := e.svc.Register(
 			ctx,
@@ -101,7 +101,7 @@ func TestAdmins(t *testing.T) {
 			)
 			require.NoError(t, err)
 		}
-		e.setRole(2, RoleAdmin)
+		e.setRole(roleInput{ID: 2, Role: RoleAdmin})
 
 		admins, err := e.svc.Admins(ctx)
 		require.NoError(t, err)
@@ -482,10 +482,10 @@ func (s *env) users() *fakeUsers {
 	return s.svc.users.(*fakeUsers)
 }
 
-func (s *env) setRole(id int64, r Role) {
-	u := s.users().m[id]
-	u.Role = r
-	s.users().m[id] = u
+func (s *env) setRole(in roleInput) {
+	u := s.users().m[in.ID]
+	u.Role = in.Role
+	s.users().m[in.ID] = u
 }
 
 func (s *env) register(t *testing.T, r Role) {
@@ -498,12 +498,12 @@ func (s *env) register(t *testing.T, r Role) {
 		},
 	)
 	require.NoError(t, err)
-	s.setRole(42, r)
+	s.setRole(roleInput{ID: 42, Role: r})
 }
 
 func TestNextKeyNumberTakesSmallestFree(t *testing.T) {
-	require.Equal(t, 2, nextKeyNumber([]string{"tg:u #1", "tg:u #3"}, "tg:u"))
-	require.Equal(t, 3, nextKeyNumber([]string{"tg:u #1", "tg:u #2"}, "tg:u"))
-	require.Equal(t, 1, nextKeyNumber(nil, "tg:u"))
-	require.Equal(t, 1, nextKeyNumber([]string{"tg:u #2", "other #1", "tg:u"}, "tg:u"))
+	require.Equal(t, 2, nextKeyNumber(keyNumberInput{Names: []string{"tg:u #1", "tg:u #3"}, Base: "tg:u"}))
+	require.Equal(t, 3, nextKeyNumber(keyNumberInput{Names: []string{"tg:u #1", "tg:u #2"}, Base: "tg:u"}))
+	require.Equal(t, 1, nextKeyNumber(keyNumberInput{Names: nil, Base: "tg:u"}))
+	require.Equal(t, 1, nextKeyNumber(keyNumberInput{Names: []string{"tg:u #2", "other #1", "tg:u"}, Base: "tg:u"}))
 }

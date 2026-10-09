@@ -96,7 +96,11 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 			for _, h := range have {
 				names = append(names, h.Name)
 			}
-			name = fmt.Sprintf("%s #%d", base, nextKeyNumber(names, base))
+			keyNumberInput := keyNumberInput{
+				Names: names,
+				Base:  base,
+			}
+			name = fmt.Sprintf("%s #%d", base, nextKeyNumber(keyNumberInput))
 		}
 		issueInput := IssueInput{
 			UserID: userID,
@@ -188,13 +192,13 @@ func displayName(u *User) string {
 }
 
 // nextKeyNumber returns the smallest n >= 1 such that "base #n" is not in names.
-func nextKeyNumber(names []string, base string) int {
-	used := make(map[string]bool, len(names))
-	for _, n := range names {
+func nextKeyNumber(in keyNumberInput) int {
+	used := make(map[string]bool, len(in.Names))
+	for _, n := range in.Names {
 		used[n] = true
 	}
 	n := 1
-	for used[fmt.Sprintf("%s #%d", base, n)] {
+	for used[fmt.Sprintf("%s #%d", in.Base, n)] {
 		n++
 	}
 	return n

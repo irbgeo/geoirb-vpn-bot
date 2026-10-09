@@ -14,17 +14,17 @@ import (
 
 // fakeBin writes an executable shell script called name into a temp dir and
 // puts that dir first on PATH.
-func fakeBin(t *testing.T, name, script string) string {
+func fakeBin(t *testing.T, in fakeBinInput) string {
 	t.Helper()
 	dir := t.TempDir()
-	p := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\n"+script), 0o700))
+	p := filepath.Join(dir, in.Name)
+	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\n"+in.Script), 0o700))
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	return p
 }
 
 func TestLocalRunnerExec(t *testing.T) {
-	fakeBin(t, "awg", `echo "$@"; cat`)
+	fakeBin(t, fakeBinInput{Name: "awg", Script: `echo "$@"; cat`})
 	cfg := &config.Config{AWGTimeout: 5 * time.Second}
 
 	out, err := NewLocalRunner(cfg).Exec(
@@ -39,7 +39,7 @@ func TestLocalRunnerExec(t *testing.T) {
 }
 
 func TestLocalRunnerErrorHasStderrNotStdin(t *testing.T) {
-	fakeBin(t, "awg", `echo "bad key" >&2; exit 1`)
+	fakeBin(t, fakeBinInput{Name: "awg", Script: `echo "bad key" >&2; exit 1`})
 	cfg := &config.Config{AWGTimeout: 5 * time.Second}
 
 	_, err := NewLocalRunner(cfg).Exec(

@@ -22,13 +22,20 @@ func (s *service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 	stats, err := s.vpn.Stats(ctx)
 	if err != nil {
 		log.Printf("service: access: vpn stats: %v", err)
-		keys := join(ps, nil)
+		joinInput := joinInput{
+			Peers: ps,
+		}
+		keys := join(joinInput)
 		for i := range keys {
 			keys[i].StatsUnavailable = true // the same on every key
 		}
 		return keys, nil
 	}
-	return join(ps, stats), nil
+	joinInput := joinInput{
+		Peers: ps,
+		Stats: stats,
+	}
+	return join(joinInput), nil
 }
 
 // UserConfig renders a key's config for its owner. Someone else's key is
@@ -54,18 +61,22 @@ func (s *service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	return join(ps, stats), nil
+	joinInput := joinInput{
+		Peers: ps,
+		Stats: stats,
+	}
+	return join(joinInput), nil
 }
 
 // join pairs keys with their live stats and sorts them by IP.
-func join(ps []*Peer, stats []PeerStat) []KeyInfo {
-	live := make(map[string]PeerStat, len(stats))
-	for _, st := range stats {
+func join(in joinInput) []KeyInfo {
+	live := make(map[string]PeerStat, len(in.Stats))
+	for _, st := range in.Stats {
 		live[st.PublicKey] = st
 	}
 	now := time.Now()
-	out := make([]KeyInfo, 0, len(ps))
-	for _, p := range ps {
+	out := make([]KeyInfo, 0, len(in.Peers))
+	for _, p := range in.Peers {
 		st := live[p.PublicKey]
 		keyInfo := KeyInfo{
 			Peer:          p.public(),

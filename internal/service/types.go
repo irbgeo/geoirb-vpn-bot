@@ -357,3 +357,21 @@ func (s *Peer) public() *Peer {
 	c.PrivateKey, c.PSK = "", ""
 	return &c
 }
+
+// joinInput is the keys and live stats that join pairs up.
+type joinInput struct {
+	Peers []*Peer
+	Stats []PeerStat
+}
+
+// logKey names one (key, error kind) pair for logOnce.
+type logKey struct {
+	PublicKey string
+	Kind      string
+}
+
+// keyNumberInput is the names taken and the base name for nextKeyNumber.
+type keyNumberInput struct {
+	Names []string
+	Base  string
+}

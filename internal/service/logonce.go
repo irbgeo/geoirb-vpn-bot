@@ -11,13 +11,13 @@ type logOnce struct {
 }
 
 // first reports true only the first time it sees this key and kind.
-func (s *logOnce) first(publicKey string, kind string) bool {
+func (s *logOnce) first(k logKey) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.seen == nil {
 		s.seen = make(map[string]bool)
 	}
-	id := publicKey + "|" + kind
+	id := k.PublicKey + "|" + k.Kind
 	if s.seen[id] {
 		return false
 	}

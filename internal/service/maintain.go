@@ -70,7 +70,11 @@ keys:
 			if err != nil {
 				// A skip kind: only this key can't go back on, the rest go on.
 				kind := skipKind(err)
-				if kind == "" || s.skipLogged.first(p.PublicKey, kind) {
+				logKey := logKey{
+					PublicKey: p.PublicKey,
+					Kind:      kind,
+				}
+				if kind == "" || s.skipLogged.first(logKey) {
 					log.Printf("service: make %s forever: %v", p.IP, err)
 				}
 				if kind == "" {

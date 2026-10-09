@@ -14,17 +14,17 @@ import (
 
 // fakeBin writes an executable shell script called name into a temp dir and
 // puts that dir first on PATH.
-func fakeBin(t *testing.T, name, script string) string {
+func fakeBin(t *testing.T, in fakeBinInput) string {
 	t.Helper()
 	dir := t.TempDir()
-	p := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\n"+script), 0o700))
+	p := filepath.Join(dir, in.Name)
+	require.NoError(t, os.WriteFile(p, []byte("#!/bin/sh\n"+in.Script), 0o700))
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	return p
 }
 
 func TestRunExec(t *testing.T) {
-	fakeBin(t, "awg", `echo "$@"; cat`)
+	fakeBin(t, fakeBinInput{Name: "awg", Script: `echo "$@"; cat`})
 	cfg := &config.Config{AWGTimeout: 5 * time.Second}
 
 	out, err := New(cfg).Run(
@@ -39,7 +39,7 @@ func TestRunExec(t *testing.T) {
 }
 
 func TestRunErrorHasStderrNotStdin(t *testing.T) {
-	fakeBin(t, "awg", `echo "bad key" >&2; exit 1`)
+	fakeBin(t, fakeBinInput{Name: "awg", Script: `echo "bad key" >&2; exit 1`})
 	cfg := &config.Config{AWGTimeout: 5 * time.Second}
 
 	_, err := New(cfg).Run(
@@ -55,7 +55,7 @@ func TestRunErrorHasStderrNotStdin(t *testing.T) {
 }
 
 func TestRunTimeout(t *testing.T) {
-	fakeBin(t, "slow", `exec sleep 5`)
+	fakeBin(t, fakeBinInput{Name: "slow", Script: `exec sleep 5`})
 	cfg := &config.Config{AWGTimeout: 50 * time.Millisecond}
 
 	start := time.Now()
@@ -68,7 +68,7 @@ func TestRunTimeout(t *testing.T) {
 }
 
 func TestRunWrapperGetsArgsFirst(t *testing.T) {
-	wrapper := fakeBin(t, "wrap", `echo "wrapped $@"; cat`)
+	wrapper := fakeBin(t, fakeBinInput{Name: "wrap", Script: `echo "wrapped $@"; cat`})
 	cfg := &config.Config{
 		AWGTimeout: 5 * time.Second,
 		AWGExec:    wrapper,
