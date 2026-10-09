@@ -186,7 +186,7 @@ func TestPaymentRepeatDoesNothing(t *testing.T) {
 	require.Empty(t, s.files)
 }
 
-func TestPaymentNeedsReviewTellsOnlyAdmins(t *testing.T) {
+func TestPaymentNeedsReviewTellsUserAndAdmins(t *testing.T) {
 	svc := adminService()
 	svc.admins = []*service.User{
 		{
@@ -199,11 +199,13 @@ func TestPaymentNeedsReviewTellsOnlyAdmins(t *testing.T) {
 	r, s := newRouter(svc)
 
 	require.NoError(t, r.Handle(context.Background(), paid()))
-	require.Len(t, s.sent, 1, "nothing for the user, one alert for the admin")
-	require.Equal(t, int64(1), s.sent[0].ChatID)
-	require.Contains(t, s.sent[0].Text, "charge1")
-	require.Contains(t, s.sent[0].Text, "150 ⭐")
-	require.Contains(t, s.sent[0].Text, "проверьте срок ключа и примените вручную или верните звёзды")
+	require.Len(t, s.sent, 2, "a note for the user, one alert for the admin")
+	require.Equal(t, int64(42), s.sent[0].ChatID)
+	require.Equal(t, "✅ Оплата получена. Администратор проверит её и продлит ключ в ближайшее время.", s.sent[0].Text)
+	require.Equal(t, int64(1), s.sent[1].ChatID)
+	require.Contains(t, s.sent[1].Text, "charge1")
+	require.Contains(t, s.sent[1].Text, "150 ⭐")
+	require.Contains(t, s.sent[1].Text, "проверьте срок ключа и примените вручную или верните звёзды")
 	require.Empty(t, s.files)
 	require.Empty(t, s.refunds)
 }

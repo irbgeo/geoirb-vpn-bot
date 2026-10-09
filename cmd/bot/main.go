@@ -112,6 +112,17 @@ func main() {
 
 	// Run: startup checks, the worker, the load monitor and long polling;
 	// then stop them in order.
+	// The tunnel watcher owns the bot's ip rules: through the exit tunnel
+	// while it works, direct while it is down. Its first check runs before
+	// any Telegram call, so a stale rule left with the tunnel down is gone.
+	if cfg.ExitIface != "" {
+		hostNet := tunnel.NewHostNet(cfg)
+		watcher := tunnel.New(
+			hostNet,
+			3*time.Minute,
+		)
+		notifier.WatchTunnel(ctx, watcher)
+	}
 	_, err = client.SetMyCommands(ctx, bot.Commands())
 	if err != nil {
 		log.Printf("telegram: set commands: %v", err)
@@ -129,16 +140,6 @@ func main() {
 		close(workerDone)
 	}()
 	go notifier.WatchServerLoad(ctx)
-	// The tunnel watcher owns the bot's ip rules: through the exit tunnel
-	// while it works, direct while it is down.
-	if cfg.ExitIface != "" {
-		hostNet := tunnel.NewHostNet(cfg)
-		watcher := tunnel.New(
-			hostNet,
-			3*time.Minute,
-		)
-		go notifier.WatchTunnel(ctx, watcher)
-	}
 
 	// Dispatcher: chats are handled in parallel (one slow awg command must
 	// not stall everyone), updates of one chat in order.

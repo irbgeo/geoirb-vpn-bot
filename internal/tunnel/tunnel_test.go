@@ -77,9 +77,37 @@ func TestCheckErrorKeepsTheState(t *testing.T) {
 	})
 }
 
-func TestCheckNeverHandshakedIsDown(t *testing.T) {
+func TestCheckNeverHandshakedIsUnknownRightAfterStart(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
 		n := &fakeNet{}
+		w := New(n, 3*time.Minute)
+
+		st, changed, err := w.Check(ctx)
+		require.NoError(t, err)
+		require.Equal(t, Unknown, st, "just booted: the tunnel may not have shaken hands yet")
+		require.False(t, changed)
+		require.Empty(t, n.routes)
+
+		time.Sleep(2 * time.Minute)
+		st, changed, err = w.Check(ctx)
+		require.NoError(t, err)
+		require.Equal(t, Unknown, st)
+		require.False(t, changed)
+		require.Empty(t, n.routes)
+
+		time.Sleep(time.Minute)
+		st, changed, err = w.Check(ctx)
+		require.NoError(t, err)
+		require.Equal(t, Down, st)
+		require.True(t, changed)
+		require.Equal(t, []bool{false}, n.routes, "a stale bot rule is removed")
+	})
+}
+
+func TestCheckOldHandshakeIsDownAtOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		n := &fakeNet{handshake: time.Now().Add(-time.Hour)}
 		w := New(n, 3*time.Minute)
 
 		st, changed, err := w.Check(context.Background())

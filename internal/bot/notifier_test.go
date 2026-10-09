@@ -322,15 +322,13 @@ func watchTunnel(t *testing.T, steps []tunnelStep) []outMessage {
 		},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		r.notify.WatchTunnel(ctx, &fakeTunnel{steps: steps})
-		close(done)
-	}()
+	ft := &fakeTunnel{steps: steps}
+	r.notify.WatchTunnel(ctx, ft)
+	require.Len(t, ft.steps, max(len(steps)-1, 1), "the first check is done before WatchTunnel returns")
 	time.Sleep(time.Duration(len(steps)) * time.Minute)
 	synctest.Wait()
 	cancel()
-	<-done
+	synctest.Wait() // the watch goroutine ends
 	return s.sent
 }
 
@@ -374,6 +372,22 @@ func TestWatchTunnelUpAtStartIsQuiet(t *testing.T) {
 
 		require.Len(t, sent, 1)
 		require.Equal(t, tunnelDownText, sent[0].Text)
+	})
+}
+
+func TestWatchTunnelUnknownThenUpIsQuiet(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sent := watchTunnel(t, []tunnelStep{
+			{
+				st: tunnel.Unknown,
+			},
+			{
+				st:      tunnel.Up,
+				changed: true,
+			},
+		})
+
+		require.Empty(t, sent, "up after the boot grace is not news")
 	})
 }
 

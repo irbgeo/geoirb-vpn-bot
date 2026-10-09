@@ -116,6 +116,14 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 			UserID:   m.From.ID,
 			Stars:    int(sp.TotalAmount),
 		}
+		outMessage := outMessage{
+			ChatID: m.Chat.ID,
+			Text:   paidUnderReviewText,
+		}
+		err = s.send.Send(ctx, outMessage)
+		if err != nil {
+			log.Printf("bot: tell %d the payment is under review: %v", m.Chat.ID, err)
+		}
 		s.notify.NotifyAdmins(ctx, paymentReviewText(reviewInput))
 		return nil
 	}

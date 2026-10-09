@@ -121,14 +121,14 @@ func (s *notifier) WatchServerLoad(ctx context.Context) {
 	}
 }
 
-// WatchTunnel checks the exit tunnel now and then every minute until ctx is
-// done, and tells admins when it goes down or comes back. Up at the first
-// check is quiet (only the bot route is set); down is told once.
+// WatchTunnel checks the exit tunnel now, before it returns (so a stale
+// bot route is fixed before the bot's first calls), then every minute in
+// the background until ctx is done, and tells admins when it goes down or
+// comes back. Up at the first known state is quiet (only the bot route is
+// set); down is told once.
 func (s *notifier) WatchTunnel(ctx context.Context, w tunnelChecker) {
-	t := time.NewTicker(time.Minute)
-	defer t.Stop()
 	first := true
-	for {
+	check := func() {
 		st, changed, err := w.Check(ctx)
 		if err != nil {
 			log.Printf("bot: tunnel check: %v", err)
@@ -136,15 +136,23 @@ func (s *notifier) WatchTunnel(ctx context.Context, w tunnelChecker) {
 		if changed && (st == tunnel.Down || !first) {
 			s.NotifyAdmins(ctx, tunnelText(st))
 		}
-		if err == nil {
+		if err == nil && st != tunnel.Unknown {
 			first = false
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
 	}
+	check()
+	go func() {
+		t := time.NewTicker(time.Minute)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				check()
+			}
+		}
+	}()
 }
 
 // CheckServerLoad tells admins when a server limit (connection table,
