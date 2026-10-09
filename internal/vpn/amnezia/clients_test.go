@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const tablePath = "/opt/amnezia/awg/clientsTable"
+const tablePath = "/etc/amnezia/amneziawg/clientsTable"
 
 const clientsTable = `[
     {

@@ -44,7 +44,7 @@ func awgContainer(conf *string) *fakeRunner {
 		switch {
 		case strings.HasPrefix(cmd, "sh -c command -v"):
 			return "/usr/bin/awg\n", nil
-		case cmd == "cat /opt/amnezia/awg/awg0.conf":
+		case cmd == "cat /etc/amnezia/amneziawg/awg0.conf":
 			return *conf, nil
 		case strings.HasPrefix(cmd, "sh -c") && strings.Contains(cmd, "mv"):
 			*conf = in.Stdin
@@ -59,7 +59,7 @@ func TestOpenDetectsLayout(t *testing.T) {
 	s, err := Open(context.Background(), awgContainer(&conf), confFile)
 	require.NoError(t, err)
 	require.Equal(t, "awg0", s.iface)
-	require.Equal(t, "/opt/amnezia/awg/awg0.conf", s.confPath)
+	require.Equal(t, "/etc/amnezia/amneziawg/awg0.conf", s.confPath)
 	require.Equal(t, "awg", s.tool)
 }
 
@@ -159,7 +159,7 @@ func TestUpdateCallbackErrorWritesNothing(t *testing.T) {
 
 	err = s.Update(context.Background(), func(*serverConf) error { return errors.New("boom") })
 	require.ErrorContains(t, err, "boom")
-	require.Equal(t, []string{"cat /opt/amnezia/awg/awg0.conf"}, r.cmds())
+	require.Equal(t, []string{"cat /etc/amnezia/amneziawg/awg0.conf"}, r.cmds())
 }
 
 func TestUpdateSyncFailureKeepsFile(t *testing.T) {

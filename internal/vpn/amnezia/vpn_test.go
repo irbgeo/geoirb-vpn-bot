@@ -14,7 +14,7 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-const confFile = "/opt/amnezia/awg/awg0.conf"
+const confFile = "/etc/amnezia/amneziawg/awg0.conf"
 
 var errBoom = errors.New("boom")
 

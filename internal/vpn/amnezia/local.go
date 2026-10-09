@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
@@ -39,14 +40,21 @@ func (s *localRunner) Exec(ctx context.Context, in execInput) (string, error) {
 		args = in.Args[1:]
 	}
 	cmd := exec.CommandContext(ctx, name, args...)
+	// Own process group: on timeout the whole group dies, not only the direct
+	// child (sh -c scripts, ssh under a wrapper keep the pipes open).
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Stdin = strings.NewReader(in.Stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	// On timeout the process is killed, but a command it started may still
-	// finish, so callers must treat the result as unknown.
+	// On timeout the group is killed, possibly half-way through a script, so
+	// callers treat the result as unknown (ErrNotPersisted / undo).
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return "", fmt.Errorf("amnezia: %s: timed out after %s", strings.Join(in.Args, " "), s.timeout)
 	}

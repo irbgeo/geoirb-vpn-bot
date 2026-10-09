@@ -84,3 +84,15 @@ func TestLocalRunnerWrapperGetsArgsFirst(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "wrapped awg show\nIN", out)
 }
+
+func TestLocalRunnerTimeoutKillsGrandchildren(t *testing.T) {
+	cfg := &config.Config{AWGTimeout: 50 * time.Millisecond}
+
+	start := time.Now()
+	_, err := NewLocalRunner(cfg).Exec(
+		context.Background(),
+		execInput{Args: []string{"sh", "-c", "sleep 5; true"}},
+	)
+	require.ErrorContains(t, err, "timed out")
+	require.Less(t, time.Since(start), time.Second)
+}
