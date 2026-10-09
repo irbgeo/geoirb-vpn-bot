@@ -404,6 +404,8 @@ func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
 }
 
 const (
+	statsUnavailableText  = "Данные о подключениях временно недоступны."
+	staleButtonText       = "Эта кнопка устарела — начните заново."
 	previewExpiredText    = "Этот предпросмотр устарел — ничего не отправлено. Откройте /menu и начните заново."
 	massSendBusyText      = "📣 Сейчас уже идёт рассылка — дождитесь её отчёта и нажмите «Отправить» ещё раз."
 	keyDeliveryFailedText = "🔑 Ключ создан, но отправить его сразу не получилось. Он в «📋 Мой доступ» — нажмите «📄 Конфиг»."
@@ -556,7 +558,11 @@ func statsText(st *service.Stats) string {
 
 // accessText lists the user's own keys.
 func accessText(keys []service.KeyInfo) string {
-	return "📋 Ваш доступ\n" + keysText(keys)
+	text := "📋 Ваш доступ\n" + keysText(keys)
+	if len(keys) > 0 && keys[0].StatsUnavailable {
+		text += "\n" + statsUnavailableText
+	}
+	return text
 }
 
 // keysText describes each key: status, end date, last connection,

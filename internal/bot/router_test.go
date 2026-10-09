@@ -523,6 +523,7 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 		},
 	)
 
+	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
 	require.NoError(t, r.Handle(context.Background(), press("key:noname")))
 
 	require.Len(t, s.files, 2, "config and QR; the lists come in step 3")
@@ -532,10 +533,10 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 	require.Contains(t, conf.Caption, "до 04.10.2026 15:00 по Москве", "12:00 UTC is 15:00 MSK")
 	require.Equal(t, "qr.png", qr.Name)
 	require.Equal(t, "\x89PNG", string(qr.Data[:4]))
-	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "QR")
-	require.Contains(t, s.sent[0].Text, "Подключиться")
-	require.Equal(t, "bypass", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData, "next step")
+	require.Len(t, s.sent, 2, "the name question, then the steps")
+	require.Contains(t, s.sent[1].Text, "QR")
+	require.Contains(t, s.sent[1].Text, "Подключиться")
+	require.Equal(t, "bypass", s.sent[1].Keyboard.InlineKeyboard[0][0].CallbackData, "next step")
 }
 
 func TestCreateKeyAsksForANameFirst(t *testing.T) {
@@ -668,6 +669,7 @@ func TestCreateKeyForeverCaption(t *testing.T) {
 		},
 	)
 
+	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
 	require.NoError(t, r.Handle(context.Background(), press("key:noname")))
 	require.Contains(t, s.files[0].Caption, "бессрочный")
 }

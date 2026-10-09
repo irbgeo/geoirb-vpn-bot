@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"net/netip"
 	"slices"
 	"time"
@@ -18,7 +19,12 @@ func (s *service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return s.withStats(ctx, ps)
+	stats, err := s.vpn.Stats(ctx)
+	if err != nil {
+		log.Printf("service: access: vpn stats: %v", err)
+		return join(ps, nil, true), nil
+	}
+	return join(ps, stats, false), nil
 }
 
 // UserConfig renders a key's config for its owner. Someone else's key is
@@ -44,6 +50,11 @@ func (s *service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 	if err != nil {
 		return nil, err
 	}
+	return join(ps, stats, false), nil
+}
+
+// join pairs keys with their live stats and sorts them by IP.
+func join(ps []*Peer, stats []PeerStat, unavailable bool) []KeyInfo {
 	live := make(map[string]PeerStat, len(stats))
 	for _, st := range stats {
 		live[st.PublicKey] = st
@@ -58,13 +69,15 @@ func (s *service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 			LastHandshake: st.LastHandshake,
 			Sent:          st.Sent,
 			Received:      st.Received,
+
+			StatsUnavailable: unavailable,
 		}
 		out = append(out, keyInfo)
 	}
 	slices.SortFunc(out, func(a, b KeyInfo) int {
 		return parseIP(a.Peer.IP).Compare(parseIP(b.Peer.IP))
 	})
-	return out, nil
+	return out
 }
 
 func parseIP(s string) netip.Addr {

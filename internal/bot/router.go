@@ -264,12 +264,7 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	case cq.Data == cbIssueKey:
 		return s.askKeyName(ctx, cq)
 	case cq.Data == cbKeyNoName:
-		s.dialogs.drop(cq.ChatID())
-		keyRequest := keyRequest{
-			ChatID: cq.ChatID(),
-			UserID: cq.SenderID(),
-		}
-		return s.issueKey(ctx, keyRequest)
+		return s.skipKeyName(ctx, cq)
 	case cq.Data == cbMyAccess:
 		return s.myAccess(ctx, cq)
 	case cq.Data == cbBypass:
@@ -417,6 +412,30 @@ func (s *router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error 
 		Keyboard: skipKeyNameKeyboard(),
 	}
 	return s.send.Send(ctx, outMessage)
+}
+
+// skipKeyName issues a key with the default name, but only while a key-name
+// dialog is open for this chat; an old Skip button just shows the menu.
+func (s *router) skipKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	p, ok := s.dialogs.peek(cq.ChatID())
+	if !ok || p.Kind != pendingKeyName {
+		menu, err := s.mainMenu(ctx, &cq.From)
+		if err != nil {
+			return err
+		}
+		outMessage := outMessage{
+			ChatID:   cq.ChatID(),
+			Text:     staleButtonText + "\n\n" + menu.Text,
+			Keyboard: menu.Keyboard,
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	s.dialogs.drop(cq.ChatID())
+	keyRequest := keyRequest{
+		ChatID: cq.ChatID(),
+		UserID: cq.SenderID(),
+	}
+	return s.issueKey(ctx, keyRequest)
 }
 
 // issueKey creates the user's key and sends it with the import steps.

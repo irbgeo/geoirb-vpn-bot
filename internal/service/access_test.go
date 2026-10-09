@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -86,6 +87,24 @@ func TestAccessSortedByIP(t *testing.T) {
 		require.Equal(t, "10.8.1.2", keys[0].Peer.IP)
 		require.Equal(t, "10.8.1.3", keys[1].Peer.IP)
 		require.Equal(t, "10.8.1.4", keys[2].Peer.IP)
+	})
+}
+
+func TestAccessWhenStatsFailReturnsKeysFlagged(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		_, err := e.svc.CreateKey(ctx, CreateKeyInput{UserID: 42})
+		require.NoError(t, err)
+		e.vpn.statsErr = errors.New("docker down")
+
+		keys, err := e.svc.Access(ctx, 42)
+
+		require.NoError(t, err)
+		require.Len(t, keys, 1)
+		require.True(t, keys[0].StatsUnavailable)
+		require.False(t, keys[0].Online)
 	})
 }
 

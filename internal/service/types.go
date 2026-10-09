@@ -207,6 +207,8 @@ type KeyInfo struct {
 	LastHandshake time.Time // zero = never connected (or not on the server)
 	Sent          int64     // bytes the client uploaded (server rx)
 	Received      int64     // bytes the client downloaded (server tx)
+
+	StatsUnavailable bool // the VPN stats call failed: the live fields are empty
 }
 
 // UserKey names one key of one user.

@@ -174,6 +174,7 @@ func TestKeyCreatedButNotDeliveredTellsTheUser(t *testing.T) {
 	}
 	r, s := newRouter(svc)
 
+	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
 	err := r.Handle(context.Background(), press("key:noname"))
 	require.Error(t, err)
 	last := s.sent[len(s.sent)-1]

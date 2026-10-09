@@ -144,3 +144,36 @@ func ownKeyService() *fakeService {
 		},
 	}
 }
+
+func TestMyAccessWhenVPNStatsFailShowsKeysAndNote(t *testing.T) {
+	svc := ownKeyService()
+	svc.access[0].StatsUnavailable = true
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press(cbMyAccess)))
+	require.Contains(t, s.sent[0].Text, "iPhone")
+	require.Contains(t, s.sent[0].Text, "Данные о подключениях временно недоступны")
+
+	require.NoError(t, r.Handle(ctx, press(cbReissueAsk+"PUB=")))
+	require.Contains(t, s.sent[1].Text, "iPhone")
+	require.NoError(t, r.Handle(ctx, press(cbDeleteAsk+"PUB=")))
+	require.Contains(t, s.sent[2].Text, "iPhone")
+}
+
+func TestSkipWithoutOpenNameDialogIssuesNothing(t *testing.T) {
+	svc := &fakeService{
+		created: &service.Peer{
+			PublicKey: "PUB=",
+		},
+	}
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press(cbKeyNoName)))
+
+	require.Empty(t, svc.createdWith)
+	require.Empty(t, s.files)
+	require.Len(t, s.sent, 1)
+	require.Contains(t, s.sent[0].Text, "Эта кнопка устарела")
+	require.NotNil(t, s.sent[0].Keyboard)
+}
