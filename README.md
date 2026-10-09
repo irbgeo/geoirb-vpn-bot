@@ -2,7 +2,7 @@
 
 Telegram-бот, который продаёт доступ к VPN на AmneziaWG 2.0 за Telegram Stars
 и сам выдаёт, продлевает, отключает и удаляет ключи. Работает на том же
-сервере, что и VPN, и управляет контейнером Amnezia через `docker exec`.
+сервере, что и VPN, и управляет AmneziaWG на хосте командами `awg`.
 
 ## Что умеет
 
@@ -67,68 +67,103 @@ Telegram-бот, который продаёт доступ к VPN на AmneziaW
 
 ## Как устроен сервер
 
-- Контейнер `amnezia-awg2` (у старых установок `amnezia-awg`) — бот находит его сам.
-- Внутри `/opt/amnezia/awg/`: `awg0.conf` (или `wg0.conf`), `clientsTable` (список
-  клиентов в приложении Amnezia), ключи сервера. Папка **не** смонтирована на хост.
-- Утилита `awg`, интерфейс `awg0`, UDP-порт из `ListenPort`, подсеть из `Address`.
+Два сервера. Клиенты подключаются к **российскому** (RU, «входной»): бот, Mongo и VPN
+стоят на нём. Трафик на российские IP выходит прямо с него; всё остальное идёт через
+туннель AWG на **выходной** сервер (GCP) и выходит оттуда.
+
+```
+клиенты ─UDP 443─► awg0 (10.8.0.0/22) ──┬─ адрес в списке RU ─► eth0 (RU IP)
+                                         └─ остальное ─► awg-exit ─► GCP ─► интернет
+```
+
+- AmneziaWG работает прямо на хосте (`awg-quick`, модуль ядра `amneziawg-dkms`), без
+  Docker. Бот меняет VPN командами `awg` через `internal/hostexec`, права — только
+  `CAP_NET_ADMIN`; пользователь `vpnbot` не в группе `docker`.
+- `awg0` — клиенты, UDP 443, подсеть `10.8.0.0/22`; конфиг `/etc/amnezia/amneziawg/awg0.conf`
+  (владелец `vpnbot`). Создаётся при первой установке и больше **не** перезаписывается.
+- `awg-exit` — туннель до выходного сервера; ключи и параметры — в `secret/tunnel.yaml`.
+- Российские сети (`ru4`, nftables) раз в неделю берутся из RIPE (`geoirb-ru-nets.timer`).
+  Если загрузка не удалась, старый список остаётся; старше 8 дней — админам приходит сообщение.
+- Если туннель не работает, не-российский трафик клиентов **блокируется** (не уходит
+  напрямую с российского IP), админам приходит сообщение. Собственный трафик бота
+  (Telegram) идёт через туннель и переключается на прямой, пока туннель лежит; правила
+  `ip rule` (prio 100/101, IPv4 и IPv6) ведёт сам бот (`internal/tunnel`).
+- DNS для клиентов — `unbound` на `10.8.0.1` (DoT на 1.1.1.1/1.0.0.1 с российского IP),
+  работает и при упавшем туннеле. В `.env`: `CLIENT_DNS=10.8.0.1`.
 - Параметры обфускации клиента (`Jc`, `S1–S4`, `H1–H4`, `HeaderProtectionKey`, …)
   копируются из `[Interface]` сервера; закомментированные `# I1…I5` в конфиге
-  клиента становятся активными — так же делает приложение Amnezia.
+  клиента становятся активными.
 - Изменения применяются без перезапуска: `awg syncconf` (остальные клиенты не
   отключаются), затем файл сохраняется: `.bak` → `.tmp` → `mv`.
+- Mongo слушает только `127.0.0.1:27017`. Compass: `ssh -L 27017:127.0.0.1:27017 <сервер>`.
 
-## Установка на новый сервер (Ubuntu)
+## Установка на новый RU-сервер (Ubuntu)
 
-1. **VPN.** Поставьте AmneziaWG 2.0 из приложения Amnezia, как обычно. Затем модуль ядра
-   (VPN будет работать в ядре, а не программой `amneziawg-go`, — меньше процессора):
-   `sudo add-apt-repository ppa:amnezia/ppa && sudo apt install amneziawg-dkms`,
-   `sudo modprobe amneziawg`, `docker restart amnezia-awg2`.
-2. **Mongo.** В соседнем репозитории `server-infra`:
+1. **Mongo, Caddy, firewall.** В соседнем репозитории `server-infra`:
    ```bash
-   SERVER=geoirb-vpn make bootstrap                        # Docker + Mongo
-   SERVER=geoirb-vpn make provision-remote DB=geoirb_vpn   # пользователь geoirb_vpn_bot
+   make install                    # Mongo, Caddy, firewall (нужен 443/udp), fail2ban
+   make add-user DB=geoirb_vpn     # пользователь geoirb_vpn_bot
    ```
    Пароль пользователя окажется в `server-infra/secret/database.yaml` — `deploy` возьмёт его оттуда.
+2. **Модуль ядра.** `sudo add-apt-repository ppa:amnezia/ppa && sudo apt install amneziawg-dkms`
+   и `sudo modprobe amneziawg`. Утилиты `awg`/`awg-quick` деплой соберёт сам.
 3. **Swap.** На сервере с 1 ГБ памяти добавьте 1 ГБ swap:
    `sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`
    и строку `/swapfile none swap sw 0 0` в `/etc/fstab`.
-4. **Доступ к серверу** — `secret/server-access.yaml` (в git не попадает):
-   ```yaml
-   geoirb-vpn:
-     host: 1.2.3.4
-     port: 8443
-     user: admin_vpn          # sudo без пароля
-     password: ...
-   ```
-5. **Настройки** — `.env` (в git не попадает), см. `.env.example`:
+4. **Доступ к серверам** (в git не попадает):
+   - `secret/server-access.yaml` — RU-сервер (бот):
+     ```yaml
+     geoirb-vpn:
+       host: 1.2.3.4
+       port: 8443
+       user: admin_vpn          # sudo без пароля
+       password: ...
+     ```
+   - `secret/exit-access.yaml` — выходной сервер (GCP), в том же формате.
+5. **Выходной сервер:** `make deploy-exit`. Один ssh-сеанс: ставит `awg-exit`
+   (`10.255.255.2/30`, один пир — RU-сервер), включает пересылку и NAT только для
+   `10.255.255.1`, настройки conntrack. Старый бот и контейнер Amnezia на GCP не
+   затрагиваются (другой порт, другой интерфейс). Откат: `systemctl disable --now geoirb-awg-exit`.
+   - `secret/tunnel.yaml` (ключи, PSK, порт, параметры обфускации туннеля) создаёт
+     `scripts/tunnel-keys.sh` при первом запуске; существующий файл не меняется.
+     **Не удаляйте и сохраните резервную копию** — ключи не ротируются.
+   - **Один раз вручную:** в GCP (VPC firewall) правило, разрешающее UDP на порт туннеля
+     (`port` из `secret/tunnel.yaml`), источник — **только IP RU-сервера**.
+6. **Настройки** — `.env` (в git не попадает), см. `.env.example`:
 
    | Переменная | Обязательна | Что это |
    |---|---|---|
    | `BOT_TOKEN` | да | токен от @BotFather |
    | `DB_SECRET_KEY` | да | `openssl rand -base64 32`; шифрует ключи клиентов в базе. **Храните отдельно от бэкапов.** Потеряли — конфиги придётся перевыпустить |
    | `ENDPOINT_HOST` | да | адрес в конфигах клиентов; лучше домен — при переезде меняется только DNS |
+   | `INFRA_SERVER` | нет | только локально: имя сервера в `server-infra/secret/database.yaml`, по умолчанию `geoirb-vpn`; на сервер не попадает |
    | `TARIFFS` | нет | `дни:звёзды`, по умолчанию `30:150,90:400,365:1500` |
    | `TRIAL_DAYS` | нет | пробный период, 7 |
-   | `CLIENT_DNS` | нет | `1.1.1.1, 1.0.0.1` |
-   | `CLIENT_MTU` | нет | пусто (не писать в конфиг); для GCP `1380` |
-   | `SERVER_ID`, `AWG_CONF`, `AWG_TIMEOUT` | нет | см. `.env.example` |
+   | `CLIENT_DNS` | нет | на RU-сервере `10.8.0.1` (по умолчанию `1.1.1.1, 1.0.0.1`) |
+   | `CLIENT_MTU` | нет | пусто (не писать в конфиг); `1380` подходит везде |
+   | `EXIT_IFACE` | нет | туннель, за которым следит бот; деплой ставит `awg-exit` |
+   | `RU_NETS_STAMP` | нет | файл, который трогает обновление российских сетей; деплой ставит его сам |
+   | `AWG_CONF`, `AWG_TIMEOUT` | нет | путь к `awg0.conf` на хосте и лимит одной команды |
+   | `AWG_EXEC` | нет | только для разработки: `scripts/dev-remote.sh` |
+   | `SERVER_ID`, `SUPPORT_CONTACT` | нет | см. `.env.example` |
 
-6. **Деплой:** `make deploy`. Скрипт:
+7. **Деплой на RU-сервер:** `make deploy`. Скрипт:
    - собирает бинарник под Linux;
    - собирает конфиг сервера (`scripts/server-env.sh`): берёт `.env`, **убирает**
-     локальные настройки (`TELEGRAM_TEST_ENV`, `AWG_EXEC`, `MONGO_*`) и добавляет
-     `MONGO_URI` с паролем из `server-infra`;
-   - на сервере запускает `deploy/install.sh`: создаёт пользователя `vpnbot` (в группе
-     `docker`), ставит бота как systemd-сервис `geoirb-vpn-bot` и таймер бэкапа,
-     **делает бэкап до перезапуска** (упал бэкап — старый бот продолжает работать),
-     потом ставит новый бинарник, перезапускает и показывает лог;
+     локальные настройки (`TELEGRAM_TEST_ENV`, `AWG_EXEC`, `INFRA_SERVER`, `MONGO_*`) и
+     добавляет `MONGO_URI` с паролем из `server-infra`, а также `BACKUP_STAMP`,
+     `MAINTENANCE_FLAG`, `RU_NETS_STAMP`, `EXIT_IFACE`;
+   - на сервере запускает `deploy/install.sh`: создаёт пользователя `vpnbot`, **делает
+     бэкап до перезапуска** (упал бэкап — старый бот продолжает работать), собирает
+     `awg`/`awg-quick`, создаёт `awg0.conf` (только при первой установке), ставит
+     `awg-exit`, раздельную маршрутизацию, `unbound`, правила `ufw` для `awg0`, таймер
+     российских сетей, таймер бэкапа и systemd-сервис `geoirb-vpn-bot`; потом
+     ставит новый бинарник, перезапускает и показывает лог;
    - настраивает сервер для нагрузки (без перезапуска VPN): таблица соединений
      65536 (`deploy/99-geoirb-vpn.conf`, по умолчанию на 1 ГБ — 7680, это ~25
-     активных пользователей) и ограничение TCP-пакетов до 1380 байт
-     (`geoirb-vpn-mss.service`), чтобы пакеты VPN не резались в сети GCP (MTU 1460).
-     У контейнера Amnezia своя сетевая область: таймаут TCP-соединения (2 ч вместо
-     5 дней) в неё раз в 5 минут копирует `geoirb-vpn-conntrack.timer`.
-7. **Первый админ.** Напишите боту `/start`, затем в Mongo (база `geoirb_vpn`):
+     активных пользователей) и ограничение TCP-пакетов до 1380 байт на обоих
+     интерфейсах (`geoirb-vpn-mss.service`).
+8. **Первый админ.** Напишите боту `/start`, затем в Mongo (база `geoirb_vpn`):
    ```js
    db.users.updateOne({_id: <ваш Telegram ID>}, {$set: {role: "admin"}})
    ```
@@ -154,7 +189,7 @@ journalctl -u geoirb-vpn-bot -f          # лог (без ключей и кон
 
 Каждый день в 04:00 (UTC) `geoirb-vpn-bot-backup.timer` кладёт в
 `/var/backups/geoirb-vpn-bot/` архив `geoirb-vpn-<время>.tar.gz`, хранятся 7 последних:
-- `amnezia-awg.tar.gz` — `/opt/amnezia/awg` из контейнера;
+- `amnezia-awg.tar.gz` — `/etc/amnezia/amneziawg` с хоста (ключ сервера, параметры, пиры);
 - `mongo-geoirb_vpn.archive.gz` — дамп базы бота.
 
 Сделать бэкап сейчас: `make backup`. Скопировать свежий архив к себе
@@ -163,38 +198,40 @@ journalctl -u geoirb-vpn-bot -f          # лог (без ключей и кон
 пишет админам.
 
 `DB_SECRET_KEY` в архив **не** входит: без него ключи клиентов в дампе не прочитать.
+Файл `secret/tunnel.yaml` тоже не входит — он лежит у вас локально, держите его копию.
 
 **Восстановление** (на сервере, от root):
 ```bash
 tar -xzf geoirb-vpn-<время>.tar.gz
-# 1. конфиг Amnezia
-docker exec -i amnezia-awg2 tar -C /opt/amnezia -xzf - < amnezia-awg.tar.gz
-docker restart amnezia-awg2          # применит awg0.conf; клиенты переподключатся
+# 1. конфиг AmneziaWG
+tar -C /etc/amnezia -xzf amnezia-awg.tar.gz
+chown -R root:vpnbot /etc/amnezia/amneziawg; chmod 770 /etc/amnezia/amneziawg
+systemctl restart geoirb-awg0          # применит awg0.conf; клиенты переподключатся
 # 2. база бота (URI — из /etc/geoirb-vpn-bot/env)
 docker exec -i server-infra-mongo-1 mongorestore --uri "<MONGO_URI>" --archive --gzip --drop < mongo-geoirb_vpn.archive.gz
 systemctl restart geoirb-vpn-bot
 ```
 
-## Перенос на другой сервер
+## Переезд с GCP на RU-сервер
 
-1. Сделайте свежий бэкап (`make backup`) и скачайте архив.
-2. Новый сервер: шаги 1–4 установки. В приложении Amnezia можно не создавать новых
-   клиентов — конфиг восстановится из бэкапа.
-3. Восстановите `amnezia-awg.tar.gz` в новый контейнер: ключи сервера и все клиенты
-   переедут, конфиги у людей останутся рабочими, если адрес тот же.
-4. Восстановите базу, `make deploy` с тем же `DB_SECRET_KEY`.
-5. Поменяйте DNS-запись `ENDPOINT_HOST` на новый IP. Если в `ENDPOINT_HOST` был IP —
-   клиентам нужны новые конфиги (кнопка «Конфиг» в «Мой доступ»).
-6. **MTU 1380.** Пакеты VPN сейчас до ~1492 байт, а сеть GCP пропускает 1460 — большие
-   пакеты режутся. `geoirb-vpn-mss.service` чинит только TCP. При переезде (VPN всё
-   равно перезапускается) добавьте в `[Interface]` конфига сервера `MTU = 1380` и
-   выполните `ip link set awg0 mtu 1380` в контейнере. Клиентам тоже нужен `MTU = 1380`,
-   но бот `MTU` из конфига сервера не копирует (`serverOnlyKeys` в
-   `internal/vpn/amnezia/conf.go`) — нужна доработка: настройка `CLIENT_MTU`, которую бот
-   пишет в `[Interface]` клиента. Затем «🔄 Обновить конфиги». Проверьте MTU сети нового сервера
-   (`ip link`): при 1500 можно 1420 оставить, но 1380 подходит везде.
-7. На сервере без облачного firewall закройте Mongo: Docker обходит `ufw`, нужно
-   `iptables -I DOCKER-USER -p tcp --dport 27017 ! -s <ваш IP> -j DROP` (и сохранить).
+Подробности и причины — `.claude/history/2026-10-09-ru-entry-server/design.md`
+(локально, в git нет). Порядок:
+
+1. `server-infra`: `make install` на RU-сервере (Mongo, Caddy, firewall с `443/udp`, fail2ban).
+2. `make deploy-exit` (GCP). Старые клиенты продолжают работать.
+3. `mongodump` на GCP → `mongorestore` на RU-сервере (база `geoirb_vpn`, команды как в
+   разделе «Бэкап»).
+4. `make deploy` (RU), затем `scripts/import-peers.sh`: берёт `[Peer]` старого `awg0.conf`
+   с GCP и добавляет в новый (уже имеющиеся ключи пропускает, занятые IP тоже). Скрипт на
+   время **коротко останавливает бота**. IP и ключи людей сохраняются: старая `/24`
+   входит в новую `/22`. После запуска бота `Reconcile` не должен показать расхождений.
+5. «🔄 Обновить конфиги»: у клиентов новый адрес, ключ сервера и параметры. `ENDPOINT_HOST`
+   лучше сразу сделать доменом и поменять DNS.
+6. Когда все перешли — остановить старого бота и контейнер на GCP.
+
+**MTU 1380.** `awg0` и `awg-exit` на RU-сервере уже с `MTU = 1380`. Клиентам тоже нужен
+`MTU = 1380`: задайте `CLIENT_MTU=1380` в `.env` до «🔄 Обновить конфиги»
+(бот не копирует `MTU` из конфига сервера — `serverOnlyKeys` в `internal/vpn/amnezia/conf.go`).
 
 ## Разработка
 
@@ -203,14 +240,15 @@ make test     # Go-тесты (store — нужен Mongo на localhost:27017) 
 make lint
 ```
 
-Запуск на своём компьютере с настоящим контейнером (локальная Mongo):
+Запуск на своём компьютере против настоящего VPN-хоста (локальная Mongo):
 ```bash
 set -a; . ./.env; set +a
 AWG_EXEC=scripts/dev-remote.sh go run ./cmd/bot
 ```
-Ключи, созданные так, — **настоящие** пиры на сервере, но записаны в локальную
-базу: удалите их до запуска бота на сервере. Дешёвый тариф для проверки оплаты
-без правки `.env`: `TARIFFS=1:1 go run ./cmd/bot`.
+`dev-remote.sh` выполняет команды `awg` на сервере по ssh. Ключи, созданные так, —
+**настоящие** пиры на сервере, но записаны в локальную базу: удалите их до запуска бота
+на сервере. Дешёвый тариф для проверки оплаты без правки `.env`:
+`TARIFFS=1:1 go run ./cmd/bot`.
 
 Тестовая среда Telegram (оплата без настоящих звёзд): бот из тестового аккаунта,
 его токен и `TELEGRAM_TEST_ENV=true` — в `.env.test`, загружать после `.env`.
@@ -221,10 +259,12 @@ cmd/bot            запуск
 internal/config    переменные окружения
 internal/service   логика: ключи, роли, пробный период, оплата, фоновая задача
 internal/store     MongoDB (запросы — в queries.go, ключи клиентов зашифрованы)
-internal/vpn/amnezia  работа с контейнером AmneziaWG
+internal/vpn/amnezia  работа с AmneziaWG на хосте (конфиг, awg syncconf)
+internal/hostexec  запуск команд на хосте с лимитом времени
+internal/tunnel    сторож туннеля: ip rule бота, сообщения админам
 internal/bot       Telegram: меню, админка, оплата, тексты (screens.go)
 internal/bypass    списки раздельного туннелирования
 internal/worker    раз в минуту: сроки, напоминания, подсеть
-deploy/            systemd и скрипт бэкапа
-scripts/           deploy, backup, server-env, dev-remote
+deploy/            systemd, nftables, unbound, скрипты установки (RU и exit/)
+scripts/           deploy, deploy-exit, backup, server-env, tunnel-keys, import-peers, dev-remote
 ```

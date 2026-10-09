@@ -140,7 +140,7 @@ func main() {
 		go notifier.WatchTunnel(ctx, watcher)
 	}
 
-	// Dispatcher: chats are handled in parallel (one slow docker exec must
+	// Dispatcher: chats are handled in parallel (one slow awg command must
 	// not stall everyone), updates of one chat in order.
 	dispatcher := tgbot.NewDispatcher(
 		router.Handle,

@@ -20,7 +20,7 @@ const (
 // 1-day reminder goes out.
 // A failed subnet reading is logged and left at zero: the key notices
 // matter more, and their marks are already saved.
-// ponytail: scans every key of the server each run — at most 254.
+// ponytail: scans every key of the server each run — the subnet bounds it (a /22 is ~1000 keys).
 func (s *service) Maintain(ctx context.Context) (*Maintenance, error) {
 	m, err := s.maintainKeys(ctx)
 	if err != nil {
