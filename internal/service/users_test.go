@@ -417,7 +417,7 @@ func TestCreateKeyUsesTheGivenName(t *testing.T) {
 			)
 			require.NoError(t, err, string(r))
 			require.Equal(t, "iPhone Маши", p.Name, "trimmed, inner spaces squeezed")
-			require.Equal(t, "iPhone Маши", e.vpn.table[p.PublicKey], "the same name in the Amnezia app")
+			require.Equal(t, "iPhone Маши", e.vpn.peers[p.PublicKey].Name, "the same name on the server")
 		}
 	})
 }

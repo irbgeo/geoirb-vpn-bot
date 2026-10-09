@@ -24,12 +24,11 @@ func TestExtendFailureOnTheServerKeepsTheKeyDisabled(t *testing.T) {
 		)
 		require.Error(t, err)
 		require.False(t, e.vpn.hasPeer(p.PublicKey), "the DB says disabled, so the server must not run it")
-		require.NotContains(t, e.vpn.table, p.PublicKey, "not listed in the Amnezia app either")
 		require.False(t, e.peers.m[p.PublicKey].Enabled)
 	})
 }
 
-func TestExtendSaveFailureTakesTheKeyOffTheAppToo(t *testing.T) {
+func TestExtendSaveFailureTakesTheKeyOff(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()
 		p := expiredKey(t, e)
@@ -44,7 +43,6 @@ func TestExtendSaveFailureTakesTheKeyOffTheAppToo(t *testing.T) {
 		)
 		require.Error(t, err)
 		require.False(t, e.vpn.hasPeer(p.PublicKey))
-		require.NotContains(t, e.vpn.table, p.PublicKey)
 	})
 }
 

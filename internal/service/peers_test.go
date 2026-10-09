@@ -88,7 +88,6 @@ func TestIssue(t *testing.T) {
 		require.Equal(t, want, e.peers.m["PUB1="], "saved in the DB")
 		require.Equal(t, *want.public(), *p, "returned without secrets")
 		require.True(t, e.vpn.hasPeer("PUB1="), "added on the server")
-		require.Equal(t, "tg:alice", e.vpn.table["PUB1="], "visible in the Amnezia app")
 	})
 }
 
@@ -164,16 +163,6 @@ func TestIssueRollbackSurvivesCancelledContext(t *testing.T) {
 		)
 		require.ErrorIs(t, err, errBoom)
 		require.Empty(t, e.peers.m, "rollback still ran")
-	})
-}
-
-func TestIssueClientsTableFailureIsNotFatal(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		e := newEnv()
-		e.vpn.tableErr = errBoom
-
-		p := e.issue(t, 30)
-		require.True(t, e.vpn.hasPeer(p.PublicKey), "the key works; only the app list is missing it")
 	})
 }
 
@@ -302,7 +291,6 @@ func TestDelete(t *testing.T) {
 
 		require.NoError(t, e.svc.Delete(context.Background(), p.PublicKey))
 		require.False(t, e.vpn.hasPeer(p.PublicKey))
-		require.NotContains(t, e.vpn.table, p.PublicKey)
 		require.NotContains(t, e.peers.m, p.PublicKey)
 	})
 }

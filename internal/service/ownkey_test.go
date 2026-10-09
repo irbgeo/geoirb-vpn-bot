@@ -32,8 +32,7 @@ func TestReissueKeyGivesNewKeysSameEverythingElse(t *testing.T) {
 		require.True(t, e.vpn.hasPeer(p.PublicKey))
 		require.NotContains(t, e.peers.m, old.PublicKey)
 		require.Contains(t, e.peers.m, p.PublicKey)
-		require.NotContains(t, e.vpn.table, old.PublicKey)
-		require.Equal(t, old.Name, e.vpn.table[p.PublicKey])
+		require.Equal(t, old.Name, e.vpn.peers[p.PublicKey].Name)
 	})
 }
 

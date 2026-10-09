@@ -245,7 +245,6 @@ func (s *fakePayments) Since(_ context.Context, t time.Time) ([]*Payment, error)
 // made in the Amnezia app: MANUAL1= on 10.8.1.1.
 type fakeVPN struct {
 	peers    map[string]VPNPeer // on the server, by public key
-	table    map[string]string  // public key -> name in the Amnezia app
 	stats    []PeerStat
 	keys     int
 	changes  int    // calls that change the server
@@ -253,7 +252,6 @@ type fakeVPN struct {
 	onChange func() // runs inside a change, before err
 	readErr  error  // PeerKeys and SubnetUsage fail
 	statsErr error  // Stats fails
-	tableErr error  // the app list can't be written (never an error)
 }
 
 func newFakeVPN() *fakeVPN {
@@ -264,7 +262,6 @@ func newFakeVPN() *fakeVPN {
 				IP:        "10.8.1.1",
 			},
 		},
-		table: map[string]string{},
 	}
 }
 
@@ -319,7 +316,6 @@ func (s *fakeVPN) RemovePeer(_ context.Context, p *VPNPeer) error {
 		return err
 	}
 	delete(s.peers, p.PublicKey)
-	delete(s.table, p.PublicKey)
 	return nil
 }
 
@@ -330,7 +326,6 @@ func (s *fakeVPN) ReplacePeer(_ context.Context, in *ReplacePeerInput) error {
 		return err
 	}
 	delete(s.peers, in.Old.PublicKey)
-	delete(s.table, in.Old.PublicKey)
 	s.put(in.New)
 	return nil
 }
@@ -381,9 +376,6 @@ func (s *fakeVPN) fail() error {
 
 func (s *fakeVPN) put(p *VPNPeer) {
 	s.peers[p.PublicKey] = *p
-	if s.tableErr == nil {
-		s.table[p.PublicKey] = p.Name
-	}
 }
 
 // freeIP is the lowest 10.8.1.x not on the server and not reserved.
