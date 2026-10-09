@@ -13,6 +13,7 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 )
 
 // The bot's needs from the business logic, split by topic so each handler
@@ -73,6 +74,11 @@ type Feedback interface {
 // normal (the sysload monitor).
 type ServerLoad interface {
 	Check() ([]sysload.Alert, error)
+}
+
+// tunnelChecker is the exit tunnel watcher (tunnel.New).
+type tunnelChecker interface {
+	Check(ctx context.Context) (tunnel.State, bool, error)
 }
 
 // Bypass provides the split-tunneling lists sent with every key.

@@ -89,6 +89,7 @@ func onlineNotifier() (*fakeSender, func(n int)) {
 		s,
 		"",
 		nil,
+		"",
 	)
 	deliver := func(online int) {
 		m := maintenance()

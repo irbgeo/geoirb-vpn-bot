@@ -14,6 +14,7 @@ import (
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 )
 
 func TestDeliverExpiredToOwnerWithExtendButton(t *testing.T) {
@@ -140,7 +141,7 @@ func TestBackupAlertWhenTheLastBackupIsOld(t *testing.T) {
 		},
 	}
 	r, s := newRouter(svc)
-	r.notify.backupStamp = stamp
+	r.notify.backup.path = stamp
 	ctx := context.Background()
 
 	r.notify.DeliverMaintenance(ctx, maintenance())
@@ -236,6 +237,7 @@ func TestWatchServerLoadChecksEveryMinute(t *testing.T) {
 			&fakeSender{},
 			"",
 			load,
+			"",
 		)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -288,4 +290,122 @@ func maintenance() *service.Maintenance {
 		SubnetUsed:  10,
 		SubnetTotal: 254,
 	}
+}
+
+type tunnelStep struct {
+	st      tunnel.State
+	changed bool
+	err     error
+}
+
+// fakeTunnel returns its steps one per Check, then the last one unchanged.
+type fakeTunnel struct {
+	steps []tunnelStep
+}
+
+func (s *fakeTunnel) Check(context.Context) (tunnel.State, bool, error) {
+	st := s.steps[0]
+	if len(s.steps) > 1 {
+		s.steps = s.steps[1:]
+	} else {
+		s.steps[0].changed = false
+	}
+	return st.st, st.changed, st.err
+}
+
+func watchTunnel(t *testing.T, steps []tunnelStep) []outMessage {
+	r, s := newRouter(&fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		r.notify.WatchTunnel(ctx, &fakeTunnel{steps: steps})
+		close(done)
+	}()
+	time.Sleep(time.Duration(len(steps)) * time.Minute)
+	synctest.Wait()
+	cancel()
+	<-done
+	return s.sent
+}
+
+func TestWatchTunnelAlertsOnChangesOnly(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sent := watchTunnel(t, []tunnelStep{
+			{
+				st:      tunnel.Down,
+				changed: true,
+			},
+			{
+				st: tunnel.Down,
+			},
+			{
+				err: errors.New("awg broke"),
+			},
+			{
+				st:      tunnel.Up,
+				changed: true,
+			},
+		})
+
+		require.Len(t, sent, 2)
+		require.Equal(t, tunnelDownText, sent[0].Text)
+		require.Equal(t, tunnelUpText, sent[1].Text)
+	})
+}
+
+func TestWatchTunnelUpAtStartIsQuiet(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sent := watchTunnel(t, []tunnelStep{
+			{
+				st:      tunnel.Up,
+				changed: true,
+			},
+			{
+				st:      tunnel.Down,
+				changed: true,
+			},
+		})
+
+		require.Len(t, sent, 1)
+		require.Equal(t, tunnelDownText, sent[0].Text)
+	})
+}
+
+func TestRUNetsAlertWhenTheListIsOld(t *testing.T) {
+	stamp := filepath.Join(t.TempDir(), "ru-nets")
+	require.NoError(t, os.WriteFile(stamp, nil, 0o600))
+	r, s := newRouter(&fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	})
+	r.notify.ruNets.path = stamp
+	ctx := context.Background()
+
+	old := time.Now().Add(-7 * 24 * time.Hour)
+	require.NoError(t, os.Chtimes(stamp, old, old))
+	r.notify.DeliverMaintenance(ctx, maintenance())
+	require.Empty(t, s.sent, "a week old is fine")
+
+	old = time.Now().Add(-9 * 24 * time.Hour)
+	require.NoError(t, os.Chtimes(stamp, old, old))
+	r.notify.DeliverMaintenance(ctx, maintenance())
+	r.notify.DeliverMaintenance(ctx, maintenance())
+	require.Len(t, s.sent, 1, "one alert while it stays old")
+	require.Equal(t, ruNetsAlertText(old), s.sent[0].Text)
+	require.Contains(t, s.sent[0].Text, "journalctl -u geoirb-ru-nets")
+
+	require.NoError(t, os.Chtimes(stamp, time.Now(), time.Now()))
+	r.notify.DeliverMaintenance(ctx, maintenance())
+	require.NoError(t, os.Chtimes(stamp, old, old))
+	r.notify.DeliverMaintenance(ctx, maintenance())
+	require.Len(t, s.sent, 2, "alerts again after a fresh touch")
 }

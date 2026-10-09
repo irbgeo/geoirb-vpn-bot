@@ -191,6 +191,27 @@ func (s *latch) rise(now bool) bool {
 	return now && !was
 }
 
+// stampWatch watches a file touched by a job after every good run: it says
+// once when the file gets older than maxAge (or is missing), and again
+// only after a fresh touch. An empty path = no check.
+type stampWatch struct {
+	path    string
+	maxAge  time.Duration
+	alerted latch
+}
+
+// check returns the last good run (zero = none) and whether to alert now.
+func (s *stampWatch) check() (last time.Time, alert bool) {
+	if s.path == "" {
+		return time.Time{}, false
+	}
+	st, err := os.Stat(s.path)
+	if err == nil {
+		last = st.ModTime()
+	}
+	return last, s.alerted.rise(time.Since(last) > s.maxAge)
+}
+
 // onlineWatch remembers the clients online over the last onlineDropWindow
 // and says once when the count falls far below the peak.
 type onlineWatch struct {

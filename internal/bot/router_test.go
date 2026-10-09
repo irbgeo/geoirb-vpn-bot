@@ -374,6 +374,7 @@ func newRouter(svc *fakeService) (*router, *fakeSender) {
 				s,
 				"",
 				nil,
+				"",
 			),
 			Bypass: &fakeBypass{},
 			Config: &config.Config{

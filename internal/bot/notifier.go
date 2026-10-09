@@ -3,10 +3,10 @@ package bot
 import (
 	"context"
 	"log"
-	"os"
 	"time"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 )
 
 // subnetAlertPercent: alert admins when more of the subnet is taken.
@@ -14,6 +14,9 @@ const subnetAlertPercent = 80
 
 // backupMaxAge: the backup runs daily; older than this means it failed.
 const backupMaxAge = 26 * time.Hour
+
+// ruNetsMaxAge: the RU networks list updates weekly; older means it failed.
+const ruNetsMaxAge = 8 * 24 * time.Hour
 
 // Online drop: alert admins when the clients online fall to a quarter of
 // the most seen in the last hour (if that was 5 or more). A server IP
@@ -28,38 +31,48 @@ const (
 )
 
 // notifier sends what the bot says unasked: key notices to owners and
-// alerts to admins (payments, subnet, backups, server load).
+// alerts to admins (payments, subnet, backups, server load, tunnel).
 type notifier struct {
-	users       Users
-	send        Sender
-	load        ServerLoad
-	backupStamp string // touched by every good backup (see backupAlert)
-	// subnetAlert / backupAlert: an alert went out and the condition still
-	// holds; it alerts again only after it cleared and came back.
+	users Users
+	send  Sender
+	load  ServerLoad
+	// subnetAlerted: an alert went out and the subnet is still full; it
+	// alerts again only after it cleared and came back.
 	subnetAlerted latch
-	backupAlerted latch
+	backup        stampWatch
+	ruNets        stampWatch
 	online        onlineWatch
 }
 
-// NewNotifier creates a notifier. backupStamp is the file touched by each
-// good backup ("" = no check); load nil = no server load alerts.
+// NewNotifier creates a notifier. backupStamp / ruNetsStamp are the files
+// touched by each good backup / RU networks update ("" = no check); load
+// nil = no server load alerts.
 func NewNotifier(
 	users Users,
 	sender Sender,
 	backupStamp string,
 	load ServerLoad,
+	ruNetsStamp string,
 ) *notifier {
 	return &notifier{
-		users:       users,
-		send:        sender,
-		load:        load,
-		backupStamp: backupStamp,
+		users: users,
+		send:  sender,
+		load:  load,
+		backup: stampWatch{
+			path:   backupStamp,
+			maxAge: backupMaxAge,
+		},
+		ruNets: stampWatch{
+			path:   ruNetsStamp,
+			maxAge: ruNetsMaxAge,
+		},
 	}
 }
 
 // DeliverMaintenance tells owners that their key ended or ends soon (with
 // an "extend" button) and the admins about keys without Telegram, a nearly
-// full subnet, an old backup and clients suddenly dropping off.
+// full subnet, an old backup or RU networks list and clients suddenly
+// dropping off.
 func (s *notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenance) {
 	for _, g := range []noticeGroup{
 		{
@@ -90,7 +103,7 @@ func (s *notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 		}
 	}
 	s.subnetAlert(ctx, m)
-	s.backupAlert(ctx)
+	s.stampAlerts(ctx)
 	s.onlineDropAlert(ctx, m)
 }
 
@@ -104,6 +117,32 @@ func (s *notifier) WatchServerLoad(ctx context.Context) {
 			return
 		case <-t.C:
 			s.CheckServerLoad(ctx)
+		}
+	}
+}
+
+// WatchTunnel checks the exit tunnel now and then every minute until ctx is
+// done, and tells admins when it goes down or comes back. Up at the first
+// check is quiet (only the bot route is set); down is told once.
+func (s *notifier) WatchTunnel(ctx context.Context, w tunnelChecker) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	first := true
+	for {
+		st, changed, err := w.Check(ctx)
+		if err != nil {
+			log.Printf("bot: tunnel check: %v", err)
+		}
+		if changed && (st == tunnel.Down || !first) {
+			s.NotifyAdmins(ctx, tunnelText(st))
+		}
+		if err == nil {
+			first = false
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
 		}
 	}
 }
@@ -180,20 +219,16 @@ func (s *notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
 	}
 }
 
-// backupAlert warns admins once when the last good backup is older than
-// backupMaxAge (or never happened), and again only after a fresh one.
-func (s *notifier) backupAlert(ctx context.Context) {
-	if s.backupStamp == "" {
-		return
-	}
-	var last time.Time
-	st, err := os.Stat(s.backupStamp)
-	if err == nil {
-		last = st.ModTime()
-	}
-	old := time.Since(last) > backupMaxAge
-	if s.backupAlerted.rise(old) {
+// stampAlerts warns admins once when the last good backup or RU networks
+// update is too old (or never happened), and again only after a fresh one.
+func (s *notifier) stampAlerts(ctx context.Context) {
+	last, alert := s.backup.check()
+	if alert {
 		s.NotifyAdmins(ctx, backupAlertText(last))
+	}
+	last, alert = s.ruNets.check()
+	if alert {
+		s.NotifyAdmins(ctx, ruNetsAlertText(last))
 	}
 }
 

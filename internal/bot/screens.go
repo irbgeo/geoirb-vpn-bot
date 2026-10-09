@@ -12,6 +12,7 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 )
 
 // This file owns every user-facing text (Russian).
@@ -1030,6 +1031,29 @@ func backupAlertText(last time.Time) string {
 	}
 	return "⚠️ Свежего бэкапа нет: последний удачный бэкап " + when + ". " +
 		"Проверьте на сервере: journalctl -u geoirb-vpn-bot-backup"
+}
+
+// Exit tunnel alerts (tunnel watcher).
+const (
+	tunnelDownText = "⚠️ Туннель за границу не работает: у клиентов не открываются зарубежные сайты (российские работают). Бот перешёл на прямое подключение."
+	tunnelUpText   = "✅ Туннель за границу восстановлен."
+)
+
+// tunnelText is the alert for a new tunnel state.
+func tunnelText(st tunnel.State) string {
+	if st == tunnel.Up {
+		return tunnelUpText
+	}
+	return tunnelDownText
+}
+
+// ruNetsAlertText: the RU networks list is too old (zero = never updated).
+func ruNetsAlertText(last time.Time) string {
+	when := "не обновлялся с " + mskTime(last)
+	if last.IsZero() {
+		when = "ни разу не обновлялся"
+	}
+	return "⚠️ Список российских сетей " + when + ": проверьте `journalctl -u geoirb-ru-nets`."
 }
 
 // mskTime formats a moment in Moscow time, saying so.

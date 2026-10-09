@@ -17,6 +17,7 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/store"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/vpn/amnezia"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/worker"
 )
@@ -93,6 +94,7 @@ func main() {
 		sender,
 		cfg.BackupStamp,
 		load,
+		cfg.RUNetsStamp,
 	)
 	lists := bypass.New()
 	deps := bot.Deps{
@@ -127,6 +129,16 @@ func main() {
 		close(workerDone)
 	}()
 	go notifier.WatchServerLoad(ctx)
+	// The tunnel watcher owns the bot's ip rules: through the exit tunnel
+	// while it works, direct while it is down.
+	if cfg.ExitIface != "" {
+		hostNet := tunnel.NewHostNet(cfg)
+		watcher := tunnel.New(
+			hostNet,
+			3*time.Minute,
+		)
+		go notifier.WatchTunnel(ctx, watcher)
+	}
 
 	// Dispatcher: chats are handled in parallel (one slow docker exec must
 	// not stall everyone), updates of one chat in order.
