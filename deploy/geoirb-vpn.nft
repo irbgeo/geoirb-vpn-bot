@@ -4,8 +4,8 @@
 # (default dev awg-exit). Everything from clients is masqueraded: to the
 # exit (it only knows 10.255.255.1) and on the direct way out.
 # Clients may not reach each other or private/link-local networks (VPC,
-# cloud metadata 169.254.169.254): chain fwd. DNS on 10.8.0.1 is the host
-# itself, so it goes through the input hook and is not touched by fwd.
+# cloud metadata 169.254.169.254): chain vpn_forward. DNS on 10.8.0.1 is the host
+# itself, so it goes through the input hook and is not touched by vpn_forward.
 # Safe to load again: the set is declared, never flushed here, so the RU
 # networks deploy/ru-nets.sh put into it stay; only the chains are rebuilt.
 table inet geoirb {
@@ -20,13 +20,13 @@ table inet geoirb {
 	chain post {
 		type nat hook postrouting priority srcnat;
 	}
-	chain fwd {
+	chain vpn_forward {
 		type filter hook forward priority filter;
 	}
 }
 flush chain inet geoirb pre
 flush chain inet geoirb post
-flush chain inet geoirb fwd
+flush chain inet geoirb vpn_forward
 table inet geoirb {
 	chain pre {
 		iifname "awg0" ip daddr != @ru4 ip daddr != 10.8.0.0/22 meta mark set 0x1
@@ -35,7 +35,7 @@ table inet geoirb {
 		ip saddr 10.8.0.0/22 oifname "awg-exit" masquerade
 		ip saddr 10.8.0.0/22 oifname != "awg-exit" oifname != "awg0" masquerade
 	}
-	chain fwd {
+	chain vpn_forward {
 		iifname "awg0" oifname "awg0" drop
 		iifname "awg0" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
 	}
