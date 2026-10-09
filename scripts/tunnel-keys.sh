@@ -31,12 +31,15 @@ while [[ ${#hs[@]} -lt 4 ]]; do
   [[ " ${hs[*]:-} " == *" $h "* ]] || hs+=("$h")
 done
 
+psk="$(openssl rand -base64 32)" # an assignment, so set -e stops on failure
+
 mkdir -p "$(dirname "$FILE")"
 umask 077
+trap 'rm -f "$FILE.tmp"' EXIT
 {
   keypair ru
   keypair exit
-  echo "psk: $(openssl rand -base64 32)"
+  echo "psk: $psk"
   echo "port: $(rand 20000 60000)"
   echo "jc: $(rand 4 8)"
   echo "jmin: 40"
@@ -44,5 +47,6 @@ umask 077
   echo "s1: $s1"
   echo "s2: $s2"
   for i in 0 1 2 3; do echo "h$((i + 1)): ${hs[$i]}"; done
-} >"$FILE"
-chmod 600 "$FILE"
+} >"$FILE.tmp"
+chmod 600 "$FILE.tmp"
+mv "$FILE.tmp" "$FILE" # a failure above never leaves a partial tunnel.yaml

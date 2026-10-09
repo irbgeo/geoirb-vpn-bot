@@ -26,7 +26,7 @@ password="$(awk -v srv="$SERVER:" -v db="    $DB:" -v user="      $DB_USER:" '
 [[ -n "$password" ]] || { echo "error: no $SERVER.mongo.$DB.$DB_USER password in $DB_SECRETS" >&2; exit 1; }
 
 grep -vE '^[[:space:]]*(#|$)' "$ENV_FILE" |
-  grep -vE '^(TELEGRAM_TEST_ENV|AWG_EXEC|MONGO_URI|MONGO_DB|MONGO_USERNAME|MONGO_PASSWORD|BACKUP_STAMP|MAINTENANCE_FLAG|INFRA_SERVER|RU_NETS_STAMP|EXIT_IFACE)='
+  grep -vE '^(TELEGRAM_TEST_ENV|AWG_EXEC|MONGO_URI|MONGO_DB|MONGO_USERNAME|MONGO_PASSWORD|BACKUP_STAMP|MAINTENANCE_FLAG|INFRA_SERVER|RU_NETS_STAMP|EXIT_IFACE|CLIENT_DNS)='
 # The password goes to python through stdin, never argv (ps).
 encoded="$(printf '%s' "$password" | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=""))')"
 echo "MONGO_URI=mongodb://$DB_USER:$encoded@127.0.0.1:27017/$DB?authSource=$DB"
@@ -38,3 +38,5 @@ echo "MAINTENANCE_FLAG=/var/lib/geoirb-vpn-bot/maintenance"
 echo "RU_NETS_STAMP=/var/lib/geoirb-vpn-bot/ru-nets.stamp"
 # the tunnel to the exit server (deploy/awg-exit.conf.tmpl)
 echo "EXIT_IFACE=awg-exit"
+# clients resolve through unbound on the RU server (deploy/unbound-geoirb.conf)
+echo "CLIENT_DNS=10.8.0.1"

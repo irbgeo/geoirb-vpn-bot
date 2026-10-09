@@ -32,10 +32,10 @@ for i in 0 1 2 3; do
 done
 
 # I1: 64-128 bytes starting like a QUIC v1 Initial (long-header byte
-# 0xc0-0xcf, version 1, 8-byte DCID), random bytes after. Trade-off: a real
+# 0xc0-0xc3: Initial type, version 1, 8-byte DCID), random bytes after. Trade-off: a real
 # Initial is >= 1200 bytes, but that makes client configs too long for a QR
 # code. Commented: the server does not send it, the bot un-comments it for clients.
-i1="c$(hex 1 | cut -c2)00000001 08$(hex 8)$(hex "$(rand 50 114)")"
+i1="c$(rand 0 3)00000001 08$(hex 8)$(hex "$(rand 50 114)")"
 key="$(awg genkey)"
 
 umask 077

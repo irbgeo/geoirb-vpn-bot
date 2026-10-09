@@ -64,6 +64,28 @@ check "exit has PostUp" "1" "$(grep -q '^PostUp = sysctl -w net.ipv4.ip_forward=
 check "exit PostDown keeps ip_forward" "" "$(grep '^PostDown' <<<"$ex" | grep ip_forward)"
 check "exit PostDown deletes" "1" "$(grep '^PostDown' <<<"$ex" | grep -q -- '-D FORWARD' && echo 1)"
 
+odd="$("$DIR/render-tunnel.sh" ru 'a&b|c\1')"
+check "host with & | \\ is copied as is" "Endpoint = a&b|c\\1:$port" "$(grep '^Endpoint' <<<"$odd")"
+check "only the Endpoint line depends on the host" "$(grep -v '^Endpoint' <<<"$ru")" "$(grep -v '^Endpoint' <<<"$odd")"
+
+grep -v '^psk:' "$TUNNEL_FILE" >"$TMP/nopsk.yaml"
+TUNNEL_FILE="$TMP/nopsk.yaml" "$DIR/render-tunnel.sh" ru 1.2.3.4 >/dev/null 2>&1
+check "missing key fails" "1" "$?"
+
+# A failing openssl must leave neither tunnel.yaml nor its .tmp behind.
+mkdir -p "$TMP/bin"
+real="$(command -v openssl)"
+printf '#!/bin/sh\n[ "$1" = rand ] && exit 1\nexec "%s" "$@"\n' "$real" >"$TMP/bin/openssl"
+chmod +x "$TMP/bin/openssl"
+PATH="$TMP/bin:$PATH" TUNNEL_FILE="$TMP/fail/tunnel.yaml" "$DIR/tunnel-keys.sh" >/dev/null 2>&1
+check "failed run exits non-zero" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "failed run leaves no files" "" "$(ls -A "$TMP/fail" 2>/dev/null)"
+
+for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10; do
+  check "exit PostUp drops $net" "1" "$(grep '^PostUp' <<<"$ex" | grep -c -- "iptables -I FORWARD -i %i -d $net -j DROP;")"
+  check "exit PostDown removes $net" "1" "$(grep '^PostDown' <<<"$ex" | grep -c -- "iptables -D FORWARD -i %i -d $net -j DROP;")"
+done
+
 "$DIR/render-tunnel.sh" bogus 1.2.3.4 >/dev/null 2>&1
 check "bad side fails" "1" "$?"
 

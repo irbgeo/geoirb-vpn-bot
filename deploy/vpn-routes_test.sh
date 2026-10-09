@@ -41,5 +41,12 @@ run BAD_SET=1
 check "bad saved set tolerated" "0" "$?"
 check "bad saved set: rule and route still set" "1 1" "$(n '^ip rule add') $(n '^ip route replace unreachable')"
 
+# The real nft file: clients may not reach each other or private networks.
+NFT="${NFT_FILE:-$DIR/geoirb-vpn.nft}"
+check "fwd chain flushed on reload" "1" "$(grep -cx 'flush chain inet geoirb fwd' "$NFT")"
+check "fwd hook" "1" "$(grep -c 'type filter hook forward priority filter;' "$NFT")"
+check "client to client dropped" "1" "$(grep -cx $'\t\tiifname "awg0" oifname "awg0" drop' "$NFT")"
+check "private ranges dropped" "1" "$(grep -cx $'\t\tiifname "awg0" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop' "$NFT")"
+
 echo
 [[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }

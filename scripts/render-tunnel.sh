@@ -13,13 +13,30 @@ case "$side" in
 esac
 [[ -n "$host" ]] || { echo "usage: $0 <ru|exit> <exit_host>" >&2; exit 1; }
 
-val() { awk -v k="$1" '$1 == k":" { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$FILE"; }
-
-args=(-e "s|@EXIT_HOST@|$host|g")
-for k in ru_private ru_public exit_private exit_public psk port jc jmin jmax s1 s2 h1 h2 h3 h4; do
-  v="$(val "$k")"
-  [[ -n "$v" ]] || { echo "missing $k in $FILE" >&2; exit 1; }
-  # base64 has no '|' or '&' but may contain '/' — '|' is the sed delimiter.
-  args+=(-e "s|@$(tr a-z A-Z <<<"$k")@|${v//&/\\&}|g")
-done
-sed "${args[@]}" "$tmpl"
+# One awk run: the keys are read from the file and the host from the
+# environment, so no secret is ever in argv (ps). Replacements are literal
+# (no sed/gsub specials); the host goes last so it is copied as is.
+EXIT_HOST="$host" awk -v file="$FILE" '
+  function put(line, from, to,    i, out) {
+    out = ""
+    while ((i = index(line, from)) > 0) {
+      out = out substr(line, 1, i - 1) to
+      line = substr(line, i + length(from))
+    }
+    return out line
+  }
+  BEGIN { n = split("ru_private ru_public exit_private exit_public psk port jc jmin jmax s1 s2 h1 h2 h3 h4", keys, " ") }
+  NR == FNR {
+    k = $1; sub(/:$/, "", k)
+    if (k ":" == $1 && !(k in val)) { v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); val[k] = v }
+    next
+  }
+  FNR == 1 {
+    for (j = 1; j <= n; j++) if (val[keys[j]] == "") { print "missing " keys[j] " in " file > "/dev/stderr"; bad = 1; exit 1 }
+  }
+  {
+    for (j = 1; j <= n; j++) $0 = put($0, "@" toupper(keys[j]) "@", val[keys[j]])
+    print put($0, "@EXIT_HOST@", ENVIRON["EXIT_HOST"])
+  }
+  END { if (bad) exit 1 }
+' "$FILE" "$tmpl"

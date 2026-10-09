@@ -22,7 +22,7 @@ AWG_EXEC=scripts/dev-remote.sh
 INFRA_SERVER=geoirb-ru
 EXIT_IFACE=wrong
 RU_NETS_STAMP=/tmp/wrong
-CLIENT_DNS=10.8.0.1
+CLIENT_DNS=1.1.1.1
 # a comment
 TARIFFS=30:150,90:400
 X
@@ -54,13 +54,13 @@ check "keeps app settings, server from INFRA_SERVER" \
   "BOT_TOKEN=123:abc
 DB_SECRET_KEY=a2V5
 ENDPOINT_HOST=35.217.30.38
-CLIENT_DNS=10.8.0.1
 TARIFFS=30:150,90:400
 MONGO_URI=mongodb://geoirb_vpn_bot:ru-pass@127.0.0.1:27017/geoirb_vpn?authSource=geoirb_vpn
 BACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup
 MAINTENANCE_FLAG=/var/lib/geoirb-vpn-bot/maintenance
 RU_NETS_STAMP=/var/lib/geoirb-vpn-bot/ru-nets.stamp
-EXIT_IFACE=awg-exit" \
+EXIT_IFACE=awg-exit
+CLIENT_DNS=10.8.0.1" \
   "$out"
 
 grep -v '^INFRA_SERVER=' "$TMP/.env" >"$TMP/.env.default"

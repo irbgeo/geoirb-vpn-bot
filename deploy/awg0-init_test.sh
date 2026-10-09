@@ -47,7 +47,7 @@ hs="$(for h in H1 H2 H3 H4; do val "$h"; done)"
 check "H1-H4 are ranges" "4" "$(grep -cE '^[0-9]+-[0-9]+$' <<<"$hs")"
 check "H ranges valid and apart" "1" "$(tr - ' ' <<<"$hs" | sort -n | awk '
   $1 <= 4 || $2 <= $1 || $2 > 4294967295 || $1 <= prev { bad = 1 } { prev = $2 } END { if (!bad) print 1 }')"
-check "I1 commented, QUIC-like" "1" "$(grep -cE '^# I1 = <b 0x(c[0-9a-f]00000001)[0-9a-f]+>$' "$CONF")"
+check "I1 commented, QUIC-like" "1" "$(grep -cE '^# I1 = <b 0x(c[0-3]00000001)[0-9a-f]+>$' "$CONF")"
 i1len="$(sed -n 's/^# I1 = <b 0x\([0-9a-f]*\)>$/\1/p' "$CONF" | tr -d '\n' | wc -c | tr -d ' ')"
 check "I1 is 64-128 bytes" "1" "$([[ "$i1len" -ge 128 && "$i1len" -le 256 ]] && echo 1)"
 check "no active I1" "0" "$(grep -c '^I1' "$CONF")"
