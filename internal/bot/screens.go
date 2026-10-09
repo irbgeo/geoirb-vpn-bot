@@ -623,13 +623,26 @@ func keyUntil(p *service.Peer) string {
 	return "до " + mskTime(p.ExpiresAt)
 }
 
+// cyrillicToLatin transliterates Russian letters so file names stay readable.
+var cyrillicToLatin = strings.NewReplacer(
+	"а", "a", "б", "b", "в", "v", "г", "g", "д", "d", "е", "e", "ё", "yo", "ж", "zh",
+	"з", "z", "и", "i", "й", "y", "к", "k", "л", "l", "м", "m", "н", "n", "о", "o",
+	"п", "p", "р", "r", "с", "s", "т", "t", "у", "u", "ф", "f", "х", "kh", "ц", "ts",
+	"ч", "ch", "ш", "sh", "щ", "shch", "ъ", "", "ы", "y", "ь", "", "э", "e", "ю", "yu", "я", "ya",
+	"А", "A", "Б", "B", "В", "V", "Г", "G", "Д", "D", "Е", "E", "Ё", "Yo", "Ж", "Zh",
+	"З", "Z", "И", "I", "Й", "Y", "К", "K", "Л", "L", "М", "M", "Н", "N", "О", "O",
+	"П", "P", "Р", "R", "С", "S", "Т", "T", "У", "U", "Ф", "F", "Х", "Kh", "Ц", "Ts",
+	"Ч", "Ch", "Ш", "Sh", "Щ", "Shch", "Ъ", "", "Ы", "Y", "Ь", "", "Э", "E", "Ю", "Yu", "Я", "Ya",
+)
+
 // configFileName turns "tg:bob #2" into "key_bob_2.conf": only ASCII
 // letters, digits and '-' survive, every other run becomes one '_'.
 func configFileName(p *service.Peer) string {
 	keep := func(r rune) bool {
 		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-'
 	}
-	parts := strings.FieldsFunc(strings.TrimPrefix(p.Name, "tg:"), func(r rune) bool { return !keep(r) })
+	name := cyrillicToLatin.Replace(strings.TrimPrefix(p.Name, "tg:"))
+	parts := strings.FieldsFunc(name, func(r rune) bool { return !keep(r) })
 	return "key_" + strings.Join(parts, "_") + ".conf"
 }
 

@@ -91,7 +91,12 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	}
 	if u.Role == RoleUnlimited || u.Role == RoleAdmin {
 		if name == "" {
-			name = fmt.Sprintf("tg:%s #%d", displayName(u), len(have)+1)
+			base := "tg:" + displayName(u)
+			names := make([]string, 0, len(have))
+			for _, h := range have {
+				names = append(names, h.Name)
+			}
+			name = fmt.Sprintf("%s #%d", base, nextKeyNumber(names, base))
 		}
 		issueInput := IssueInput{
 			UserID: userID,
@@ -106,6 +111,19 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	}
 	p, err := s.startTrial(ctx, trialInput)
 	return p.public(), err
+}
+
+// nextKeyNumber returns the smallest n >= 1 such that "base #n" is not in names.
+func nextKeyNumber(names []string, base string) int {
+	used := make(map[string]bool, len(names))
+	for _, n := range names {
+		used[n] = true
+	}
+	n := 1
+	for used[fmt.Sprintf("%s #%d", base, n)] {
+		n++
+	}
+	return n
 }
 
 // CheckCreateKey says whether CreateKey would give the user a key now

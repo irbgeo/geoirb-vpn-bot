@@ -500,3 +500,10 @@ func (s *env) register(t *testing.T, r Role) {
 	require.NoError(t, err)
 	s.setRole(42, r)
 }
+
+func TestNextKeyNumberTakesSmallestFree(t *testing.T) {
+	require.Equal(t, 2, nextKeyNumber([]string{"tg:u #1", "tg:u #3"}, "tg:u"))
+	require.Equal(t, 3, nextKeyNumber([]string{"tg:u #1", "tg:u #2"}, "tg:u"))
+	require.Equal(t, 1, nextKeyNumber(nil, "tg:u"))
+	require.Equal(t, 1, nextKeyNumber([]string{"tg:u #2", "other #1", "tg:u"}, "tg:u"))
+}

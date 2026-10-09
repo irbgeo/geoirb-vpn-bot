@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,4 +44,18 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 // sends its users to the .conf file.
 func TestImportTextDefaultVPNFileOnly(t *testing.T) {
 	require.Contains(t, importText, "DefaultVPN: только файл .conf")
+}
+
+func TestConfigFileName(t *testing.T) {
+	cases := map[string]string{
+		"Ноутбук":       "key_Noutbuk.conf",
+		"Мой телефон 2": "key_Moy_telefon_2.conf",
+		"Щука ёж":       "key_Shchuka_yozh.conf",
+		"tg:geo #2":     "key_geo_2.conf",
+		"":              "key_.conf",
+	}
+	for name, want := range cases {
+		p := &service.Peer{Name: name}
+		require.Equal(t, want, configFileName(p), name)
+	}
 }
