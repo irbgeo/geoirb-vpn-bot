@@ -129,6 +129,14 @@ type refundAlert struct {
 	RefundErr error // nil = the Stars went back
 }
 
+// paymentReviewInput is a payment that was not applied because its record
+// was left unfinished earlier.
+type paymentReviewInput struct {
+	ChargeID string
+	UserID   int64
+	Stars    int
+}
+
 // paymentAlert is a new payment to tell the admins about.
 type paymentAlert struct {
 	Payer       *tgbot.User

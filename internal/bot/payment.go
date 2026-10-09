@@ -110,6 +110,15 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 	if res.Repeat {
 		return nil
 	}
+	if res.NeedsReview {
+		reviewInput := paymentReviewInput{
+			ChargeID: sp.TelegramPaymentChargeID,
+			UserID:   m.From.ID,
+			Stars:    int(sp.TotalAmount),
+		}
+		s.notify.NotifyAdmins(ctx, paymentReviewText(reviewInput))
+		return nil
+	}
 	// The user first: they are waiting for the result of their payment.
 	if res.NewKey {
 		keyDelivery := keyDelivery{

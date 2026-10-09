@@ -202,7 +202,7 @@ func (s *service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	}
 	p.Reminded3d = false
 	p.Reminded1d = false
-	p.Blocked = false // only admins and paying users get here; checkBuyer stops a blocked buyer
+	p.Blocked = false // only admins and paying users get here; checkBuyer and chooseKey stop a blocked buyer, with or without a key named
 	err = s.enableAndSave(ctx, p)
 	if err != nil {
 		return nil, err

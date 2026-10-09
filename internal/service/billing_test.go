@@ -199,25 +199,6 @@ func TestPaySameChargeTwiceExtendsOnce(t *testing.T) {
 	})
 }
 
-func TestPayFinishesAnUnappliedPayment(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		e := newEnv()
-		e.register(t, RoleUser)
-		e.payments.m["c1"] = Payment{
-			ChargeID: "c1",
-			UserID:   42,
-			Stars:    150,
-			Days:     30,
-		} // saved, then the bot crashed before adding the days
-
-		res := e.pay(t, "c1")
-
-		require.False(t, res.Repeat)
-		require.True(t, res.NewKey)
-		require.True(t, e.payments.m["c1"].Applied)
-	})
-}
-
 func TestPayRejectsBadPurchase(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()

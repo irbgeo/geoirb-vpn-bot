@@ -72,6 +72,8 @@ func (s *service) CheckPurchase(ctx context.Context, in PaymentInput) error {
 //   - a charge already recorded is looked up first: applied → Repeat;
 //     refunded → ErrAlreadyRefunded. Neither is checked again, so a later
 //     price or role change can't turn a repeat into a refund;
+//   - a record that is neither applied nor refunded (a crash in the
+//     middle) is not applied again: NeedsReview, admins check the key;
 //   - a new charge is checked, recorded unapplied, the days added (or a
 //     key issued), then marked applied.
 //
@@ -86,6 +88,10 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		return nil, err
 	}
 	switch {
+	case pay != nil && !pay.Applied && pay.RefundedAt.IsZero():
+		// A record without a result: a crash in the middle may have added
+		// the days already, so applying again could double them. Admins decide.
+		return &PayResult{NeedsReview: true}, nil
 	case pay != nil && pay.Applied:
 		// A repeat must never turn into a refund, so a failed lookup of the
 		// key (only shown, not needed) is logged, not returned.
@@ -204,14 +210,8 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) error {
 	if in.PublicKey == "" {
 		// Buying extends one of their keys that can end; with keys but
 		// none of them timed, there is nothing to pay for.
-		keys, err := s.peers.ByUser(ctx, in.UserID)
-		if err != nil {
-			return err
-		}
-		if len(keys) > 0 && firstTimed(keys) == nil {
-			return ErrNotForSale
-		}
-		return nil
+		_, err := s.chooseKey(ctx, in.UserID)
+		return err
 	}
 	p, err := s.ourPeer(ctx, in.PublicKey)
 	if err != nil {
@@ -229,19 +229,40 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) error {
 	return nil
 }
 
-// firstTimed returns the key with the lowest IP among those that can
-// end, or nil: a key that never ends can't be extended.
-func firstTimed(ps []*Peer) *Peer {
+// chooseKey picks the key a no-key purchase extends: the unblocked key
+// with the lowest IP among those that can end (a key that never ends
+// can't be extended). nil means the user has no keys (a new one is
+// issued); ErrNotForSale: keys, none of them timed; ErrBlocked: timed
+// keys exist but an admin disabled them all. Invoice, CheckPurchase and
+// Pay all go through it, so they agree.
+func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
+	keys, err := s.peers.ByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	var first *Peer
-	for _, p := range ps {
+	timed := false
+	for _, p := range keys {
 		if p.ExpiresAt.IsZero() {
+			continue
+		}
+		timed = true
+		if p.Blocked {
 			continue
 		}
 		if first == nil || parseIP(p.IP).Less(parseIP(first.IP)) {
 			first = p
 		}
 	}
-	return first
+	switch {
+	case first != nil:
+		return first, nil
+	case timed:
+		return nil, ErrBlocked
+	case len(keys) > 0:
+		return nil, ErrNotForSale
+	}
+	return nil, nil
 }
 
 // purchase parses and checks an invoice payload against the payment.
@@ -276,16 +297,15 @@ func (s *service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 }
 
 // pickKey fills in the key a purchase extends when the invoice named
-// none: the user's first key that can end, or "" for a new key.
+// none: see chooseKey, or "" for a new key.
 func (s *service) pickKey(ctx context.Context, pu *PurchaseInput) error {
 	if pu.PublicKey != "" {
 		return nil
 	}
-	keys, err := s.peers.ByUser(ctx, pu.UserID)
+	p, err := s.chooseKey(ctx, pu.UserID)
 	if err != nil {
 		return err
 	}
-	p := firstTimed(keys)
 	if p != nil {
 		pu.PublicKey = p.PublicKey
 	}

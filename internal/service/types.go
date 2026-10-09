@@ -181,6 +181,10 @@ type PayResult struct {
 	Days   int  // days bought
 	NewKey bool // true: a new key was issued (send its config)
 	Repeat bool // true: this charge was already applied, nothing changed
+
+	// NeedsReview: the charge has a record that is neither applied nor
+	// refunded; nothing was done, an admin must check the key.
+	NeedsReview bool
 }
 
 // IssueInput describes a new key.

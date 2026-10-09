@@ -186,6 +186,28 @@ func TestPaymentRepeatDoesNothing(t *testing.T) {
 	require.Empty(t, s.files)
 }
 
+func TestPaymentNeedsReviewTellsOnlyAdmins(t *testing.T) {
+	svc := adminService()
+	svc.admins = []*service.User{
+		{
+			ID: 1,
+		},
+	}
+	svc.payRes = &service.PayResult{
+		NeedsReview: true,
+	}
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), paid()))
+	require.Len(t, s.sent, 1, "nothing for the user, one alert for the admin")
+	require.Equal(t, int64(1), s.sent[0].ChatID)
+	require.Contains(t, s.sent[0].Text, "charge1")
+	require.Contains(t, s.sent[0].Text, "150 ⭐")
+	require.Contains(t, s.sent[0].Text, "проверьте срок ключа и примените вручную или верните звёзды")
+	require.Empty(t, s.files)
+	require.Empty(t, s.refunds)
+}
+
 func TestPaymentFailureRefunds(t *testing.T) {
 	svc := &fakeService{
 		payErr: errors.New("docker down"),

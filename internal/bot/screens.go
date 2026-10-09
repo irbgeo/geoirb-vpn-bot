@@ -272,6 +272,18 @@ func refundAlertText(a refundAlert) string {
 	return fmt.Sprintf("⚠️ Оплата %s от id %d не применена (%v), звёзды возвращены.", a.ChargeID, a.UserID, a.Cause)
 }
 
+// paymentReviewText tells admins that a payment was not applied: its record
+// was already there, unfinished, and the days may have been added.
+func paymentReviewText(in paymentReviewInput) string {
+	return fmt.Sprintf(
+		"🔴 Оплата %s от id %d (%d ⭐) пришла, но её запись уже была не завершена. "+
+			"Ничего не применено: проверьте срок ключа и примените вручную или верните звёзды.",
+		in.ChargeID,
+		in.UserID,
+		in.Stars,
+	)
+}
+
 // unfinishedPaymentsText lists payments that were neither applied nor
 // refunded (the bot stopped in the middle).
 func unfinishedPaymentsText(ps []*service.Payment) string {
