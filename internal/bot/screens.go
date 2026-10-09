@@ -1053,7 +1053,7 @@ func ruNetsAlertText(last time.Time) string {
 	if last.IsZero() {
 		when = "ни разу не обновлялся"
 	}
-	return "⚠️ Список российских сетей " + when + ": проверьте `journalctl -u geoirb-ru-nets`."
+	return "⚠️ Список российских сетей " + when + ": проверьте journalctl -u geoirb-ru-nets."
 }
 
 // mskTime formats a moment in Moscow time, saying so.

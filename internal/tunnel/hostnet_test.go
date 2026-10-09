@@ -58,6 +58,7 @@ func TestLastHandshakeErrors(t *testing.T) {
 	})
 	_, err := newTestNet().LastHandshake(context.Background())
 	require.ErrorContains(t, err, "Unable to access interface")
+	require.ErrorContains(t, err, "tunnel: awg show awg-exit")
 
 	fakeBins(t, map[string]string{
 		"awg": `printf 'PUB=\tsoon\n'`,
@@ -89,18 +90,34 @@ func TestRouteBotViaTunnel(t *testing.T) {
 
 	require.NoError(t, newTestNet().RouteBot(context.Background(), true))
 	require.Equal(t, []string{
-		"rule del prio 101",
-		"rule del prio 100",
+		"rule del prio 101 uidrange " + u,
+		"-6 rule del prio 101 uidrange " + u,
+		"rule del prio 100 uidrange " + u,
 		"rule add uidrange " + u + " lookup main suppress_prefixlength 0 prio 100",
 		"rule add uidrange " + u + " lookup 100 prio 101",
+		"-6 rule add uidrange " + u + " prio 101 unreachable",
 	}, readLog(t, log))
 }
 
 func TestRouteBotDirect(t *testing.T) {
 	log := ipLog(t)
+	u := fmt.Sprintf("%d-%d", os.Getuid(), os.Getuid())
 
 	require.NoError(t, newTestNet().RouteBot(context.Background(), false))
-	require.Equal(t, []string{"rule del prio 101"}, readLog(t, log))
+	require.Equal(t, []string{
+		"rule del prio 101 uidrange " + u,
+		"-6 rule del prio 101 uidrange " + u,
+	}, readLog(t, log))
+}
+
+func TestRouteBotHostWithoutIPv6(t *testing.T) {
+	fakeBins(t, map[string]string{
+		"ip": `case "$1" in -6) echo "RTNETLINK answers: Address family not supported by protocol" >&2; exit 2;; esac`,
+	})
+	n := newTestNet()
+
+	require.NoError(t, n.RouteBot(context.Background(), true))
+	require.NoError(t, n.RouteBot(context.Background(), false))
 }
 
 func TestRouteBotFails(t *testing.T) {
@@ -112,22 +129,10 @@ func TestRouteBotFails(t *testing.T) {
 	require.ErrorContains(t, err, "Operation not permitted")
 }
 
-func TestRunTimeoutAndWrapper(t *testing.T) {
-	fakeBins(t, map[string]string{
-		"awg": `exec sleep 5`,
-	})
-	n := NewHostNet(&config.Config{
-		ExitIface:  "awg-exit",
-		AWGTimeout: 50 * time.Millisecond,
-	})
-	start := time.Now()
-	_, err := n.LastHandshake(context.Background())
-	require.ErrorContains(t, err, "timed out")
-	require.Less(t, time.Since(start), 3*time.Second)
-
+func TestHostNetUsesTheWrapper(t *testing.T) {
 	wrapper := filepath.Join(t.TempDir(), "wrap")
 	require.NoError(t, os.WriteFile(wrapper, []byte("#!/bin/sh\n[ \"$1\" = awg ] && printf 'PUB=\\t7\\n'"), 0o700))
-	n = NewHostNet(&config.Config{
+	n := NewHostNet(&config.Config{
 		ExitIface:  "awg-exit",
 		AWGTimeout: 5 * time.Second,
 		AWGExec:    wrapper,

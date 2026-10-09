@@ -49,50 +49,7 @@ func TestLocalRunnerErrorHasStderrNotStdin(t *testing.T) {
 			Stdin: "SECRET",
 		},
 	)
-	require.ErrorContains(t, err, "awg pubkey")
+	require.ErrorContains(t, err, "amnezia: awg pubkey")
 	require.ErrorContains(t, err, "bad key")
 	require.NotContains(t, err.Error(), "SECRET")
-}
-
-func TestLocalRunnerTimeout(t *testing.T) {
-	fakeBin(t, "slow", `exec sleep 5`)
-	cfg := &config.Config{AWGTimeout: 50 * time.Millisecond}
-
-	start := time.Now()
-	_, err := NewLocalRunner(cfg).Exec(
-		context.Background(),
-		execInput{Args: []string{"slow"}},
-	)
-	require.ErrorContains(t, err, "timed out")
-	require.Less(t, time.Since(start), 3*time.Second)
-}
-
-func TestLocalRunnerWrapperGetsArgsFirst(t *testing.T) {
-	wrapper := fakeBin(t, "wrap", `echo "wrapped $@"; cat`)
-	cfg := &config.Config{
-		AWGTimeout: 5 * time.Second,
-		AWGExec:    wrapper,
-	}
-
-	out, err := NewLocalRunner(cfg).Exec(
-		context.Background(),
-		execInput{
-			Args:  []string{"awg", "show"},
-			Stdin: "IN",
-		},
-	)
-	require.NoError(t, err)
-	require.Equal(t, "wrapped awg show\nIN", out)
-}
-
-func TestLocalRunnerTimeoutKillsGrandchildren(t *testing.T) {
-	cfg := &config.Config{AWGTimeout: 50 * time.Millisecond}
-
-	start := time.Now()
-	_, err := NewLocalRunner(cfg).Exec(
-		context.Background(),
-		execInput{Args: []string{"sh", "-c", "sleep 5; true"}},
-	)
-	require.ErrorContains(t, err, "timed out")
-	require.Less(t, time.Since(start), time.Second)
 }

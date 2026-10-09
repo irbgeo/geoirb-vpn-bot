@@ -1,18 +1,17 @@
 package tunnel
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
+	"github.com/irbgeo/geoirb-vpn-bot/internal/hostexec"
 )
 
 // Bot ip rules (owned only by the watcher): prio 100 keeps local and
@@ -25,26 +24,27 @@ const (
 
 // hostNet reads the exit tunnel and sets the bot's ip rules on this host.
 type hostNet struct {
-	iface   string
-	uids    string // "U-U" for ip rule uidrange
-	wrapper string
-	timeout time.Duration
+	iface  string
+	uids   string // "U-U" for ip rule uidrange
+	run    *hostexec.Runner
+	noIPv6 sync.Once // logs "no IPv6 on this host" once
 }
 
 // NewHostNet runs `awg show <iface> latest-handshakes` and `ip rule` for the
 // bot's uid, through cfg.AWGExec if set.
 func NewHostNet(cfg *config.Config) *hostNet {
+	run := hostexec.New(cfg)
 	return &hostNet{
-		iface:   cfg.ExitIface,
-		uids:    fmt.Sprintf("%d-%d", os.Getuid(), os.Getuid()),
-		wrapper: cfg.AWGExec,
-		timeout: cfg.AWGTimeout,
+		iface: cfg.ExitIface,
+		uids:  fmt.Sprintf("%d-%d", os.Getuid(), os.Getuid()),
+		run:   run,
 	}
 }
 
-// LastHandshake returns the newest handshake on the exit interface; zero = never.
+// LastHandshake returns the newest handshake over all peers of the exit
+// interface (awg-exit has one); zero = never.
 func (s *hostNet) LastHandshake(ctx context.Context) (time.Time, error) {
-	out, err := s.run(ctx, "awg", "show", s.iface, "latest-handshakes")
+	out, err := s.exec(ctx, "awg", "show", s.iface, "latest-handshakes")
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -66,59 +66,61 @@ func (s *hostNet) LastHandshake(ctx context.Context) (time.Time, error) {
 	return time.Unix(last, 0), nil
 }
 
-// RouteBot sends the bot's traffic through the tunnel or directly.
+// RouteBot sends the bot's traffic through the tunnel or directly. Via the
+// tunnel IPv6 is unreachable for the bot, so Go falls back to IPv4 at once
+// instead of going around the tunnel.
 func (s *hostNet) RouteBot(ctx context.Context, viaTunnel bool) error {
-	err := s.delRule(ctx, exitPrio)
+	err := s.delRule(ctx, "rule", "del", "prio", exitPrio, "uidrange", s.uids)
+	if err != nil {
+		return err
+	}
+	err = s.delRule(ctx, "-6", "rule", "del", "prio", exitPrio, "uidrange", s.uids)
 	if err != nil || !viaTunnel {
 		return err
 	}
 	// Re-adding prio 100 makes sure it exists, without parsing `ip rule show`.
-	err = s.delRule(ctx, keepLocalPrio)
+	err = s.delRule(ctx, "rule", "del", "prio", keepLocalPrio, "uidrange", s.uids)
 	if err != nil {
 		return err
 	}
-	_, err = s.run(ctx, "ip", "rule", "add", "uidrange", s.uids, "lookup", "main", "suppress_prefixlength", "0", "prio", keepLocalPrio)
+	err = s.ip(ctx, "rule", "add", "uidrange", s.uids, "lookup", "main", "suppress_prefixlength", "0", "prio", keepLocalPrio)
 	if err != nil {
 		return err
 	}
-	_, err = s.run(ctx, "ip", "rule", "add", "uidrange", s.uids, "lookup", exitTable, "prio", exitPrio)
+	err = s.ip(ctx, "rule", "add", "uidrange", s.uids, "lookup", exitTable, "prio", exitPrio)
+	if err != nil {
+		return err
+	}
+	return s.ip(ctx, "-6", "rule", "add", "uidrange", s.uids, "prio", exitPrio, "unreachable")
+}
+
+// delRule runs an `ip rule del`; a missing rule is fine.
+func (s *hostNet) delRule(ctx context.Context, args ...string) error {
+	err := s.ip(ctx, args...)
+	if err != nil && strings.Contains(err.Error(), "No such file or directory") {
+		return nil
+	}
 	return err
 }
 
-// delRule deletes the rule with this priority; a missing rule is fine.
-func (s *hostNet) delRule(ctx context.Context, prio string) error {
-	_, err := s.run(ctx, "ip", "rule", "del", "prio", prio)
-	if err != nil && !strings.Contains(err.Error(), "No such file or directory") {
-		return err
+// ip runs `ip <args>`. A host without IPv6 is fine: its error is logged once.
+func (s *hostNet) ip(ctx context.Context, args ...string) error {
+	_, err := s.exec(ctx, append([]string{"ip"}, args...)...)
+	if err != nil && strings.Contains(err.Error(), "Address family not supported") {
+		s.noIPv6.Do(func() { log.Printf("tunnel: no IPv6 on this host, IPv6 rules skipped: %v", err) })
+		return nil
 	}
-	return nil
+	return err
 }
 
-// run runs one command (through the wrapper if set) and returns its stdout.
-// Same timeout handling as amnezia's local runner: the whole process group
-// is killed, so a wrapper's ssh does not keep the pipes open.
-func (s *hostNet) run(ctx context.Context, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-	if s.wrapper != "" {
-		args = append([]string{s.wrapper}, args...)
+// exec runs one command on the host and returns its stdout.
+func (s *hostNet) exec(ctx context.Context, args ...string) (string, error) {
+	in := hostexec.Input{
+		Args: args,
 	}
-	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
-	cmd.WaitDelay = 2 * time.Second
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	name := strings.Join(args, " ")
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return "", fmt.Errorf("tunnel: %s: timed out after %s", name, s.timeout)
-	}
+	out, err := s.run.Run(ctx, in)
 	if err != nil {
-		return "", fmt.Errorf("tunnel: %s: %w: %s", name, err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("tunnel: %w", err)
 	}
-	return stdout.String(), nil
+	return out, nil
 }
