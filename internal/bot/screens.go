@@ -558,11 +558,7 @@ func statsText(st *service.Stats) string {
 
 // accessText lists the user's own keys.
 func accessText(keys []service.KeyInfo) string {
-	text := "📋 Ваш доступ\n" + keysText(keys)
-	if len(keys) > 0 && keys[0].StatsUnavailable {
-		text += "\n" + statsUnavailableText
-	}
-	return text
+	return "📋 Ваш доступ\n" + keysText(keys)
 }
 
 // keysText describes each key: status, end date, last connection,
@@ -579,6 +575,9 @@ func keysText(keys []service.KeyInfo) string {
 		}
 		fmt.Fprintf(&b, "Последнее подключение: %s\n", last)
 		fmt.Fprintf(&b, "Трафик: ↓ %s скачано, ↑ %s отправлено\n", humanBytes(k.Received), humanBytes(k.Sent))
+	}
+	if len(keys) > 0 && keys[0].StatsUnavailable {
+		b.WriteString("\n" + statsUnavailableText + "\n")
 	}
 	return b.String()
 }

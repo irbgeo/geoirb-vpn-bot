@@ -22,9 +22,13 @@ func (s *service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 	stats, err := s.vpn.Stats(ctx)
 	if err != nil {
 		log.Printf("service: access: vpn stats: %v", err)
-		return join(ps, nil, true), nil
+		keys := join(ps, nil)
+		for i := range keys {
+			keys[i].StatsUnavailable = true // the same on every key
+		}
+		return keys, nil
 	}
-	return join(ps, stats, false), nil
+	return join(ps, stats), nil
 }
 
 // UserConfig renders a key's config for its owner. Someone else's key is
@@ -50,11 +54,11 @@ func (s *service) withStats(ctx context.Context, ps []*Peer) ([]KeyInfo, error) 
 	if err != nil {
 		return nil, err
 	}
-	return join(ps, stats, false), nil
+	return join(ps, stats), nil
 }
 
 // join pairs keys with their live stats and sorts them by IP.
-func join(ps []*Peer, stats []PeerStat, unavailable bool) []KeyInfo {
+func join(ps []*Peer, stats []PeerStat) []KeyInfo {
 	live := make(map[string]PeerStat, len(stats))
 	for _, st := range stats {
 		live[st.PublicKey] = st
@@ -69,8 +73,6 @@ func join(ps []*Peer, stats []PeerStat, unavailable bool) []KeyInfo {
 			LastHandshake: st.LastHandshake,
 			Sent:          st.Sent,
 			Received:      st.Received,
-
-			StatsUnavailable: unavailable,
 		}
 		out = append(out, keyInfo)
 	}

@@ -134,6 +134,15 @@ func TestAdminNegativePageShowsFirst(t *testing.T) {
 	require.Contains(t, s.edits[0].Text, "1/2")
 }
 
+func TestAdminUserCardNotesUnavailableStats(t *testing.T) {
+	svc := adminService()
+	svc.access[0].StatsUnavailable = true
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press("a:user:7")))
+	require.Contains(t, s.edits[0].Text, "Данные о подключениях временно недоступны")
+}
+
 func TestAdminUserCard(t *testing.T) {
 	r, s := newRouter(adminService())
 
