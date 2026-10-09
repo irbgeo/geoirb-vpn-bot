@@ -53,7 +53,7 @@ func TestSetClientAddsEntry(t *testing.T) {
 	files := map[string]string{
 		tablePath: clientsTable,
 	}
-	s := &server{run: fileContainer(files)}
+	s := &server{run: fileContainer(files), confPath: confFile}
 
 	err := s.SetClient(
 		context.Background(),
@@ -89,7 +89,7 @@ func TestSetClientRenamesExisting(t *testing.T) {
 	files := map[string]string{
 		tablePath: clientsTable,
 	}
-	s := &server{run: fileContainer(files)}
+	s := &server{run: fileContainer(files), confPath: confFile}
 
 	err := s.SetClient(
 		context.Background(),
@@ -113,7 +113,7 @@ func TestRemoveClient(t *testing.T) {
 	files := map[string]string{
 		tablePath: clientsTable,
 	}
-	s := &server{run: fileContainer(files)}
+	s := &server{run: fileContainer(files), confPath: confFile}
 
 	require.NoError(t, s.RemoveClient(context.Background(), "PUB1="))
 	require.Empty(t, tableEntries(t, files[tablePath]))
@@ -124,7 +124,7 @@ func TestRemoveUnknownClientWritesNothing(t *testing.T) {
 		tablePath: clientsTable,
 	}
 	r := fileContainer(files)
-	s := &server{run: r}
+	s := &server{run: r, confPath: confFile}
 
 	require.NoError(t, s.RemoveClient(context.Background(), "NOPE="))
 	require.Equal(t, []string{"cat " + tablePath}, r.cmds())
@@ -134,7 +134,7 @@ func TestBadClientsTable(t *testing.T) {
 	files := map[string]string{
 		tablePath: "not json",
 	}
-	s := &server{run: fileContainer(files)}
+	s := &server{run: fileContainer(files), confPath: confFile}
 
 	err := s.RemoveClient(context.Background(), "PUB1=")
 	require.ErrorContains(t, err, "clientsTable")

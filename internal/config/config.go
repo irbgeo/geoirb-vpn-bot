@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -40,11 +42,16 @@ type Config struct {
 	MaintenanceFlag string `envconfig:"MAINTENANCE_FLAG"`
 	// TrialDays: a plain user's first key is a free trial of this length.
 	TrialDays int `envconfig:"TRIAL_DAYS" default:"7"`
-	// AWGContainer: empty = find amnezia-awg2 / amnezia-awg via docker ps.
-	AWGContainer string `envconfig:"AWG_CONTAINER"`
-	// DockerBin: "docker" on the server; a local wrapper for development.
-	DockerBin     string        `envconfig:"DOCKER_BIN" default:"docker"`
-	DockerTimeout time.Duration `envconfig:"DOCKER_TIMEOUT" default:"20s"`
+	// AWGConf: the AmneziaWG server config on the host.
+	AWGConf string `envconfig:"AWG_CONF" default:"/etc/amnezia/amneziawg/awg0.conf"`
+	// AWGTimeout: limit for one awg / ip command.
+	AWGTimeout time.Duration `envconfig:"AWG_TIMEOUT" default:"20s"`
+	// AWGExec: optional wrapper the commands run through (dev: scripts/dev-remote.sh).
+	AWGExec string `envconfig:"AWG_EXEC"`
+	// ExitIface: the tunnel to the exit server; empty = no tunnel watch.
+	ExitIface string `envconfig:"EXIT_IFACE"`
+	// RUNetsStamp: touched by every good update of the RU networks list; empty = no check.
+	RUNetsStamp string `envconfig:"RU_NETS_STAMP"`
 
 	// SecretKey is DBSecretKey decoded.
 	SecretKey []byte `ignored:"true"`
@@ -70,8 +77,11 @@ func Load() (*Config, error) {
 		// Zero would issue keys that never expire, not "no trial".
 		return nil, fmt.Errorf("config: TRIAL_DAYS must be positive, got %d", c.TrialDays)
 	}
-	if c.DockerTimeout <= 0 {
-		return nil, fmt.Errorf("config: DOCKER_TIMEOUT must be positive, got %s", c.DockerTimeout)
+	if c.AWGTimeout <= 0 {
+		return nil, fmt.Errorf("config: AWG_TIMEOUT must be > 0, got %s", c.AWGTimeout)
+	}
+	if !path.IsAbs(c.AWGConf) || !strings.HasSuffix(c.AWGConf, ".conf") {
+		return nil, fmt.Errorf("config: AWG_CONF must be an absolute path ending in .conf, got %q", c.AWGConf)
 	}
 	if c.ClientMTU != 0 && (c.ClientMTU < 1280 || c.ClientMTU > 1500) {
 		return nil, fmt.Errorf("config: CLIENT_MTU must be 1280..1500 or empty, got %d", c.ClientMTU)

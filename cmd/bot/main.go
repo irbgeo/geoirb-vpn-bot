@@ -38,11 +38,8 @@ func main() {
 	}
 	defer st.Disconnect(context.Background()) //nolint:errcheck
 
-	runner, err := amnezia.NewDockerRunner(ctx, cfg)
-	if err != nil {
-		log.Fatalf("fatal: %v", err)
-	}
-	server, err := amnezia.Open(ctx, runner)
+	runner := amnezia.NewLocalRunner(cfg)
+	server, err := amnezia.Open(ctx, runner, cfg.AWGConf)
 	if err != nil {
 		log.Fatalf("fatal: %v", err)
 	}

@@ -53,7 +53,7 @@ func (s *server) updateTable(ctx context.Context, fn func([]tableEntry) ([]table
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	p := path.Join(confDir, "clientsTable")
+	p := path.Join(path.Dir(s.confPath), "clientsTable")
 	text, err := s.run.Exec(ctx, cmd("cat", p))
 	if err != nil {
 		return err

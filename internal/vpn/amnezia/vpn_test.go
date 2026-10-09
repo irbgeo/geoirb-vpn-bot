@@ -46,6 +46,7 @@ func newBox(t *testing.T) *box {
 		&fakeRunner{
 			handler: b.handle,
 		},
+		confFile,
 	)
 	require.NoError(t, err)
 	b.vpn = NewVPN(srv)
@@ -55,8 +56,8 @@ func newBox(t *testing.T) *box {
 func (s *box) handle(in execInput) (string, error) {
 	c := strings.Join(in.Args, " ")
 	switch {
-	case c == "ls /opt/amnezia/awg":
-		return "awg0.conf\nclientsTable\n", nil
+	case in.Args[0] == "test":
+		return "", nil
 	case strings.HasPrefix(c, "sh -c command -v"):
 		return "/usr/bin/awg\n", nil
 	case in.Args[0] == "cat":

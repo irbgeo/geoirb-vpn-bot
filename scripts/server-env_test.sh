@@ -18,7 +18,7 @@ MONGO_URI=mongodb://localhost:27017
 DB_SECRET_KEY=a2V5
 ENDPOINT_HOST=35.217.30.38
 TELEGRAM_TEST_ENV=true
-DOCKER_BIN=scripts/dev-docker.sh
+AWG_EXEC=scripts/dev-remote.sh
 # a comment
 TARIFFS=30:150,90:400
 X

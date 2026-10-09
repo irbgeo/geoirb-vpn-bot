@@ -41,9 +41,9 @@ func TestLoadDefaults(t *testing.T) {
 				90:  400,
 				365: 1500,
 			},
-			DockerBin:     "docker",
-			DockerTimeout: 20 * time.Second,
-			SecretKey:     bytes.Repeat([]byte{1}, 32),
+			AWGConf:    "/etc/amnezia/amneziawg/awg0.conf",
+			AWGTimeout: 20 * time.Second,
+			SecretKey:  bytes.Repeat([]byte{1}, 32),
 		},
 		c,
 	)
@@ -52,15 +52,21 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadOverrides(t *testing.T) {
 	setRequired(t)
 	t.Setenv("MONGO_URI", "mongodb://u:p@127.0.0.1:27017/?authSource=geoirb_vpn")
-	t.Setenv("AWG_CONTAINER", "amnezia-awg")
-	t.Setenv("DOCKER_TIMEOUT", "5s")
+	t.Setenv("AWG_CONF", "/etc/amnezia/amneziawg/wg0.conf")
+	t.Setenv("AWG_TIMEOUT", "5s")
+	t.Setenv("AWG_EXEC", "scripts/dev-remote.sh")
+	t.Setenv("EXIT_IFACE", "awg1")
+	t.Setenv("RU_NETS_STAMP", "/var/lib/x/stamp")
 	t.Setenv("CLIENT_MTU", "1380")
 
 	c, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "mongodb://u:p@127.0.0.1:27017/?authSource=geoirb_vpn", c.MongoURI)
-	require.Equal(t, "amnezia-awg", c.AWGContainer)
-	require.Equal(t, 5*time.Second, c.DockerTimeout)
+	require.Equal(t, "/etc/amnezia/amneziawg/wg0.conf", c.AWGConf)
+	require.Equal(t, 5*time.Second, c.AWGTimeout)
+	require.Equal(t, "scripts/dev-remote.sh", c.AWGExec)
+	require.Equal(t, "awg1", c.ExitIface)
+	require.Equal(t, "/var/lib/x/stamp", c.RUNetsStamp)
 	require.Equal(t, 1380, c.ClientMTU)
 }
 
@@ -104,8 +110,8 @@ func TestLoadTelegramTestEnv(t *testing.T) {
 
 func TestLoadRejectsZeroDurations(t *testing.T) {
 	for name, value := range map[string]string{
-		"TRIAL_DAYS":     "0",
-		"DOCKER_TIMEOUT": "0s",
+		"TRIAL_DAYS":  "0",
+		"AWG_TIMEOUT": "0s",
 	} {
 		t.Run(name, func(t *testing.T) {
 			setRequired(t)
@@ -113,6 +119,18 @@ func TestLoadRejectsZeroDurations(t *testing.T) {
 			_, err := Load()
 			require.ErrorContains(t, err, name)
 		})
+	}
+}
+
+func TestLoadAWGConfMustBeAbsoluteConf(t *testing.T) {
+	for _, v := range []string{
+		"awg0.conf",
+		"/etc/amnezia/awg0",
+	} {
+		setRequired(t)
+		t.Setenv("AWG_CONF", v)
+		_, err := Load()
+		require.ErrorContains(t, err, "AWG_CONF", v)
 	}
 }
 

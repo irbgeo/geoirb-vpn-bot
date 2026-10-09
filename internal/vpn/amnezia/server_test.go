@@ -42,8 +42,6 @@ func awgContainer(conf *string) *fakeRunner {
 	return &fakeRunner{handler: func(in execInput) (string, error) {
 		cmd := strings.Join(in.Args, " ")
 		switch {
-		case cmd == "ls /opt/amnezia/awg":
-			return "awg0.conf\nclientsTable\nwireguard_psk.key\n", nil
 		case strings.HasPrefix(cmd, "sh -c command -v"):
 			return "/usr/bin/awg\n", nil
 		case cmd == "cat /opt/amnezia/awg/awg0.conf":
@@ -58,7 +56,7 @@ func awgContainer(conf *string) *fakeRunner {
 
 func TestOpenDetectsLayout(t *testing.T) {
 	conf := serverConfText
-	s, err := Open(context.Background(), awgContainer(&conf))
+	s, err := Open(context.Background(), awgContainer(&conf), confFile)
 	require.NoError(t, err)
 	require.Equal(t, "awg0", s.iface)
 	require.Equal(t, "/opt/amnezia/awg/awg0.conf", s.confPath)
@@ -67,21 +65,23 @@ func TestOpenDetectsLayout(t *testing.T) {
 
 func TestOpenOldWireGuardLayout(t *testing.T) {
 	r := &fakeRunner{handler: func(in execInput) (string, error) {
-		if in.Args[0] == "ls" {
-			return "wg0.conf\nclientsTable\n", nil
-		}
 		return "/usr/bin/wg\n", nil
 	}}
-	s, err := Open(context.Background(), r)
+	s, err := Open(context.Background(), r, "/etc/amnezia/amneziawg/wg0.conf")
 	require.NoError(t, err)
 	require.Equal(t, "wg0", s.iface)
 	require.Equal(t, "wg", s.tool)
 }
 
 func TestOpenFailsWithoutConf(t *testing.T) {
-	r := &fakeRunner{handler: func(execInput) (string, error) { return "clientsTable\n", nil }}
-	_, err := Open(context.Background(), r)
-	require.ErrorContains(t, err, "no awg0.conf or wg0.conf")
+	r := &fakeRunner{handler: func(in execInput) (string, error) {
+		if in.Args[0] == "test" {
+			return "", errors.New("exit status 1")
+		}
+		return "/usr/bin/awg\n", nil
+	}}
+	_, err := Open(context.Background(), r, confFile)
+	require.ErrorContains(t, err, confFile)
 }
 
 func TestGenKeys(t *testing.T) {
@@ -118,7 +118,7 @@ func TestGenKeys(t *testing.T) {
 func TestUpdateSyncsThenPersists(t *testing.T) {
 	conf := serverConfText
 	r := awgContainer(&conf)
-	s, err := Open(context.Background(), r)
+	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 	r.calls = nil
 
@@ -153,7 +153,7 @@ func TestUpdateSyncsThenPersists(t *testing.T) {
 func TestUpdateCallbackErrorWritesNothing(t *testing.T) {
 	conf := serverConfText
 	r := awgContainer(&conf)
-	s, err := Open(context.Background(), r)
+	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 	r.calls = nil
 
@@ -172,7 +172,7 @@ func TestUpdateSyncFailureKeepsFile(t *testing.T) {
 		}
 		return inner(in)
 	}
-	s, err := Open(context.Background(), r)
+	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 
 	err = s.Update(context.Background(), func(c *serverConf) error {
@@ -238,7 +238,7 @@ func TestServerPublicKey(t *testing.T) {
 func TestUpdateRefusesAConfigChangedByAnotherWriter(t *testing.T) {
 	conf := serverConfText
 	r := awgContainer(&conf)
-	s, err := Open(context.Background(), r)
+	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 	r.calls = nil
 

@@ -111,12 +111,12 @@ Telegram-бот, который продаёт доступ к VPN на AmneziaW
    | `TRIAL_DAYS` | нет | пробный период, 7 |
    | `CLIENT_DNS` | нет | `1.1.1.1, 1.0.0.1` |
    | `CLIENT_MTU` | нет | пусто (не писать в конфиг); для GCP `1380` |
-   | `SERVER_ID`, `AWG_CONTAINER`, `DOCKER_TIMEOUT` | нет | см. `.env.example` |
+   | `SERVER_ID`, `AWG_CONF`, `AWG_TIMEOUT` | нет | см. `.env.example` |
 
 6. **Деплой:** `make deploy`. Скрипт:
    - собирает бинарник под Linux;
    - собирает конфиг сервера (`scripts/server-env.sh`): берёт `.env`, **убирает**
-     локальные настройки (`TELEGRAM_TEST_ENV`, `DOCKER_BIN`, `MONGO_*`) и добавляет
+     локальные настройки (`TELEGRAM_TEST_ENV`, `AWG_EXEC`, `MONGO_*`) и добавляет
      `MONGO_URI` с паролем из `server-infra`;
    - на сервере запускает `deploy/install.sh`: создаёт пользователя `vpnbot` (в группе
      `docker`), ставит бота как systemd-сервис `geoirb-vpn-bot` и таймер бэкапа,
@@ -206,7 +206,7 @@ make lint
 Запуск на своём компьютере с настоящим контейнером (локальная Mongo):
 ```bash
 set -a; . ./.env; set +a
-DOCKER_BIN=scripts/dev-docker.sh go run ./cmd/bot
+AWG_EXEC=scripts/dev-remote.sh go run ./cmd/bot
 ```
 Ключи, созданные так, — **настоящие** пиры на сервере, но записаны в локальную
 базу: удалите их до запуска бота на сервере. Дешёвый тариф для проверки оплаты
@@ -226,5 +226,5 @@ internal/bot       Telegram: меню, админка, оплата, текст�
 internal/bypass    списки раздельного туннелирования
 internal/worker    раз в минуту: сроки, напоминания, подсеть
 deploy/            systemd и скрипт бэкапа
-scripts/           deploy, backup, server-env, dev-docker
+scripts/           deploy, backup, server-env, dev-remote
 ```

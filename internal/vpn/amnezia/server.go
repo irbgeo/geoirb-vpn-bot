@@ -6,52 +6,38 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-const confDir = "/opt/amnezia/awg"
-
-// Runner runs a command inside the Amnezia container.
+// Runner runs a command on the host.
 type Runner interface {
 	Exec(ctx context.Context, in execInput) (string, error)
 }
 
-// server manages the AmneziaWG interface inside the container.
+// server manages the AmneziaWG interface on the host.
 type server struct {
 	run      Runner
-	confPath string // /opt/amnezia/awg/awg0.conf (or wg0.conf)
-	iface    string // awg0 (or wg0)
+	confPath string // e.g. /etc/amnezia/amneziawg/awg0.conf
+	iface    string // awg0
 	tool     string // awg (or wg)
 	// mu serializes read-modify-write of the config: two concurrent updates
 	// would otherwise lose one of the changes.
 	mu sync.Mutex
 }
 
-// Open detects the config file and tool inside the container.
+// Open checks the config at confPath and detects the tool; the interface
+// is the base name of the config.
 func Open(
 	ctx context.Context,
 	run Runner,
+	confPath string,
 ) (*server, error) {
-	files, err := run.Exec(ctx, cmd("ls", confDir))
+	_, err := run.Exec(ctx, cmd("test", "-f", confPath))
 	if err != nil {
-		return nil, err
-	}
-	conf := ""
-	for _, name := range []string{
-		"awg0.conf",
-		"wg0.conf",
-	} {
-		if slices.Contains(strings.Fields(files), name) {
-			conf = name
-			break
-		}
-	}
-	if conf == "" {
-		return nil, fmt.Errorf("amnezia: no awg0.conf or wg0.conf in %s", confDir)
+		return nil, fmt.Errorf("amnezia: server config %s: %w", confPath, err)
 	}
 
 	tool, err := run.Exec(ctx, cmd("sh", "-c", "command -v awg || command -v wg"))
@@ -61,8 +47,8 @@ func Open(
 
 	return &server{
 		run:      run,
-		confPath: path.Join(confDir, conf),
-		iface:    strings.TrimSuffix(conf, ".conf"),
+		confPath: confPath,
+		iface:    strings.TrimSuffix(path.Base(confPath), ".conf"),
 		tool:     path.Base(strings.TrimSpace(tool)),
 	}, nil
 }
