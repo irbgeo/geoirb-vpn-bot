@@ -11,6 +11,8 @@ test:
 	./deploy/exit/install_test.sh
 	./deploy/install_test.sh
 	./deploy/awg0-init_test.sh
+	./deploy/import-peers_test.sh
+	./scripts/import-peers_test.sh
 	./deploy/ru-nets_test.sh
 	./deploy/vpn-routes_test.sh
 
