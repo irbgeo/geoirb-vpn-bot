@@ -131,6 +131,8 @@ func TestIPhoneGuideFitsOneMessage(t *testing.T) {
 	require.True(t, strings.HasSuffix(iphoneHowToText, "Вопросы — в /support."))
 	require.Contains(t, iphoneHowToText, "11. Нажмите «Готово».\n\nПРОВЕРКА\n")
 	require.NotContains(t, iphoneHowToText, "ШАГ 2", "the owner dropped the switch-back automation")
+	require.Contains(t, iphoneHowToText, "СОВЕТУЕМ ЕЩЁ\n", "a second automation: connect when an app that needs it opens")
+	require.Contains(t, iphoneHowToText, "• в пункте 9 оставьте «Подключиться».")
 }
 
 // The iPhone video is added later: until then the guide is its text.
