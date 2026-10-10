@@ -130,12 +130,13 @@ func dropEnd(p *Peer) {
 	p.Reminded1d = false
 }
 
-// savePeer saves a reminder mark; false (logged) if it failed, so the
-// reminder is not sent and is tried again next run.
+// savePeer saves a key Maintain changed (a reminder mark, a dropped end
+// date); false (logged) if it failed, so a reminder is not sent and the
+// change is tried again next run.
 func (s *service) savePeer(ctx context.Context, p *Peer) bool {
 	err := s.peers.Save(ctx, p)
 	if err != nil {
-		log.Printf("service: save reminder for %s: %v", p.IP, err)
+		log.Printf("service: maintain: save key %s: %v", p.IP, err)
 		return false
 	}
 	return true
