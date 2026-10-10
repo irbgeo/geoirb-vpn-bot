@@ -387,7 +387,7 @@ func TestAdminBroadcast(t *testing.T) {
 	require.Contains(t, preview.Text, "3 пользователям")
 	require.Contains(t, preview.Text, "Сервер переедет в субботу")
 	require.Contains(t, preview.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:")
-	require.Equal(t, "a:cancel", preview.Keyboard.InlineKeyboard[0][1].CallbackData)
+	require.Equal(t, cancelOf(preview.Keyboard.InlineKeyboard[0][0].CallbackData), preview.Keyboard.InlineKeyboard[0][1].CallbackData)
 
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
@@ -415,7 +415,7 @@ func TestAdminBroadcastCancel(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
 	require.NoError(t, r.Handle(ctx, startUpdate("oops")))
-	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, pressCancel(s)))
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 
@@ -569,7 +569,7 @@ func TestAdminUpdateConfigs(t *testing.T) {
 	require.Contains(t, ask.Text, "ENDPOINT_HOST")
 	require.Contains(t, ask.Text, configsNoticeText, "the admin sees exactly what users get")
 	require.Contains(t, ask.Keyboard.InlineKeyboard[0][0].CallbackData, "a:cfgsok:")
-	require.Equal(t, "a:cancel", ask.Keyboard.InlineKeyboard[0][1].CallbackData)
+	require.Equal(t, cancelOf(ask.Keyboard.InlineKeyboard[0][0].CallbackData), ask.Keyboard.InlineKeyboard[0][1].CallbackData)
 
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
@@ -664,7 +664,7 @@ func TestMaintenanceCancelKeepsTheState(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
-	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, pressCancel(s)))
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.False(t, r.maint.on())
@@ -877,6 +877,71 @@ func pressSend(s *fakeSender) tgbot.Update {
 	return press(all[len(all)-1])
 }
 
+// cancelOf is the "cancel" button that sits next to a preview's "send".
+func cancelOf(send string) string {
+	return cbAdminCanc + send[strings.LastIndex(send, ":"):]
+}
+
+// pressCancel presses "cancel" under the newest preview.
+func pressCancel(s *fakeSender) tgbot.Update {
+	all := confirmButtons(s)
+	return press(cancelOf(all[len(all)-1]))
+}
+
+// A broadcast preview's "send" pressed after the admin opened the "update
+// configs" question is a stale button like any other: it is explained.
+func TestSendOfAPreviewOfAnotherKindIsExplained(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, startUpdate("broadcast text")))
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	old := confirmButtons(s)[0]
+	sent := len(s.sent)
+
+	require.NoError(t, r.Handle(ctx, press(old)))
+	r.Wait()
+	require.Empty(t, s.sentTo(7))
+	require.Len(t, s.sent, sent+1, "the press gets an answer")
+	require.Equal(t, oldPreviewText, s.sent[sent].Text)
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, configsNoticeText, s.sentTo(7)[0].Text, "the configs question is still there")
+}
+
+// "Cancel" under an older preview must not cancel the newest one.
+func TestCancelUnderAnOlderPreviewKeepsTheNewest(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	prompt := s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData
+	require.NoError(t, r.Handle(ctx, startUpdate("first draft")))
+	require.NoError(t, r.Handle(ctx, startUpdate("final text")))
+
+	for _, old := range []string{
+		cancelOf(confirmButtons(s)[0]),
+		prompt, // "cancel" under the "send me the text" prompt
+	} {
+		require.NoError(t, r.Handle(ctx, press(old)))
+		require.Equal(t, oldCancelText, s.sent[len(s.sent)-1].Text, old)
+	}
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, "final text", s.sentTo(7)[0].Text, "the newest preview is still there")
+}
+
 func TestSendUnderAnOlderPreviewSendsNothing(t *testing.T) {
 	svc := adminService()
 	svc.recipients = []int64{
@@ -927,7 +992,7 @@ func TestConfigsSendButtonWorksOnceAndOnlyUnderItsOwnQuestion(t *testing.T) {
 	require.Len(t, s.sentTo(7), 1, "sent once; the second press finds nothing")
 
 	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
-	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, pressCancel(s)))
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Len(t, s.sentTo(7), 1, "cancelled")

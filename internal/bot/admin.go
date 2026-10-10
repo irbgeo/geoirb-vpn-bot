@@ -426,12 +426,21 @@ func (s *router) adminStats(ctx context.Context, a adminAction) error {
 	return s.send.Send(ctx, outMessage)
 }
 
-// adminCancel drops what the bot waits for from this admin.
+// adminCancel drops what the message with the pressed "cancel" asked for:
+// a preview by its token, the broadcast text prompt without one. When the
+// chat waits for something newer, that stays and the admin is told.
 func (s *router) adminCancel(ctx context.Context, a adminAction) error {
-	s.dialogs.drop(a.ChatID)
+	dialogTake := dialogTake{
+		ChatID: a.ChatID,
+		Token:  a.Arg,
+	}
+	_, res := s.dialogs.take(dialogTake)
 	outMessage := outMessage{
 		ChatID: a.ChatID,
 		Text:   cancelledText,
+	}
+	if res == takeStale {
+		outMessage.Text = oldCancelText
 	}
 	return s.send.Send(ctx, outMessage)
 }

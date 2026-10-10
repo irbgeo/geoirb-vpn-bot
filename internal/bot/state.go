@@ -25,9 +25,9 @@ type dialogs struct {
 type takeResult int
 
 const (
-	takeNone    takeResult = iota // nothing of that kind waits
+	takeNone    takeResult = iota // the chat waits for nothing
 	takeExpired                   // it waited too long and is dropped
-	takeStale                     // the button belongs to an older preview; the newer one stays
+	takeStale                     // the button belongs to an older message; what waits now stays
 	takeOK
 )
 
@@ -53,8 +53,8 @@ func (s *dialogs) set(p pendingInput) {
 func (s *dialogs) preview(p pendingInput) string {
 	p.At = time.Time{}
 	var b [4]byte
-	_, _ = rand.Read(b[:]) // never fails (Go 1.24+)
-	p.Token = binary.BigEndian.Uint32(b[:])
+	_, _ = rand.Read(b[:])                      // never fails (Go 1.24+)
+	p.Token = binary.BigEndian.Uint32(b[:]) | 1 // never 0: that is "no token"
 	s.set(p)
 	return p.token()
 }
@@ -77,17 +77,18 @@ func (s *dialogs) peek(chatID int64) (pendingInput, bool) {
 	return p, true
 }
 
-// take removes and returns the chat's entry if it is of kind in.Kind and
-// has in.Token. An expired one is removed too, and reported as
-// takeExpired; one with another token stays (takeStale).
+// take removes and returns the chat's entry if it is of kind in.Kind (0 =
+// any) and has in.Token. An expired one is removed too, and reported as
+// takeExpired; one of another kind or with another token stays (takeStale:
+// the pressed button sits under an older message).
 func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.m[in.ChatID]
-	if !ok || p.Kind != in.Kind {
+	if !ok {
 		return pendingInput{}, takeNone
 	}
-	if p.token() != in.Token {
+	if (in.Kind != 0 && p.Kind != in.Kind) || p.token() != in.Token {
 		return pendingInput{}, takeStale
 	}
 	delete(s.m, in.ChatID)

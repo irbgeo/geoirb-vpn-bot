@@ -186,12 +186,21 @@ const (
 	readyConfigs                            // admin: "update configs" asked, waiting for "send"
 )
 
-// dialogTake asks dialogs.take for a chat's entry of one kind. Token is
-// the one in the pressed button: it must be the entry's.
+// dialogTake asks dialogs.take for a chat's entry of one kind (0 = of any
+// kind). Token is the one in the pressed button: it must be the entry's
+// ("" = an entry that is not a preview).
 type dialogTake struct {
 	ChatID int64
 	Kind   pendingKind
 	Token  string
+}
+
+// previewButtons are the two buttons under a preview: "send" (Label,
+// callback SendData + ":" + Token) and "cancel" with the same Token.
+type previewButtons struct {
+	Label    string
+	SendData string // cbAdminBcOK or cbAdminCfgOK
+	Token    string
 }
 
 // massSend is one background send to every user with an enabled key:
@@ -216,13 +225,17 @@ type pendingInput struct {
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
 	Maint  maintChange
-	// Token ties a preview (readyBroadcast, readyConfigs) to the "send"
-	// button under it: a button of an older preview does not match.
+	// Token ties a preview (readyBroadcast, readyConfigs) to the "send" and
+	// "cancel" buttons under it: a button of an older preview does not
+	// match. 0 = not a preview.
 	Token uint32
 }
 
-// token is Token as the button carries it.
+// token is Token as the buttons carry it; "" when there is none.
 func (s pendingInput) token() string {
+	if s.Token == 0 {
+		return ""
+	}
 	return strconv.FormatUint(uint64(s.Token), 36)
 }
 

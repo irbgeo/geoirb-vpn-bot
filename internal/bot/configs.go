@@ -2,8 +2,6 @@ package bot
 
 import (
 	"context"
-
-	tgbot "github.com/irbgeo/go-tgbot"
 )
 
 // adminConfigsAsk shows how many users get the "update your config"
@@ -18,11 +16,15 @@ func (s *router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 		Kind:   readyConfigs,
 	}
 	token := s.dialogs.preview(pendingInput)
-	send := tgbot.Button("🔄 Отправить", cbAdminCfgOK+":"+token)
+	previewButtons := previewButtons{
+		Label:    "🔄 Отправить",
+		SendData: cbAdminCfgOK,
+		Token:    token,
+	}
 	outMessage := outMessage{
 		ChatID:   a.ChatID,
 		Text:     configsAskText(len(ids)),
-		Keyboard: sendCancelKeyboard(send),
+		Keyboard: sendCancelKeyboard(previewButtons),
 	}
 	return s.send.Send(ctx, outMessage)
 }

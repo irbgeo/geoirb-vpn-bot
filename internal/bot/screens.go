@@ -425,13 +425,13 @@ func broadcastPreviewText(v broadcastView) string {
 }
 
 // sendCancelKeyboard is a preview's keyboard: its "send" button and
-// "cancel". The send button carries the preview's token, so it sends only
-// what it sits under.
-func sendCancelKeyboard(send tgbot.InlineKeyboardButton) *tgbot.InlineKeyboardMarkup {
+// "cancel". Both carry the preview's token, so they send or cancel only
+// what they sit under.
+func sendCancelKeyboard(b previewButtons) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(
-			send,
-			tgbot.Button("Отмена", cbAdminCanc),
+			tgbot.Button(b.Label, b.SendData+":"+b.Token),
+			tgbot.Button("Отмена", cbAdminCanc+":"+b.Token),
 		),
 	)
 }
@@ -442,6 +442,7 @@ const (
 	previewExpiredText    = "Этот предпросмотр устарел — ничего не отправлено. Откройте /menu и начните заново."
 	repeatedPressText     = "Это действие только что выполнено — повторное нажатие пропущено. Нужно ещё раз — нажмите через 10 секунд."
 	oldPreviewText        = "Эта кнопка от старого предпросмотра — ничего не отправлено. Нажмите «Отправить» под последним."
+	oldCancelText         = "Эта «Отмена» от старого сообщения — ничего не отменено. Нажмите «Отмена» под последним."
 	massSendBusyText      = "📣 Сейчас уже идёт рассылка — дождитесь её отчёта и нажмите «Отправить» ещё раз."
 	keyDeliveryFailedText = "🔑 Ключ создан, но отправить его сразу не получилось. Он в «📋 Мой доступ» — нажмите «📄 Конфиг»."
 )
