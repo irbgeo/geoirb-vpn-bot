@@ -153,7 +153,10 @@ func main() {
 		OnError: func(err error) { log.Printf("poll: %v", err) },
 	}
 	err = client.Poll(ctx, pollOptions, dispatcher.Handle)
-	dispatcher.Shutdown(30 * time.Second)
+	// 15 s of grace: with an undo awg command (AWG_TIMEOUT, 20 s) and one
+	// Telegram call (15 s) after it, the stop stays under systemd's
+	// TimeoutStopSec=60, so SIGKILL does not land in a clean-up.
+	dispatcher.Shutdown(15 * time.Second)
 	router.Close() // a running broadcast stops and sends its report
 	<-workerDone   // let a running maintenance pass finish
 	if err != nil {
