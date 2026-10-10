@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runs as root on the RU server (geoirb-ru-nets.timer: weekly and at boot).
+# Runs as root on the RU server (geoirb-ru-nets.timer: weekly; deploy/install.sh
+# also runs it at every deploy. At boot the last good set is restored by
+# deploy/vpn-routes.sh, not by a download).
 # Fills the nftables set `inet geoirb ru4` (deploy/geoirb-vpn.nft) with the
 # Russian IPv4 networks from the RIPE NCC delegated stats: client traffic to
 # them leaves here directly, the rest goes through the exit tunnel. A failed
@@ -50,8 +52,15 @@ nft -f "$tmp/ru4.nft"
 
 # Kept for the next boot: geoirb-vpn-routes.service loads it before the tunnels.
 mkdir -p "$STATE"
-# tmp + mv in the same dir: a crash never leaves a half-written file there
-install -m 644 "$tmp/ru4.nft" "$STATE/ru4.nft.tmp"
-mv "$STATE/ru4.nft.tmp" "$STATE/ru4.nft"
-touch "$STAMP"
+# tmp + mv in the same dir: a crash never leaves a half-written file there.
+# Random names (mktemp) and a move over the stamp instead of `touch`: the
+# bot user owns this directory, and a fixed name could be a symlink it
+# planted for root to write through.
+new="$(mktemp "$STATE/ru4.nft.XXXXXX")"
+cat "$tmp/ru4.nft" >"$new"
+chmod 644 "$new"
+mv -f "$new" "$STATE/ru4.nft"
+new="$(mktemp "$STAMP.XXXXXX")"
+chmod 644 "$new"
+mv -f "$new" "$STAMP"
 echo "ru-nets: $n RU prefixes loaded"

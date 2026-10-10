@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/ru-nets.sh with a fixture RIPE file and fake curl/nft on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/../scripts/testlib.sh"
 
 cat >"$TMP/ripe" <<'X'
 2|ripencc|20261008|123456|19830705|20261008|+0100
@@ -29,10 +22,11 @@ cat >"$TMP/bin/curl" <<'X'
 while [[ $# -gt 0 ]]; do [[ "$1" == -o ]] && out="$2"; shift; done
 cp "$FIXTURE" "$out"
 X
-# fake nft: logs the call and keeps a copy of its -f input.
+# fake nft: logs the call and keeps a copy of its -f input; fails with $NFT_FAIL.
 cat >"$TMP/bin/nft" <<'X'
 #!/usr/bin/env bash
 echo "nft $*" >>"$CALLS"
+[[ -z "${NFT_FAIL:-}" ]] || exit 1
 [[ "$1" == -f ]] && cp "$2" "$NFT_IN"
 X
 chmod +x "$TMP/bin"/*
@@ -44,8 +38,18 @@ run() { # run [env...]
     PATH="$TMP/bin:$PATH" "$@" bash "$DIR/ru-nets.sh" >/dev/null 2>&1
 }
 
+# The bot user owns the state directory: symlinks planted at the stamp and at
+# the old fixed temp name must not make root write through them.
+mkdir -p "$(dirname "$STAMP")"
+echo keep >"$TMP/victim"
+touch -t 200001010000 "$TMP/victim"
+ln -s "$TMP/victim" "$STAMP"
+ln -s "$TMP/victim" "$(dirname "$STAMP")/ru4.nft.tmp"
 run RU_NETS_MIN=3
 check "exits 0" "0" "$?"
+check "planted symlinks: target untouched, the stamp is a file" "keep 1 1" \
+  "$(cat "$TMP/victim") $([[ "$TMP/victim" -ot "$TMP/ripe" ]] && echo 1) $([[ -f "$STAMP" && ! -L "$STAMP" ]] && echo 1)"
+rm "$(dirname "$STAMP")/ru4.nft.tmp"
 check "nft input" "flush set inet geoirb ru4
 add element inet geoirb ru4 {
 5.8.0.0/19,
@@ -74,5 +78,13 @@ check "failed download: nft not called" "0" "$(grep -c . "$TMP/calls")"
 check "failed download: stamp kept" "1" "$([[ "$STAMP" -ot "$TMP/ripe" ]] && echo 1)"
 check "failed runs keep the saved set" "1" "$(cmp -s "$SAVED" "$TMP/saved.first" && echo 1)"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+# nft refuses the new set: the run fails, and neither the stamp nor the saved
+# set says otherwise.
+echo "ripencc|RU|ipv4|77.88.0.0|256|20100101|allocated" >>"$TMP/ripe"
+touch -t 200001010000 "$STAMP"
+run RU_NETS_MIN=3 NFT_FAIL=1
+check "nft failure fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "nft failure: stamp kept, saved set kept, no temp file" "1 1 " \
+  "$([[ "$STAMP" -ot "$TMP/saved.first" ]] && echo 1) $(cmp -s "$SAVED" "$TMP/saved.first" && echo 1) $(ls "$(dirname "$SAVED")" | grep -v -e '^ru4.nft$' -e '^ru-nets.stamp$')"
+
+finish

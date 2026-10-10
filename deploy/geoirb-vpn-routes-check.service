@@ -1,7 +1,8 @@
 # Every minute (geoirb-vpn-routes-check.timer): put the split-routing ip rule
 # and the table-100 routes back if anything dropped them (networkd
 # reconfiguring a link, a manual `netplan apply`). Without the rule, client traffic to foreign
-# addresses leaves from the RU address. `rules` skips the nft reload.
+# addresses leaves from the RU address. `rules` loads the nft table only when
+# it is gone (an `nft flush ruleset`, a start of nftables.service).
 [Unit]
 Description=Re-assert the VPN split-routing rule and routes
 After=geoirb-vpn-routes.service

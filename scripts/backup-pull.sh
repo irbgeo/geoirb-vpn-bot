@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Copies the newest server backup to ./backups/ on this machine, so a lost
 # VPS doesn't take its backups with it. Keeps the newest 7 here too.
+# BACKUP_DEST overrides the directory (scripts/backup-pull_test.sh).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib.sh"
-DEST="$ROOT/backups"
+DEST="${BACKUP_DEST:-$ROOT/backups}"
 KEEP=7
 
 name="$(remote "sudo sh -c 'ls -1t /var/backups/geoirb-vpn-bot/geoirb-vpn-*.tar.gz | head -1'")"

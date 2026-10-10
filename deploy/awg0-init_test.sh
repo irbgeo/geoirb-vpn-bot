@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/awg0-init.sh with ROOT=<tmp> and fake awg/chown on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/../scripts/testlib.sh"
 val() { sed -n "s/^$1 = //p" "$CONF"; }
 
 mkdir "$TMP/bin"
@@ -39,7 +31,6 @@ check "Jmax" "70" "$(val Jmax)"
 s1="$(val S1)"; s2="$(val S2)"; s3="$(val S3)"; s4="$(val S4)"
 check "S1 15-60" "1" "$([[ "$s1" -ge 15 && "$s1" -le 60 ]] && echo 1)"
 check "S2 15-60" "1" "$([[ "$s2" -ge 15 && "$s2" -le 60 ]] && echo 1)"
-check "S1+56 != S2" "1" "$([[ $((s1 + 56)) -ne "$s2" ]] && echo 1)"
 check "S3 8-32" "1" "$([[ "$s3" -ge 8 && "$s3" -le 32 ]] && echo 1)"
 check "S4 8-32" "1" "$([[ "$s4" -ge 8 && "$s4" -le 32 ]] && echo 1)"
 # H1-H4: ranges a-b, a > 4, a < b <= 2^32-1, not overlapping.
@@ -54,6 +45,24 @@ check "no active I1" "0" "$(grep -c '^I1' "$CONF")"
 
 cp "$CONF" "$TMP/first"
 
+# awg0-check.sh (ExecStartPre/ExecStop of geoirb-awg0.service): the conf is the
+# bot's, so a line awg-quick would run as root must stop the unit.
+bash "$DIR/awg0-check.sh" "$CONF" 2>/dev/null
+check "check: a fresh conf passes" "0" "$?"
+for l in 'PostUp = id' '  postup=id' 'PreUp = id' 'PreDown = id' 'PostDown = id' 'SaveConfig = true'; do
+  { cat "$CONF"; echo "$l"; } >"$TMP/hook.conf"
+  bash "$DIR/awg0-check.sh" "$TMP/hook.conf" 2>/dev/null
+  check "check: '$l' is refused" "1" "$?"
+done
+{ cat "$CONF"; echo "# PostUp = id"; } >"$TMP/hook.conf"
+bash "$DIR/awg0-check.sh" "$TMP/hook.conf" 2>/dev/null
+check "check: a commented hook passes" "0" "$?"
+bash "$DIR/awg0-check.sh" "$TMP/none.conf" 2>/dev/null
+check "check: a missing conf fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+U="$DIR/geoirb-awg0.service"
+check "unit: the check is the first ExecStartPre and ExecStop, not optional" "ExecStartPre=/opt/geoirb-vpn-bot/awg0-check.sh /etc/amnezia/amneziawg/awg0.conf
+ExecStop=/opt/geoirb-vpn-bot/awg0-check.sh /etc/amnezia/amneziawg/awg0.conf" "$(grep -m1 '^ExecStartPre=' "$U"; grep -m1 '^ExecStop=' "$U")"
+
 # awg genkey fails: no conf with an empty key.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/awg"
 rm "$CONF"
@@ -66,5 +75,4 @@ check "second run exits 0" "0" "$?"
 check "second run says kept" "1" "$(grep -c kept <<<"$out")"
 check "second run keeps the conf" "1" "$(cmp -s "$CONF" "$TMP/first" && echo 1)"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

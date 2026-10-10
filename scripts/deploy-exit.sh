@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the exit side of the RU <-> exit tunnel on the host in
 # secret/exit-access.yaml (host, port, user, password). Creates
-# secret/tunnel.yaml on first run. Two ssh connections: install, then status.
+# secret/tunnel.yaml on first run. One ssh connection: install, then status.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ACCESS_FILE="$ROOT/secret/exit-access.yaml"
@@ -13,8 +13,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -m 700 "$TMP/pkg"
 (umask 077 && "$ROOT/scripts/render-tunnel.sh" exit "$SERVER_HOST" >"$TMP/pkg/awg-exit.conf")
-cp "$ROOT/deploy/exit/install.sh" "$ROOT/deploy/exit/geoirb-awg-exit.service" \
-  "$ROOT/deploy/awg-tools.sh" "$ROOT/deploy/99-geoirb-vpn.conf" "$TMP/pkg/"
+cp "$ROOT/deploy/exit/install.sh" "$ROOT/deploy/exit/geoirb-awg-exit.service" "$ROOT/deploy/exit/exit-fw.sh" \
+  "$ROOT/deploy/awg-tools.sh" "$ROOT/deploy/99-geoirb-vpn.conf" \
+  "$ROOT/deploy/nf_conntrack-modules.conf" "$ROOT/deploy/nf_conntrack-modprobe.conf" "$TMP/pkg/"
 
 echo "▶ Installing on $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
 # One ssh login (the server throttles quick repeated ones). The package, with

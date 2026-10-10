@@ -6,6 +6,7 @@
 #   mongo-geoirb_vpn.archive.gz mongodump of the bot database
 # and keeps the newest KEEP archives. DB_SECRET_KEY is NOT in the archive:
 # keep it separately, or the encrypted client keys in the dump can't be read.
+# ROOT is a path prefix for tests (deploy/backup_test.sh).
 set -euo pipefail
 
 DEST="${DEST:-/var/backups/geoirb-vpn-bot}"
@@ -21,7 +22,7 @@ mkdir -p "$DEST"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-tar -C /etc/amnezia -czf - amneziawg >"$tmp/amnezia-awg.tar.gz"
+tar -C "${ROOT:-}/etc/amnezia" -czf - amneziawg >"$tmp/amnezia-awg.tar.gz"
 # The URI (with the password) goes in through a config file on stdin, so it
 # never shows up in `ps`.
 printf 'uri: %s\n' "$MONGO_URI" | docker exec -i "$MONGO_CONTAINER" sh -c \
@@ -40,7 +41,10 @@ echo "backup: $out ($(du -h "$out" | cut -f1))"
 ls -1t "$DEST"/geoirb-vpn-*.tar.gz | tail -n +"$((KEEP + 1))" | xargs -r rm --
 
 # The bot reads this file's time and tells the admins when it gets old.
+# A new file moved over the name, not `touch`: the bot user owns that
+# directory, and a symlink planted as the stamp is replaced, not followed.
 if [[ -n "$STAMP" ]]; then
   install -d "$(dirname "$STAMP")"
-  touch "$STAMP"
+  s="$(mktemp "$STAMP.XXXXXX")"
+  mv -f "$s" "$STAMP"
 fi

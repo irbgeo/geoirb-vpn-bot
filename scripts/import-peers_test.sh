@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Dry test of scripts/import-peers.sh with a fake sshpass: no real server.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/testlib.sh"
 mkdir "$TMP/bin"
 for n in old new; do printf 'host: %s.example\nuser: u\npassword: secret-pw\n' "$n" >"$TMP/$n.yaml"; done
 # fake sshpass: logs host and argv; the old host prints a conf, the RU host eats stdin.
@@ -32,5 +25,4 @@ check "conf reaches RU on stdin" "1" "$(grep -c SECRETPSK "$TMP/calls.stdin")"
 check "PSK not in argv" "0" "$(grep -c SECRETPSK "$TMP/calls.argv")"
 check "PSK not printed" "0" "$(grep -c SECRETPSK <<<"$out")"
 check "local temp dir removed" "0" "$(ls -A "$TMP/t" | wc -l | tr -d ' ')"
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

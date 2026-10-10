@@ -3,12 +3,11 @@
 # deploy.sh uploads it). Installs or updates the bot, the host AmneziaWG
 # (awg0 for clients, awg-exit tunnel), split routing, DNS for clients, the
 # backup timer and the host tuning. Order matters: a backup of the current
-# state is taken before the new binary can touch Mongo or awg0.conf.
+# state is taken first, before anything on the host changes.
 # Env: LOCAL_HASH (hash of BOT_TOKEN/DB_SECRET_KEY in the package), FORCE=1
 # to replace them anyway. ROOT is a path prefix for tests.
 set -euo pipefail
-S="$(cd "$(dirname "$0")" && pwd)"
-trap 'rm -rf "$S"' EXIT
+S="$(cd "$(dirname "$0")" && pwd)" # removed by its creator (scripts/deploy.sh), not here
 ROOT="${ROOT:-}"
 E="$ROOT/etc/geoirb-vpn-bot/env"
 OPT="$ROOT/opt/geoirb-vpn-bot"
@@ -24,6 +23,19 @@ if [[ -f "$E" ]]; then
   fi
 fi
 
+# A backup of the state the running version left, before anything changes
+# (only backup.sh and its unit are new by then, and it still reads the old
+# env): a failed backup stops the deploy with the old bot, env, units and
+# tunnels as they were. On the first deploy there is nothing to back up yet.
+first=0
+[[ -x "$OPT/bot" && -f "$E" ]] || first=1
+if [[ "$first" == 0 ]]; then
+  install -m 750 "$S/backup.sh" "$OPT/"
+  install -m 644 "$S/geoirb-vpn-bot-backup.service" "$SD/"
+  systemctl daemon-reload
+  systemctl start geoirb-vpn-bot-backup.service
+fi
+
 # The module comes from ppa:amnezia/ppa (amneziawg-dkms), installed by hand.
 modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
 if ! dpkg -s unbound nftables >/dev/null 2>&1; then
@@ -34,7 +46,8 @@ bash "$S/awg-tools.sh"
 
 id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
 install -d -m 755 "$OPT"
-install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$S/import-peers.sh" "$OPT/"
+install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$S/import-peers.sh" \
+  "$S/awg0-check.sh" "$OPT/"
 install -d -m 750 "$ROOT/etc/geoirb-vpn-bot"
 chown root:vpnbot "$ROOT/etc/geoirb-vpn-bot"
 install -m 640 "$S/env" "$E"
@@ -47,6 +60,11 @@ rm -f "$SD"/geoirb-vpn-conntrack.* "$OPT/awg-conntrack.sh" "$OPT/awg-container.s
 install -d "$SD/unbound.service.d" "$ROOT/etc/unbound/unbound.conf.d" "$ROOT/etc/sysctl.d" \
   "$ROOT/etc/modules-load.d" "$ROOT/etc/modprobe.d"
 install -m 644 "$S"/*.service "$S"/*.timer "$SD/"
+# unbound is restarted (below) only when one of its two files changed: a bot
+# release must not cut the clients' DNS.
+unbound_new=0
+cmp -s "$S/unbound-after-awg0.conf" "$SD/unbound.service.d/geoirb.conf" || unbound_new=1
+cmp -s "$S/unbound-geoirb.conf" "$ROOT/etc/unbound/unbound.conf.d/geoirb.conf" || unbound_new=1
 install -m 644 "$S/unbound-after-awg0.conf" "$SD/unbound.service.d/geoirb.conf"
 install -m 644 "$S/unbound-geoirb.conf" "$ROOT/etc/unbound/unbound.conf.d/geoirb.conf"
 install -d -m 700 "$ROOT/etc/geoirb-vpn"
@@ -64,6 +82,16 @@ sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf"
 
 # awg0.conf: created on the first install only, never overwritten.
 ROOT="$ROOT" bash "$S/awg0-init.sh"
+# geoirb-awg0.service refuses a conf with a hook line at its next start
+# (awg0-check.sh). Say it now, while awg0 still runs; never fatal here.
+bash "$S/awg0-check.sh" "$ROOT/etc/amnezia/amneziawg/awg0.conf" ||
+  echo "warning: awg0 will NOT start again (next reboot or restart) until that line is removed from awg0.conf" >&2
+# The client subnet is written in more places than awg0.conf: geoirb-vpn.nft
+# (mark, NAT), unbound-geoirb.conf, the ufw rule below and CLIENT_DNS
+# (scripts/server-env.sh). They do not follow a hand-changed Address.
+if ! grep -Eq '^Address[[:space:]]*=[[:space:]]*10\.8\.0\.1/22[[:space:]]*$' "$ROOT/etc/amnezia/amneziawg/awg0.conf"; then
+  echo "warning: Address in awg0.conf is not 10.8.0.1/22. NAT, split routing and DNS are set for 10.8.0.0/22 only: clients outside it get no internet and no DNS. Change deploy/geoirb-vpn.nft, deploy/unbound-geoirb.conf, deploy/install.sh (ufw) and scripts/server-env.sh (CLIENT_DNS) to match." >&2
+fi
 
 # systemd-networkd drops foreign ip rules and routes whenever it reconfigures
 # a link (see networkd-geoirb.conf). It reads this file at start only, so
@@ -89,12 +117,18 @@ else
 fi
 # and re-assert the rule and routes every minute, whatever drops them
 systemctl enable --quiet --now geoirb-vpn-routes-check.timer
-# Stop first: `down` must run with the OLD tunnel conf, before it is replaced.
-systemctl stop geoirb-awg-exit.service 2>/dev/null || true
-install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+# The tunnel is restarted only when its conf changed: a bot release must not
+# cut foreign traffic. Stop first: `down` must run with the OLD tunnel conf,
+# before it is replaced.
+if ! cmp -s "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"; then
+  systemctl stop geoirb-awg-exit.service 2>/dev/null || true
+  install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+fi
+# The tunnel first (`start` leaves an active unit alone): a failure here
+# stops the deploy before anything else is started.
+systemctl start geoirb-awg-exit.service
 # start, never restart awg0: that would drop every connected client
 systemctl is-active --quiet geoirb-awg0.service || systemctl start geoirb-awg0.service
-systemctl start geoirb-awg-exit.service
 
 # ufw (server-infra) drops forwarded and incoming traffic by default.
 if command -v ufw >/dev/null && ufw status | grep '^Status: active' >/dev/null; then
@@ -106,19 +140,16 @@ fi
 # this unbound does not listen.
 systemctl disable --quiet --now unbound-resolvconf.service 2>/dev/null || true
 systemctl enable --quiet unbound.service
-systemctl restart unbound.service
+if [[ "$unbound_new" == 1 ]]; then
+  systemctl restart unbound.service
+else
+  systemctl start unbound.service
+fi
 systemctl enable --quiet --now geoirb-vpn-mss.service
 systemctl enable --quiet --now geoirb-ru-nets.timer
 # fill the RU set now; a failed download must not stop the deploy (it retries)
 systemctl start geoirb-ru-nets.service || echo "warning: RU networks not loaded yet, see journalctl -u geoirb-ru-nets" >&2
 systemctl enable --quiet --now geoirb-vpn-bot-backup.timer
-
-# A backup of the state the running version left, before the new one
-# starts; a failed backup stops the deploy with the old bot still running.
-# On the first deploy there is nothing to back up yet.
-first=0
-[[ -x "$OPT/bot" ]] || first=1
-[[ "$first" == 1 ]] || systemctl start geoirb-vpn-bot-backup.service
 
 install -m 755 "$S/bot" "$OPT/bot"
 systemctl enable --quiet geoirb-vpn-bot.service
