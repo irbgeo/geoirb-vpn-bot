@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -176,4 +177,65 @@ func containsButton(q buttonQuery) bool {
 		}
 	}
 	return false
+}
+
+func TestFeedbackIsLimitedPerUser(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		svc := &fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
+			},
+		}
+		r, s := newRouter(svc)
+		ctx := context.Background()
+		send := func(text string) {
+			require.NoError(t, r.Handle(ctx, press(cbFeedback)))
+			require.NoError(t, r.Handle(ctx, startUpdate(text)))
+		}
+		for range feedbackPerHour {
+			send("отзыв")
+		}
+
+		send("ещё один")
+		require.Len(t, svc.feedback, feedbackPerHour, "the one over the limit is not saved")
+		require.Len(t, s.sentTo(1), feedbackPerHour, "and admins are not told")
+		require.Equal(t, feedbackLimitText, s.sent[len(s.sent)-1].Text)
+		_, waiting := r.dialogs.peek(42)
+		require.False(t, waiting, "the question is closed")
+
+		other := startUpdate("от другого")
+		other.Message.From.ID, other.Message.Chat.ID = 43, 43
+		r.dialogs.set(
+			pendingInput{
+				ChatID: 43,
+				UserID: 43,
+				Kind:   pendingFeedback,
+			},
+		)
+		require.NoError(t, r.Handle(ctx, other))
+		require.Len(t, svc.feedback, feedbackPerHour+1, "the limit is per user")
+
+		time.Sleep(time.Hour)
+		send("через час")
+		require.Len(t, svc.feedback, feedbackPerHour+2, "an hour later it works again")
+	})
+}
+
+func TestRateLimitForgetsIdleKeys(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		l := newRateLimit[int](
+			1,
+			time.Minute,
+		)
+		for k := range rateLimitKeys {
+			require.True(t, l.allow(k))
+		}
+		require.False(t, l.allow(0))
+
+		time.Sleep(time.Minute)
+		require.True(t, l.allow(0))
+		require.Len(t, l.seen, 1, "the idle keys are gone")
+	})
 }

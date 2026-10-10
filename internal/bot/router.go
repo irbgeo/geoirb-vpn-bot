@@ -125,6 +125,8 @@ type router struct {
 	maint *maintFlag
 	// refunds: charge IDs an admin refund is running for.
 	refunds *inFlight
+	// feedbackLimit: reviews one user may send per hour.
+	feedbackLimit *rateLimit[int64]
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
 }
@@ -138,21 +140,26 @@ func New(
 	maint := newMaintFlag(d.Config.MaintenanceFlag)
 	refunds := newInFlight()
 	splitVideo := newVideoFile(d.SplitVideo)
+	feedbackLimit := newRateLimit[int64](
+		feedbackPerHour,
+		time.Hour,
+	)
 	return &router{
-		users:      d.Users,
-		keys:       d.Keys,
-		billing:    d.Billing,
-		ops:        d.Ops,
-		feedback:   d.Feedback,
-		send:       d.Sender,
-		support:    d.Config.SupportContact,
-		splitVideo: splitVideo,
-		notify:     d.Notifier,
-		dialogs:    dialogs,
-		jobs:       jobs,
-		maint:      maint,
-		refunds:    refunds,
-		pause:      50 * time.Millisecond,
+		users:         d.Users,
+		keys:          d.Keys,
+		billing:       d.Billing,
+		ops:           d.Ops,
+		feedback:      d.Feedback,
+		send:          d.Sender,
+		support:       d.Config.SupportContact,
+		splitVideo:    splitVideo,
+		notify:        d.Notifier,
+		dialogs:       dialogs,
+		jobs:          jobs,
+		maint:         maint,
+		refunds:       refunds,
+		feedbackLimit: feedbackLimit,
+		pause:         50 * time.Millisecond,
 	}
 }
 

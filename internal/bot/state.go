@@ -276,6 +276,55 @@ func (s *inFlight) end(id string) {
 	s.mu.Unlock()
 }
 
+// rateLimitKeys: with this many keys remembered, allow first forgets the
+// ones idle for a whole window, so a flood of accounts can't grow the map
+// without end.
+const rateLimitKeys = 1000
+
+// rateLimit lets one key (a user, a pressed button) act at most max times
+// per window; allow counts the try when it says yes.
+// shortcut: in memory only, a restart forgets the counts; count in the DB
+// if someone floods across restarts.
+type rateLimit[K comparable] struct {
+	max    int
+	window time.Duration
+	mu     sync.Mutex
+	seen   map[K][]time.Time
+}
+
+func newRateLimit[K comparable](
+	limit int,
+	window time.Duration,
+) *rateLimit[K] {
+	return &rateLimit[K]{
+		max:    limit,
+		window: window,
+		seen:   map[K][]time.Time{},
+	}
+}
+
+func (s *rateLimit[K]) allow(key K) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if len(s.seen) >= rateLimitKeys {
+		for k, at := range s.seen {
+			if now.Sub(at[len(at)-1]) >= s.window {
+				delete(s.seen, k)
+			}
+		}
+	}
+	live := slices.DeleteFunc(s.seen[key], func(t time.Time) bool {
+		return now.Sub(t) >= s.window
+	})
+	if len(live) >= s.max {
+		s.seen[key] = live
+		return false
+	}
+	s.seen[key] = append(live, now)
+	return true
+}
+
 // videoFile is a video shipped in the binary. The first send uploads it;
 // the file ID Telegram returns is reused afterwards. In memory only: one
 // upload after every restart.

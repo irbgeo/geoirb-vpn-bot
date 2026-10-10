@@ -10,6 +10,11 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
+// feedbackPerHour: how many reviews one user may send in an hour. Each one
+// is saved and sent to every admin, so without a limit any account could
+// flood both.
+const feedbackPerHour = 5
+
 // askFeedback waits for one message with a review or suggestion; the
 // "◀️ Меню" button cancels.
 func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
@@ -39,6 +44,15 @@ func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 		outMessage := outMessage{
 			ChatID:   m.Chat.ID,
 			Text:     needFeedbackTextText,
+			Keyboard: menuKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	if !s.feedbackLimit.allow(m.From.ID) {
+		s.dialogs.drop(m.Chat.ID)
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     feedbackLimitText,
 			Keyboard: menuKeyboard(),
 		}
 		return s.send.Send(ctx, outMessage)

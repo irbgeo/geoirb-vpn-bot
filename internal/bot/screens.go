@@ -474,6 +474,7 @@ const (
 	needFeedbackTextText = "Нужен текст — напишите отзыв одним сообщением."
 	feedbackThanksText   = "🙏 Спасибо! Сохранили ваш отзыв."
 	feedbackFailedText   = "Не получилось сохранить отзыв. Попробуйте позже."
+	feedbackLimitText    = "Слишком много отзывов за час. Напишите позже — мы всё прочитаем."
 )
 
 var badFeedbackText = fmt.Sprintf(
