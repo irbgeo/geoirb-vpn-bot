@@ -10,12 +10,16 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
+// feedbackPerHour: how many reviews one user may send in an hour. Each one
+// is saved and sent to every admin, so without a limit any account could
+// flood both.
+const feedbackPerHour = 5
+
 // askFeedback waits for one message with a review or suggestion; the
 // "◀️ Меню" button cancels.
 func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	pendingInput := pendingInput{
 		ChatID: cq.ChatID(),
-		UserID: cq.SenderID(),
 		Kind:   pendingFeedback,
 	}
 	s.dialogs.set(pendingInput)
@@ -28,17 +32,23 @@ func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error
 }
 
 // feedbackText saves the text the user sent after "Отзывы и предложения".
-// A message without text or a bad text asks again; anything else ends the
-// question. Only the user who asked answers.
+// A message without text, a bad text and a save that failed keep the
+// question open, so the user can just send it again; a saved review (or
+// one over the hourly limit) ends it.
 func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
-	p, _ := s.dialogs.peek(m.Chat.ID)
-	if p.UserID != m.From.ID {
-		return nil
-	}
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo
 		outMessage := outMessage{
 			ChatID:   m.Chat.ID,
 			Text:     needFeedbackTextText,
+			Keyboard: menuKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	if !s.feedbackLimit.allow(m.From.ID) {
+		s.dialogs.drop(m.Chat.ID)
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     feedbackLimitText,
 			Keyboard: menuKeyboard(),
 		}
 		return s.send.Send(ctx, outMessage)

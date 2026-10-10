@@ -148,9 +148,9 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 		DeliveryErr: err,
 	}
 	if err != nil {
-		// Paid, but the key or the message did not get through (a docker
-		// timeout, Telegram down): the user must still hear that the
-		// payment worked and where the key is.
+		// Paid, but the key or the message did not get through (an awg
+		// command timeout, Telegram down): the user must still hear that
+		// the payment worked and where the key is.
 		ctx = context.WithoutCancel(ctx)
 		outMessage := outMessage{
 			ChatID: m.Chat.ID,
@@ -167,8 +167,11 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 
 // refund returns the Stars of a payment that could not be applied, tells
 // the user and the admins, and returns the cause for the log. It runs on
-// a context that can't be cancelled: Telegram won't deliver the payment
-// again, so a refund skipped at shutdown would be lost.
+// a context that can't be cancelled: Telegram is not expected to deliver
+// the payment again, so a refund skipped at shutdown would be lost. If it
+// does come again (the last updates before a restart can), Pay finds the
+// charge recorded as refunded and applies nothing; that record is why a
+// failed MarkRefunded is told to the admins.
 func (s *router) refund(ctx context.Context, f failedPayment) error {
 	ctx = context.WithoutCancel(ctx)
 	m := f.Message
@@ -182,14 +185,10 @@ func (s *router) refund(ctx context.Context, f failedPayment) error {
 		UserID:   a.UserID,
 		ChargeID: a.ChargeID,
 	}
-	a.RefundErr = s.send.Refund(ctx, refundInput)
-	if a.RefundErr != nil {
+	res, err := s.returnStars(ctx, refundInput)
+	a.RefundErr, a.RecordErr = err, res.RecordErr
+	if err != nil {
 		text = refundFailedText
-	} else {
-		err := s.billing.MarkRefunded(ctx, a.ChargeID)
-		if err != nil {
-			log.Printf("bot: mark refunded %s: %v", a.ChargeID, err)
-		}
 	}
 	s.notify.NotifyAdmins(ctx, refundAlertText(a))
 	outMessage := outMessage{
@@ -201,6 +200,29 @@ func (s *router) refund(ctx context.Context, f failedPayment) error {
 		log.Printf("bot: %v", sendErr)
 	}
 	return f.Cause
+}
+
+// returnStars gives the Stars of a charge back and records it: the one
+// refund sequence, for a payment that could not be applied and for the
+// admin's button. An error means the Stars did NOT go back. Otherwise they
+// did, and the result says whether that happened before this call and
+// whether the record failed (logged here; the caller tells the admins).
+// The record is written on a context that can't be cancelled: it must
+// follow the Stars even on shutdown.
+func (s *router) returnStars(ctx context.Context, in refundInput) (starsReturn, error) {
+	ctx = context.WithoutCancel(ctx)
+	already, err := s.send.Refund(ctx, in)
+	if err != nil {
+		return starsReturn{}, err
+	}
+	recordErr := s.billing.MarkRefunded(ctx, in.ChargeID)
+	if recordErr != nil {
+		log.Printf("bot: stars returned but not recorded for %s: %v", in.ChargeID, recordErr)
+	}
+	return starsReturn{
+		Already:   already,
+		RecordErr: recordErr,
+	}, nil
 }
 
 // invoiceErrorText explains expected Invoice errors; known is false for

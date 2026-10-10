@@ -103,6 +103,10 @@ const (
 	cbSplitNone  = "split:none"
 )
 
+// keyActionsPerMinute: how many reissues, deletes and config resends one
+// user may ask for in a minute (see costlyKeyAction).
+const keyActionsPerMinute = 5
+
 // router turns Telegram updates into service calls and replies. Its own
 // state is kept in small types with their own locks (state.go).
 type router struct {
@@ -125,6 +129,13 @@ type router struct {
 	maint *maintFlag
 	// refunds: charge IDs an admin refund is running for.
 	refunds *inFlight
+	// feedbackLimit: reviews one user may send per hour.
+	feedbackLimit *rateLimit[int64]
+	// keyActions: reissues, deletes and config resends of one user per minute.
+	keyActions *rateLimit[int64]
+	// adminRepeats: admin buttons that add something on every press, by
+	// button data: one press per repeatPressGap.
+	adminRepeats *rateLimit[string]
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
 }
@@ -138,21 +149,36 @@ func New(
 	maint := newMaintFlag(d.Config.MaintenanceFlag)
 	refunds := newInFlight()
 	splitVideo := newVideoFile(d.SplitVideo)
+	feedbackLimit := newRateLimit[int64](
+		feedbackPerHour,
+		time.Hour,
+	)
+	keyActions := newRateLimit[int64](
+		keyActionsPerMinute,
+		time.Minute,
+	)
+	adminRepeats := newRateLimit[string](
+		1,
+		repeatPressGap,
+	)
 	return &router{
-		users:      d.Users,
-		keys:       d.Keys,
-		billing:    d.Billing,
-		ops:        d.Ops,
-		feedback:   d.Feedback,
-		send:       d.Sender,
-		support:    d.Config.SupportContact,
-		splitVideo: splitVideo,
-		notify:     d.Notifier,
-		dialogs:    dialogs,
-		jobs:       jobs,
-		maint:      maint,
-		refunds:    refunds,
-		pause:      50 * time.Millisecond,
+		users:         d.Users,
+		keys:          d.Keys,
+		billing:       d.Billing,
+		ops:           d.Ops,
+		feedback:      d.Feedback,
+		send:          d.Sender,
+		support:       d.Config.SupportContact,
+		splitVideo:    splitVideo,
+		notify:        d.Notifier,
+		dialogs:       dialogs,
+		jobs:          jobs,
+		maint:         maint,
+		refunds:       refunds,
+		feedbackLimit: feedbackLimit,
+		keyActions:    keyActions,
+		adminRepeats:  adminRepeats,
+		pause:         50 * time.Millisecond,
 	}
 }
 
@@ -252,6 +278,13 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if err != nil {
 		log.Printf("bot: answer callback: %v", err)
 	}
+	if costlyKeyAction(cq.Data) && !s.keyActions.allow(cq.SenderID()) {
+		outMessage := outMessage{
+			ChatID: cq.ChatID(),
+			Text:   tooOftenText,
+		}
+		return s.send.Send(ctx, outMessage)
+	}
 	switch {
 	case cq.Data == cbMenu:
 		return s.backToMenu(ctx, cq)
@@ -300,6 +333,64 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.admin(ctx, cq)
 	}
 	return nil
+}
+
+// costlyKeyAction: the button makes the server work for one user's key (a
+// reissue or delete rewrites the server config, a resend reads it). The
+// "are you sure" buttons (kr?:, kd?:) are not among them.
+func costlyKeyAction(data string) bool {
+	return strings.HasPrefix(data, cbReissue) || strings.HasPrefix(data, cbDelete) || strings.HasPrefix(data, cbConfig)
+}
+
+// start registers the user (first /start adds them to the bot) and sends
+// the main menu. /start and /menu are a way out of any prompt.
+func (s *router) start(ctx context.Context, m *tgbot.Message) error {
+	s.dialogs.drop(m.Chat.ID)
+	menu, err := s.mainMenu(ctx, m.From)
+	if err != nil {
+		return err
+	}
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     menu.Text,
+		Keyboard: menu.Keyboard,
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
+// keyNamed creates the key with the name the user sent. A bad name asks
+// again and keeps waiting; anything else ends the question. (Only private
+// chats are handled, so the chat is the user who was asked.)
+func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
+	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     askKeyNameText,
+			Keyboard: skipKeyNameKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	s.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
+	keyRequest := keyRequest{
+		ChatID: m.Chat.ID,
+		UserID: m.From.ID,
+		Name:   m.Text,
+	}
+	err := s.issueKey(ctx, keyRequest)
+	if !errors.Is(err, service.ErrBadKeyName) {
+		return err
+	}
+	pendingInput := pendingInput{
+		ChatID: m.Chat.ID,
+		Kind:   pendingKeyName,
+	}
+	s.dialogs.set(pendingInput)
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     badKeyNameText,
+		Keyboard: skipKeyNameKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
 }
 
 // backToMenu is the "◀️ Меню" button: it turns the same message back into
@@ -389,6 +480,41 @@ func createKeyErrorText(err error) (text string, known bool) {
 	return internalErrorText, false
 }
 
+// configAgain resends one of the user's own keys.
+func (s *router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	userKey := service.UserKey{
+		UserID:    cq.SenderID(),
+		PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
+	}
+	kc, err := s.keys.UserConfig(ctx, userKey)
+	if err != nil {
+		text, known := configErrorText(err)
+		userError := userError{
+			ChatID: cq.ChatID(),
+			Err:    err,
+			Text:   text,
+			Known:  known,
+		}
+		return s.replyError(ctx, userError)
+	}
+	configDelivery := configDelivery{
+		ChatID: cq.ChatID(),
+		Key:    kc,
+	}
+	return s.sendConfig(ctx, configDelivery)
+}
+
+// configErrorText explains why a key's config can't be sent again.
+func configErrorText(err error) (text string, known bool) {
+	switch {
+	case errors.Is(err, service.ErrNotFound):
+		return keyNotFoundText, true
+	case errors.Is(err, service.ErrNoPrivateKey):
+		return noPrivateKeyText, true
+	}
+	return configFailedText, false
+}
+
 // replyError tells the user what went wrong. An expected error (Known)
 // ends there; an unexpected one is also returned, for the log. A failed
 // send is logged.
@@ -411,7 +537,6 @@ func (s *router) replyError(ctx context.Context, e userError) error {
 func (s *router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	pendingInput := pendingInput{
 		ChatID: cq.ChatID(),
-		UserID: cq.SenderID(),
 		Kind:   pendingKeyName,
 	}
 	s.dialogs.set(pendingInput)
@@ -610,95 +735,4 @@ func (s *router) commandText(c command) string {
 		return paySupportText(s.support)
 	}
 	return unknownCommandText
-}
-
-// configAgain resends one of the user's own keys.
-func (s *router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	userKey := service.UserKey{
-		UserID:    cq.SenderID(),
-		PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
-	}
-	kc, err := s.keys.UserConfig(ctx, userKey)
-	if err != nil {
-		text, known := configErrorText(err)
-		userError := userError{
-			ChatID: cq.ChatID(),
-			Err:    err,
-			Text:   text,
-			Known:  known,
-		}
-		return s.replyError(ctx, userError)
-	}
-	configDelivery := configDelivery{
-		ChatID: cq.ChatID(),
-		Key:    kc,
-	}
-	return s.sendConfig(ctx, configDelivery)
-}
-
-// configErrorText explains why a key's config can't be sent again.
-func configErrorText(err error) (text string, known bool) {
-	switch {
-	case errors.Is(err, service.ErrNotFound):
-		return keyNotFoundText, true
-	case errors.Is(err, service.ErrNoPrivateKey):
-		return noPrivateKeyText, true
-	}
-	return configFailedText, false
-}
-
-// start registers the user (first /start adds them to the bot) and sends
-// the main menu. /start and /menu are a way out of any prompt.
-func (s *router) start(ctx context.Context, m *tgbot.Message) error {
-	s.dialogs.drop(m.Chat.ID)
-	menu, err := s.mainMenu(ctx, m.From)
-	if err != nil {
-		return err
-	}
-	outMessage := outMessage{
-		ChatID:   m.Chat.ID,
-		Text:     menu.Text,
-		Keyboard: menu.Keyboard,
-	}
-	return s.send.Send(ctx, outMessage)
-}
-
-// keyNamed creates the key with the name the user sent. A bad name asks
-// again and keeps waiting; anything else ends the question. Only the user
-// who asked answers.
-func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
-	p, _ := s.dialogs.peek(m.Chat.ID)
-	if p.UserID != m.From.ID {
-		return nil
-	}
-	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
-		outMessage := outMessage{
-			ChatID:   m.Chat.ID,
-			Text:     askKeyNameText,
-			Keyboard: skipKeyNameKeyboard(),
-		}
-		return s.send.Send(ctx, outMessage)
-	}
-	s.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
-	keyRequest := keyRequest{
-		ChatID: m.Chat.ID,
-		UserID: m.From.ID,
-		Name:   m.Text,
-	}
-	err := s.issueKey(ctx, keyRequest)
-	if !errors.Is(err, service.ErrBadKeyName) {
-		return err
-	}
-	pendingInput := pendingInput{
-		ChatID: m.Chat.ID,
-		UserID: m.From.ID,
-		Kind:   pendingKeyName,
-	}
-	s.dialogs.set(pendingInput)
-	outMessage := outMessage{
-		ChatID:   m.Chat.ID,
-		Text:     badKeyNameText,
-		Keyboard: skipKeyNameKeyboard(),
-	}
-	return s.send.Send(ctx, outMessage)
 }

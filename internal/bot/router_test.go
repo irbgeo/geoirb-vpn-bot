@@ -23,12 +23,18 @@ type fakeSender struct {
 	answers   []preCheckoutAnswer
 	refunds   []refundInput
 	refundErr error
-	edits     []editMessage
-	sent      []outMessage
-	files     []outFile
-	videos    []outVideo
-	answered  []string
-	fail      map[int64]bool
+	// refundAlready: Telegram says the charge was refunded before.
+	refundAlready bool
+	edits         []editMessage
+	sent          []outMessage
+	files         []outFile
+	videos        []outVideo
+	// videoHold: an upload waits until it is closed (or its ctx ends).
+	videoHold chan struct{}
+	// videoErr decides whether a video send fails; nil = all work.
+	videoErr func(v *outVideo) error
+	answered []string
+	fail     map[int64]bool
 }
 
 func (s *fakeSender) SendInvoice(_ context.Context, m *outInvoice) error {
@@ -45,15 +51,15 @@ func (s *fakeSender) AnswerPreCheckout(_ context.Context, a preCheckoutAnswer) e
 	return nil
 }
 
-func (s *fakeSender) Refund(ctx context.Context, in refundInput) error {
+func (s *fakeSender) Refund(ctx context.Context, in refundInput) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	err := ctx.Err()
 	if err != nil {
-		return err // like a real API call on a cancelled context
+		return false, err // like a real API call on a cancelled context
 	}
 	s.refunds = append(s.refunds, in)
-	return s.refundErr
+	return s.refundAlready, s.refundErr
 }
 
 func (s *fakeSender) Edit(_ context.Context, m editMessage) error {
@@ -80,11 +86,32 @@ func (s *fakeSender) SendPhoto(_ context.Context, m outFile) error {
 	return nil
 }
 
-func (s *fakeSender) SendVideo(_ context.Context, m *outVideo) (string, error) {
+func (s *fakeSender) SendVideo(ctx context.Context, m *outVideo) (string, error) {
+	s.mu.Lock()
+	s.videos = append(s.videos, *m)
+	hold, fail := s.videoHold, s.videoErr
+	s.mu.Unlock()
+	if m.FileID == "" && hold != nil {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+		}
+	}
+	err := ctx.Err() // like a real API call on a cancelled context
+	if err == nil && fail != nil {
+		err = fail(m)
+	}
+	if err != nil {
+		return "", err
+	}
+	return "VID1", nil
+}
+
+// sentVideos is a copy of the video sends so far.
+func (s *fakeSender) sentVideos() []outVideo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.videos = append(s.videos, *m)
-	return "VID1", nil
+	return append([]outVideo(nil), s.videos...)
 }
 
 func (s *fakeSender) Answer(_ context.Context, callbackID string) error {
@@ -104,7 +131,22 @@ func (s *fakeSender) Send(_ context.Context, m outMessage) error {
 	return nil
 }
 
+// setFail makes sends to a chat fail (or work again) while a background
+// goroutine may be sending.
+func (s *fakeSender) setFail(chatID int64, fail bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fail[chatID] = fail
+}
+
 type fakeService struct {
+	// askedUsers / askedAccess / askedPayments: the user IDs User, Access
+	// and Payments were called with, in order.
+	askedUsers    []int64
+	askedAccess   []int64
+	askedPayments []int64
+	userErr       error // User fails
+	usersErr      error // Users fails
 	reissued      *service.Peer
 	reissuedFor   []service.UserKey
 	deletedOwn    []service.UserKey
@@ -166,7 +208,8 @@ func (s *fakeService) UnfinishedPayments(context.Context) ([]*service.Payment, e
 	return s.unfinished, nil
 }
 
-func (s *fakeService) Payments(context.Context, int64) ([]*service.Payment, error) {
+func (s *fakeService) Payments(_ context.Context, userID int64) ([]*service.Payment, error) {
+	s.askedPayments = append(s.askedPayments, userID)
 	return s.payments, nil
 }
 
@@ -227,6 +270,10 @@ func (s *fakeService) Issue(_ context.Context, in service.IssueInput) (*service.
 }
 
 func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
+	s.askedUsers = append(s.askedUsers, id)
+	if s.userErr != nil {
+		return nil, s.userErr
+	}
 	if id == 0 {
 		return nil, service.ErrNotFound
 	}
@@ -239,6 +286,9 @@ func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
 }
 
 func (s *fakeService) Users(_ context.Context, p service.Page) ([]*service.User, int64, error) {
+	if s.usersErr != nil {
+		return nil, 0, s.usersErr
+	}
 	end := min(p.Skip+p.Limit, int64(len(s.users)))
 	return s.users[min(p.Skip, end):end], int64(len(s.users)), nil
 }
@@ -288,7 +338,8 @@ func (s *fakeService) DeleteOwnKey(_ context.Context, k service.UserKey) error {
 	return nil
 }
 
-func (s *fakeService) Access(context.Context, int64) ([]service.KeyInfo, error) {
+func (s *fakeService) Access(_ context.Context, userID int64) ([]service.KeyInfo, error) {
+	s.askedAccess = append(s.askedAccess, userID)
 	return s.access, nil
 }
 
@@ -345,6 +396,17 @@ func (s *fakeService) Admins(context.Context) ([]*service.User, error) {
 }
 
 func newRouter(svc *fakeService) (*router, *fakeSender) {
+	return newRouterWith(
+		svc,
+		&config.Config{
+			SupportContact: "@help_me",
+		},
+	)
+}
+
+// newRouterWith builds the notifier and the router from cfg, as main does
+// (stamp files, the maintenance flag), with no load monitor.
+func newRouterWith(svc *fakeService, cfg *config.Config) (*router, *fakeSender) {
 	s := &fakeSender{
 		fail: map[int64]bool{},
 	}
@@ -359,13 +421,10 @@ func newRouter(svc *fakeService) (*router, *fakeSender) {
 			Notifier: NewNotifier(
 				svc,
 				s,
-				"",
+				cfg,
 				nil,
-				"",
 			),
-			Config: &config.Config{
-				SupportContact: "@help_me",
-			},
+			Config: cfg,
 		},
 	)
 	return r, s
@@ -668,12 +727,12 @@ func TestCreateKeyErrorsExplained(t *testing.T) {
 func TestCreateKeyUnexpectedErrorIsReturned(t *testing.T) {
 	r, s := newRouter(
 		&fakeService{
-			createErr: errors.New("docker down"),
+			createErr: errors.New("awg down"),
 		},
 	)
 
 	err := r.Handle(context.Background(), pressCreateKey())
-	require.ErrorContains(t, err, "docker down", "logged by the poll loop")
+	require.ErrorContains(t, err, "awg down", "logged by the poll loop")
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "Не получилось", "the user still gets an answer")
 }
@@ -861,10 +920,10 @@ func TestReconcileNotifiesAdminsOnlyOnDifferences(t *testing.T) {
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "tg:alice")
 
-	svc.reportErr = errors.New("docker down")
+	svc.reportErr = errors.New("awg down")
 	r.Reconcile(context.Background())
 	require.Len(t, s.sent, 2)
-	require.Contains(t, s.sent[1].Text, "docker down")
+	require.Contains(t, s.sent[1].Text, "awg down")
 }
 
 func TestReconcileText(t *testing.T) {
@@ -952,4 +1011,63 @@ func TestMyAccessBuyButtonOnlyForTimedKeys(t *testing.T) {
 	}
 	require.NotContains(t, got, "buyk:PUB1=")
 	require.Contains(t, got, "buyk:PUB2=")
+}
+
+// CheckCreateKey passed at step 1, then the real CreateKey at step 2 says
+// no (a key got there in between, or the server failed).
+func TestCreateKeyErrorsAtTheCreateStep(t *testing.T) {
+	cases := map[string]struct {
+		err    error
+		text   string
+		logged bool
+	}{
+		"has a key": {
+			err:  service.ErrHasKey,
+			text: hasKeyText,
+		},
+		"trial used": {
+			err:  service.ErrTrialUsed,
+			text: trialUsedText,
+		},
+		"key limit": {
+			err:  service.ErrKeyLimit,
+			text: keyLimitText,
+		},
+		"server down": {
+			err:    errors.New("awg down"),
+			text:   internalErrorText,
+			logged: true,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			svc := &fakeService{}
+			r, s := newRouter(svc)
+			ctx := context.Background()
+			require.NoError(t, r.Handle(ctx, press(cbIssueKey)))
+			svc.createErr = c.err
+
+			err := r.Handle(ctx, press(cbKeyNoName))
+
+			require.Len(t, svc.createdWith, 1, "it got to the real create")
+			require.Equal(t, c.logged, err != nil, "only an unexpected error is returned for the log")
+			require.Equal(t, c.text, s.sent[len(s.sent)-1].Text)
+			require.Empty(t, s.files)
+		})
+	}
+}
+
+func TestConfigTooLongForAQRCodeGetsANote(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+
+	err := r.sendQR(
+		context.Background(),
+		outFile{
+			ChatID: 42,
+			Data:   []byte(strings.Repeat("x", 4000)), // a QR code holds under 3000 bytes
+		},
+	)
+	require.NoError(t, err)
+	require.Empty(t, s.files, "no picture")
+	require.Equal(t, qrTooLongText, s.sent[0].Text)
 }

@@ -22,7 +22,6 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 		"DefaultVPN", "",
 		"org.amnezia.vpn", "",
 		"geoirb-vpn-bot", "", // systemd unit in an admin hint
-		"НЕ должны использовать VPN", "",
 	)
 	ast.Inspect(file, func(n ast.Node) bool {
 		_, ok := n.(*ast.ImportSpec)
@@ -57,5 +56,25 @@ func TestConfigFileName(t *testing.T) {
 	for name, want := range cases {
 		p := &service.Peer{Name: name}
 		require.Equal(t, want, configFileName(p), name)
+	}
+}
+
+func TestTariffLabel(t *testing.T) {
+	cases := map[int]string{
+		1:   "1 день",
+		3:   "3 дня",
+		7:   "7 дней",
+		11:  "11 дней",
+		14:  "14 дней",
+		21:  "21 день",
+		22:  "22 дня",
+		45:  "45 дней",
+		30:  "1 месяц",
+		90:  "3 месяца",
+		180: "6 месяцев",
+		365: "12 месяцев",
+	}
+	for days, want := range cases {
+		require.Equal(t, want, tariffLabel(days))
 	}
 }

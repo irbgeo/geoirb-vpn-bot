@@ -1,10 +1,13 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
@@ -141,8 +145,12 @@ func TestBackupAlertWhenTheLastBackupIsOld(t *testing.T) {
 			},
 		},
 	}
-	r, s := newRouter(svc)
-	r.notify.backup.path = stamp
+	r, s := newRouterWith(
+		svc,
+		&config.Config{
+			BackupStamp: stamp,
+		},
+	)
 	ctx := context.Background()
 
 	r.notify.DeliverMaintenance(ctx, maintenance())
@@ -185,14 +193,15 @@ func (s *fakeLoad) Check() ([]sysload.Alert, error) {
 }
 
 func TestServerLoadAlertsGoToAdmins(t *testing.T) {
-	r, s := newRouter(&fakeService{
+	svc := &fakeService{
 		admins: []*service.User{
 			{
 				ID: 1,
 			},
 		},
-	})
-	r.notify.load = &fakeLoad{
+	}
+	s := &fakeSender{}
+	load := &fakeLoad{
 		alerts: []sysload.Alert{
 			{
 				Metric:  sysload.Conntrack,
@@ -208,8 +217,14 @@ func TestServerLoadAlertsGoToAdmins(t *testing.T) {
 		},
 		err: errors.New("no disk"), // logged; the alerts still go out
 	}
+	n := NewNotifier(
+		svc,
+		s,
+		&config.Config{},
+		load,
+	)
 
-	r.notify.CheckServerLoad(context.Background())
+	n.CheckServerLoad(context.Background())
 
 	require.Len(t, s.sent, 2)
 	require.Equal(t, int64(1), s.sent[0].ChatID)
@@ -236,9 +251,8 @@ func TestWatchServerLoadChecksEveryMinute(t *testing.T) {
 		n := NewNotifier(
 			&fakeService{},
 			&fakeSender{},
-			"",
+			&config.Config{},
 			load,
-			"",
 		)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -282,6 +296,8 @@ func TestLoadAlertTextForEveryMetric(t *testing.T) {
 				Limit:   90,
 			},
 		)
+		require.NotEmpty(t, loadMetricNames()[m], "%s has no name: the alert would read \"Сервер:  — 95%%\"", m)
+		require.Contains(t, text, loadMetricNames()[m])
 		require.NotContains(t, text, string(m), "a Russian name, not the code name")
 	}
 }
@@ -406,14 +422,18 @@ func TestWatchTunnelUnknownThenUpIsQuiet(t *testing.T) {
 func TestRUNetsAlertWhenTheListIsOld(t *testing.T) {
 	stamp := filepath.Join(t.TempDir(), "ru-nets")
 	require.NoError(t, os.WriteFile(stamp, nil, 0o600))
-	r, s := newRouter(&fakeService{
-		admins: []*service.User{
-			{
-				ID: 1,
+	r, s := newRouterWith(
+		&fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
 			},
 		},
-	})
-	r.notify.ruNets.path = stamp
+		&config.Config{
+			RUNetsStamp: stamp,
+		},
+	)
 	ctx := context.Background()
 
 	old := time.Now().Add(-7 * 24 * time.Hour)
@@ -434,4 +454,117 @@ func TestRUNetsAlertWhenTheListIsOld(t *testing.T) {
 	require.NoError(t, os.Chtimes(stamp, old, old))
 	r.notify.DeliverMaintenance(ctx, maintenance())
 	require.Len(t, s.sent, 2, "alerts again after a fresh touch")
+}
+
+// An alert that reached no admin is tried again at the next check instead
+// of being lost for as long as the condition holds.
+func TestUndeliveredAlertsAreSentAgain(t *testing.T) {
+	stamp := filepath.Join(t.TempDir(), "last-backup")
+	old := time.Now().Add(-30 * time.Hour)
+	require.NoError(t, os.WriteFile(stamp, nil, 0o600))
+	require.NoError(t, os.Chtimes(stamp, old, old))
+	r, s := newRouterWith(
+		&fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
+			},
+		},
+		&config.Config{
+			BackupStamp: stamp,
+		},
+	)
+	ctx := context.Background()
+	m := &service.Maintenance{
+		SubnetUsed:  250,
+		SubnetTotal: 254,
+		Online:      10,
+	}
+	s.fail[1] = true                    // Telegram is down
+	r.notify.DeliverMaintenance(ctx, m) // also the peak the drop is measured from
+	m.Online = 1
+	r.notify.DeliverMaintenance(ctx, m)
+	require.Empty(t, s.sent)
+
+	s.fail[1] = false
+	r.notify.DeliverMaintenance(ctx, m)
+	require.Len(t, s.sent, 3, "subnet, backup and clients dropping: all told once Telegram is back")
+
+	r.notify.DeliverMaintenance(ctx, m)
+	require.Len(t, s.sent, 3, "and only once")
+}
+
+func TestNotifyAdminsSaysWhetherAnyoneGotIt(t *testing.T) {
+	svc := &fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+			{
+				ID: 2,
+			},
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	s.fail[1] = true
+	require.True(t, r.notify.NotifyAdmins(ctx, "x"), "one admin is enough")
+	s.fail[2] = true
+	require.False(t, r.notify.NotifyAdmins(ctx, "x"))
+
+	svc.admins = nil
+	require.True(t, r.notify.NotifyAdmins(ctx, "x"), "no admins: the log line is all there is, nothing to retry")
+}
+
+func TestWatchTunnelSendsAnUndeliveredAlertAtTheNextCheck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, s := newRouter(&fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
+			},
+		})
+		s.fail[1] = true
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		r.notify.WatchTunnel(ctx, &fakeTunnel{
+			steps: []tunnelStep{
+				{
+					st:      tunnel.Down,
+					changed: true,
+				},
+				{
+					st: tunnel.Down,
+				},
+			},
+		})
+		require.Empty(t, s.sentTo(1))
+
+		s.setFail(1, false)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, s.sentTo(1), 1)
+		require.Equal(t, tunnelDownText, s.sentTo(1)[0].Text)
+
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, s.sentTo(1), 1, "told once")
+	})
+}
+
+// With no admins an alert is only logged. A user's text in it (a review)
+// must stay on one log line, or anyone could forge journal lines.
+func TestAlertLoggedWithoutAdminsStaysOnOneLine(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	r, _ := newRouter(&fakeService{})
+
+	r.notify.NotifyAdmins(context.Background(), "отзыв\n2026/10/10 bot: fake line")
+
+	require.Equal(t, 1, strings.Count(buf.String(), "\n"), buf.String())
+	require.Contains(t, buf.String(), `отзыв\n2026`)
 }

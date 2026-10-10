@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"sync"
@@ -25,6 +26,7 @@ type takeResult int
 const (
 	takeNone    takeResult = iota // nothing of that kind waits
 	takeExpired                   // it waited too long and is dropped
+	takeStale                     // the button belongs to an older preview; the newer one stays
 	takeOK
 )
 
@@ -42,6 +44,15 @@ func (s *dialogs) set(p pendingInput) {
 	s.mu.Lock()
 	s.m[p.ChatID] = p
 	s.mu.Unlock()
+}
+
+// preview records p as a preview that waits for its "send" button, with a
+// fresh pendingTTL, and returns the token that button must carry.
+func (s *dialogs) preview(p pendingInput) string {
+	p.At = time.Time{}
+	p.Token = rand.Uint32()
+	s.set(p)
+	return p.token()
 }
 
 // drop forgets what the bot waited for from this chat.
@@ -62,14 +73,18 @@ func (s *dialogs) peek(chatID int64) (pendingInput, bool) {
 	return p, true
 }
 
-// take removes and returns the chat's entry if it is of kind k. An
-// expired one is removed too, and reported as takeExpired.
+// take removes and returns the chat's entry if it is of kind in.Kind and
+// has in.Token. An expired one is removed too, and reported as
+// takeExpired; one with another token stays (takeStale).
 func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.m[in.ChatID]
 	if !ok || p.Kind != in.Kind {
 		return pendingInput{}, takeNone
+	}
+	if p.token() != in.Token {
+		return pendingInput{}, takeStale
 	}
 	delete(s.m, in.ChatID)
 	if time.Since(p.At) > pendingTTL {
@@ -81,7 +96,8 @@ func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
 // jobs runs the background mass sends (broadcasts, config notices), one at
 // a time: two together would go over Telegram's ~30 messages a second.
 // They run on life, not on an update's ctx: go-tgbot's Dispatcher cancels
-// that one as soon as the handler returns.
+// that one as soon as the handler returns. spawn runs other background
+// work (the video upload) on life too, outside that one slot.
 type jobs struct {
 	mu   sync.Mutex
 	busy bool
@@ -113,6 +129,14 @@ func (s *jobs) reserve() bool {
 func (s *jobs) run(fn func(ctx context.Context)) {
 	s.wg.Go(func() {
 		defer s.release()
+		fn(s.life)
+	})
+}
+
+// spawn runs fn in the background without taking the slot; close and wait
+// cover it like a mass send.
+func (s *jobs) spawn(fn func(ctx context.Context)) {
+	s.wg.Go(func() {
 		fn(s.life)
 	})
 }
@@ -191,6 +215,14 @@ func (s *latch) rise(now bool) bool {
 	return now && !was
 }
 
+// drop forgets a rise whose alert reached no one, so the next check that
+// finds the condition still true alerts again.
+func (s *latch) drop() {
+	s.mu.Lock()
+	s.up = false
+	s.mu.Unlock()
+}
+
 // stampWatch watches a file touched by a job after every good run: it says
 // once when the file gets older than maxAge (or is missing), and again
 // only after a fresh touch. An empty path = no check.
@@ -198,6 +230,16 @@ type stampWatch struct {
 	path    string
 	maxAge  time.Duration
 	alerted latch
+}
+
+func newStampWatch(
+	path string,
+	maxAge time.Duration,
+) *stampWatch {
+	return &stampWatch{
+		path:   path,
+		maxAge: maxAge,
+	}
 }
 
 // check returns the last good run (zero = none) and whether to alert now.
@@ -246,6 +288,14 @@ func (s *onlineWatch) record(online int) (drop onlineDrop, alert bool) {
 	return drop, alert
 }
 
+// unsent forgets a drop whose alert reached no one: the next record that
+// still sees it alerts again.
+func (s *onlineWatch) unsent() {
+	s.mu.Lock()
+	s.low = false
+	s.mu.Unlock()
+}
+
 // inFlight is a set of running operations by ID (refunds by charge ID),
 // so a double press doesn't start the same one twice.
 type inFlight struct {
@@ -276,13 +326,64 @@ func (s *inFlight) end(id string) {
 	s.mu.Unlock()
 }
 
+// rateLimitKeys: with this many keys remembered, allow first forgets the
+// ones idle for a whole window, so a flood of accounts can't grow the map
+// without end.
+const rateLimitKeys = 1000
+
+// rateLimit lets one key (a user, a pressed button) act at most max times
+// per window; allow counts the try when it says yes.
+// shortcut: in memory only, a restart forgets the counts; count in the DB
+// if someone floods across restarts.
+type rateLimit[K comparable] struct {
+	max    int
+	window time.Duration
+	mu     sync.Mutex
+	seen   map[K][]time.Time
+}
+
+func newRateLimit[K comparable](
+	limit int,
+	window time.Duration,
+) *rateLimit[K] {
+	return &rateLimit[K]{
+		max:    limit,
+		window: window,
+		seen:   map[K][]time.Time{},
+	}
+}
+
+func (s *rateLimit[K]) allow(key K) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	if len(s.seen) >= rateLimitKeys {
+		for k, at := range s.seen {
+			if now.Sub(at[len(at)-1]) >= s.window {
+				delete(s.seen, k)
+			}
+		}
+	}
+	live := slices.DeleteFunc(s.seen[key], func(t time.Time) bool {
+		return now.Sub(t) >= s.window
+	})
+	if len(live) >= s.max {
+		s.seen[key] = live
+		return false
+	}
+	s.seen[key] = append(live, now)
+	return true
+}
+
 // videoFile is a video shipped in the binary. The first send uploads it;
 // the file ID Telegram returns is reused afterwards. In memory only: one
-// upload after every restart.
+// upload after every restart. uploading is held for a whole upload, so
+// users who ask meanwhile wait for its ID instead of uploading too.
 type videoFile struct {
-	data []byte // never changed after newVideoFile
-	mu   sync.Mutex
-	id   string
+	data      []byte // never changed after newVideoFile
+	uploading sync.Mutex
+	mu        sync.Mutex
+	id        string
 }
 
 func newVideoFile(
@@ -302,6 +403,15 @@ func (s *videoFile) fileID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.id
+}
+
+// forget drops id when it is still the remembered one: Telegram refused it.
+func (s *videoFile) forget(id string) {
+	s.mu.Lock()
+	if s.id == id {
+		s.id = ""
+	}
+	s.mu.Unlock()
 }
 
 // remember keeps the ID of a sent video; an empty one changes nothing.

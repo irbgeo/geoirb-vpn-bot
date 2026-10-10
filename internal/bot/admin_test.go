@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -281,14 +282,14 @@ func TestAdminCardShowsPaymentsAndRefundButton(t *testing.T) {
 	require.Contains(t, card.Text, "27.09.2026 15:30 по Москве — 150 ⭐, 1 месяц")
 	require.Contains(t, card.Text, "400 ⭐, 3 месяца, ↩️ возвращено")
 
-	var refunds []string
+	refunds := 0
 	for _, b := range buttons(card) {
-		if len(b) > 6 && b[:6] == "a:ref:" {
-			refunds = append(refunds, b)
+		if strings.HasPrefix(b, cbAdminRef) {
+			refunds++
 		}
 	}
-	require.Len(t, refunds, 1, "only the not-refunded payment")
-	require.LessOrEqual(t, len(refunds[0]), 64, "Telegram callback_data limit")
+	require.Equal(t, 1, refunds, "only the not-refunded payment")
+	require.LessOrEqual(t, len(refundButton(card)), 64, "Telegram callback_data limit")
 }
 
 func TestAdminRefund(t *testing.T) {
@@ -296,12 +297,7 @@ func TestAdminRefund(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:user:7")))
-	var ask string
-	for _, b := range buttons(s.edits[0]) {
-		if len(b) > 6 && b[:6] == "a:ref:" {
-			ask = b
-		}
-	}
+	ask := refundButton(s.edits[0])
 
 	require.NoError(t, r.Handle(ctx, press(ask)))
 	require.Empty(t, s.refunds, "asks first")
@@ -390,10 +386,10 @@ func TestAdminBroadcast(t *testing.T) {
 	preview := s.sent[1]
 	require.Contains(t, preview.Text, "3 пользователям")
 	require.Contains(t, preview.Text, "Сервер переедет в субботу")
-	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Contains(t, preview.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:")
 	require.Equal(t, "a:cancel", preview.Keyboard.InlineKeyboard[0][1].CallbackData)
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, s.sent[2].Text, "началась", "the admin is told at once")
 	require.Equal(t, int64(7), s.sent[3].ChatID)
@@ -404,7 +400,7 @@ func TestAdminBroadcast(t *testing.T) {
 	require.Contains(t, report.Text, "не доставлено 1")
 
 	sent := len(s.sent)
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Len(t, s.sent, sent, "a second press sends nothing")
 }
@@ -420,7 +416,7 @@ func TestAdminBroadcastCancel(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
 	require.NoError(t, r.Handle(ctx, startUpdate("oops")))
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 
 	for _, m := range s.sent {
@@ -441,7 +437,7 @@ func TestAdminBroadcastStopsOnShutdownAndReports(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 
@@ -457,7 +453,19 @@ func TestAdminBroadcastStopsOnShutdownAndReports(t *testing.T) {
 	}
 	report := s.sent[len(s.sent)-1]
 	require.Equal(t, int64(42), report.ChatID)
+	require.Contains(t, report.Text, "остановлена", "not \"done\": it was cut short")
 	require.Contains(t, report.Text, "доставлено 1")
+	require.Contains(t, report.Text, "не отправлено 2", "the users it never tried")
+	require.Contains(
+		t,
+		configsReportText(
+			broadcastResult{
+				Sent:    1,
+				Skipped: 2,
+			},
+		),
+		"не отправлено 2",
+	)
 }
 
 func TestAdminPendingKeepsWaitingOnNonText(t *testing.T) {
@@ -476,7 +484,7 @@ func TestAdminPendingKeepsWaitingOnNonText(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, startUpdate("second")))
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "second", "new text replaces the preview")
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	var toUser []string
 	for _, m := range s.sent {
@@ -492,12 +500,7 @@ func TestAdminRefundInProgressIsNotStartedTwice(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:user:7")))
-	var ask string
-	for _, b := range buttons(s.edits[0]) {
-		if len(b) > 6 && b[:6] == "a:ref:" {
-			ask = b
-		}
-	}
+	ask := refundButton(s.edits[0])
 	confirm := "a:refok:" + ask[len("a:ref:"):]
 	charge := "stxLongTelegramChargeID-0123456789-abcdefghijklmnopqrstuvwxyz"
 	require.True(t, r.refunds.start(charge)) // another press is refunding it right now
@@ -521,7 +524,7 @@ func TestAdminBroadcastOutlivesTheHandlerContext(t *testing.T) {
 
 	// go-tgbot's Dispatcher cancels the handler's ctx as soon as Handle returns.
 	ctx, cancel := context.WithCancel(context.Background())
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	cancel()
 	r.Wait()
 
@@ -565,10 +568,10 @@ func TestAdminUpdateConfigs(t *testing.T) {
 	require.Contains(t, ask.Text, "2 пользователям")
 	require.Contains(t, ask.Text, "ENDPOINT_HOST")
 	require.Contains(t, ask.Text, configsNoticeText, "the admin sees exactly what users get")
-	require.Equal(t, "a:cfgsok", ask.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Contains(t, ask.Keyboard.InlineKeyboard[0][0].CallbackData, "a:cfgsok:")
 	require.Equal(t, "a:cancel", ask.Keyboard.InlineKeyboard[0][1].CallbackData)
 
-	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, s.sent[1].Text, "Рассылаю", "the admin is told at once")
 	notice := s.sent[2]
@@ -595,10 +598,16 @@ func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
 	ctx := context.Background()
 
 	require.True(t, r.jobs.reserve()) // another mass send is running
-	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
-	require.Empty(t, s.files, "nothing sent while another run is going")
-	require.Contains(t, s.sent[0].Text, "уже идёт")
+	require.Empty(t, s.sentTo(7), "nothing sent while another run is going")
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже идёт")
+
+	r.jobs.release()
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Len(t, s.sentTo(7), 1, "the same button works once the slot is free")
 }
 
 func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
@@ -629,10 +638,10 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 	preview := s.sent[len(s.sent)-1]
 	require.Contains(t, preview.Text, "1 пользователям")
 	require.Contains(t, strings.ToLower(preview.Text), "технические работы")
-	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Contains(t, preview.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:")
 	require.False(t, r.maint.on(), "nothing changes before send (/menu here would drop the preview)")
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, strings.ToLower(s.sentTo(7)[0].Text), "технические работы")
 	require.Equal(t, "✅ Закончить техработы", menuButton().Text)
@@ -640,7 +649,7 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 	// end: same button, the "over" text
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
 	require.Contains(t, strings.ToLower(s.sent[len(s.sent)-1].Text), "работы закончены")
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, strings.ToLower(s.sentTo(7)[1].Text), "работы закончены")
 	require.Equal(t, "🛠 Техработы", menuButton().Text)
@@ -656,7 +665,7 @@ func TestMaintenanceCancelKeepsTheState(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.False(t, r.maint.on())
 	require.Empty(t, s.sentTo(7))
@@ -668,36 +677,19 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 	svc.recipients = []int64{
 		7,
 	}
-	s := &fakeSender{
-		fail: map[int64]bool{},
+	cfg := &config.Config{
+		MaintenanceFlag: flag,
 	}
-	deps := &Deps{
-		Users:    svc,
-		Keys:     svc,
-		Billing:  svc,
-		Ops:      svc,
-		Feedback: svc,
-		Sender:   s,
-		Notifier: NewNotifier(
-			svc,
-			s,
-			"",
-			nil,
-			"",
-		),
-		Config: &config.Config{
-			MaintenanceFlag: flag,
-		},
-	}
-	r := New(deps)
+	r, s := newRouterWith(svc, cfg)
 	r.pause = 0
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.FileExists(t, flag)
 
-	require.True(t, New(deps).maint.on(), "a new process reads the flag file")
+	restarted, _ := newRouterWith(svc, cfg)
+	require.True(t, restarted.maint.on(), "a new process reads the flag file")
 }
 
 // sentTo returns the messages sent to one chat.
@@ -765,12 +757,7 @@ func TestAdminRefundTellsWhenTheRecordFailed(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:user:7")))
-	var ask string
-	for _, b := range buttons(s.edits[0]) {
-		if strings.HasPrefix(b, "a:ref:") {
-			ask = b
-		}
-	}
+	ask := refundButton(s.edits[0])
 	require.NoError(t, r.Handle(ctx, press(ask)))
 	require.NoError(t, r.Handle(ctx, press(buttons(s.edits[1])[0])))
 
@@ -816,4 +803,249 @@ func TestAdminCardForeverKeyHasNoExtend(t *testing.T) {
 	got := buttons(s.edits[0])
 	require.NotContains(t, got, "a:ext:"+forever.Peer.PublicKey)
 	require.Contains(t, got, "a:ext:PUB2=")
+}
+
+// refundButton is the "return the Stars" button of a user card ("" = none).
+func refundButton(card editMessage) string {
+	for _, b := range buttons(card) {
+		if strings.HasPrefix(b, cbAdminRef) {
+			return b
+		}
+	}
+	return ""
+}
+
+func TestAdminRefundThatTelegramRefusesChangesNothing(t *testing.T) {
+	svc := withPayments(adminService())
+	r, s := newRouter(svc)
+	s.refundErr = errors.New("telegram down")
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:user:7")))
+	require.NoError(t, r.Handle(ctx, press(refundButton(s.edits[0]))))
+
+	err := r.Handle(ctx, press(buttons(s.edits[1])[0]))
+
+	require.ErrorContains(t, err, "telegram down", "for the log")
+	require.Len(t, s.refunds, 1, "it was tried")
+	require.Empty(t, svc.refunded, "not recorded as returned")
+	require.Empty(t, s.sentTo(7), "the user is told nothing")
+	admin := s.sentTo(42)
+	require.Len(t, admin, 1)
+	require.Contains(t, admin[0].Text, "Не получилось")
+	require.Len(t, s.edits, 2, "the card is not redrawn as if it worked")
+}
+
+// The Stars went back earlier (the user was told then) but the record
+// failed, so the button stayed. Pressing it again records the refund and
+// does not tell the user a second time.
+func TestAdminRefundOfAnAlreadyReturnedChargeDoesNotTellTheUserAgain(t *testing.T) {
+	svc := withPayments(adminService())
+	r, s := newRouter(svc)
+	s.refundAlready = true
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:user:7")))
+	require.NoError(t, r.Handle(ctx, press(refundButton(s.edits[0]))))
+
+	require.NoError(t, r.Handle(ctx, press(buttons(s.edits[1])[0])))
+
+	require.Len(t, svc.refunded, 1, "now it is recorded")
+	require.Empty(t, s.sentTo(7), "the user heard about it the first time")
+	require.Contains(t, s.edits[2].Text, "↩️ возвращено")
+}
+
+// confirmButtons are the "send" buttons of every preview sent so far, oldest
+// first: each carries its own preview's token.
+func confirmButtons(s *fakeSender) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, m := range s.sent {
+		if m.Keyboard == nil || len(m.Keyboard.InlineKeyboard) == 0 {
+			continue
+		}
+		data := m.Keyboard.InlineKeyboard[0][0].CallbackData
+		if strings.HasPrefix(data, cbAdminBcOK+":") || strings.HasPrefix(data, cbAdminCfgOK+":") {
+			out = append(out, data)
+		}
+	}
+	return out
+}
+
+// pressSend presses "send" under the newest preview.
+func pressSend(s *fakeSender) tgbot.Update {
+	all := confirmButtons(s)
+	return press(all[len(all)-1])
+}
+
+func TestSendUnderAnOlderPreviewSendsNothing(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, startUpdate("first draft")))
+	require.NoError(t, r.Handle(ctx, startUpdate("final text")))
+	old := confirmButtons(s)[0]
+
+	require.NoError(t, r.Handle(ctx, press(old)))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "the old button must not send the newer text")
+	require.Equal(t, oldPreviewText, s.sent[len(s.sent)-1].Text)
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, "final text", s.sentTo(7)[0].Text, "the newest preview is still there")
+}
+
+func TestConfigsSendButtonWorksOnceAndOnlyUnderItsOwnQuestion(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press(cbAdminCfgOK+":forged")))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "no question was asked")
+
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, startUpdate("just a text")))
+	require.Len(t, confirmButtons(s), 1, "a text at the configs question is not a broadcast")
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, press(confirmButtons(s)[0])))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "the button of the older question")
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Len(t, s.sentTo(7), 1, "sent once; the second press finds nothing")
+
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Len(t, s.sentTo(7), 1, "cancelled")
+}
+
+// Updates of one chat are handled in order, so a double press is two full
+// runs: without a guard "+30 days" adds 60 and "issue" makes two keys.
+func TestAdminDoublePressExtendsAndIssuesOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		svc := adminService()
+		r, s := newRouter(svc)
+		ctx := context.Background()
+
+		require.NoError(t, r.Handle(ctx, press("a:ext:PUB1=")))
+		require.NoError(t, r.Handle(ctx, press("a:ext:PUB1=")))
+		require.Equal(t, []string{"extend PUB1= 30"}, svc.calls)
+		require.Equal(t, repeatedPressText, s.sent[len(s.sent)-1].Text)
+
+		require.NoError(t, r.Handle(ctx, press("a:issd:7:30")))
+		require.NoError(t, r.Handle(ctx, press("a:issd:7:30")))
+		require.Len(t, svc.issued, 1)
+		require.NoError(t, r.Handle(ctx, press("a:issd:7:90")))
+		require.Len(t, svc.issued, 2, "another term is another action")
+
+		time.Sleep(repeatPressGap)
+		require.NoError(t, r.Handle(ctx, press("a:ext:PUB1=")))
+		require.Len(t, svc.calls, 2, "on purpose, a little later: fine")
+	})
+}
+
+func TestAdminTextReturnsADatabaseError(t *testing.T) {
+	svc := adminService()
+	r, _ := newRouter(svc)
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+
+	svc.userErr = errors.New("mongo down")
+	require.ErrorContains(t, r.Handle(ctx, startUpdate("hello")), "mongo down", "not dropped without a word")
+
+	svc.userErr = service.ErrNotFound
+	require.NoError(t, r.Handle(ctx, startUpdate("hello")), "an unknown user is just not an admin")
+}
+
+func TestAdminUsersErrorIsExplained(t *testing.T) {
+	svc := adminService()
+	svc.usersErr = errors.New("mongo down")
+	r, s := newRouter(svc)
+
+	err := r.Handle(context.Background(), press("a:users:0"))
+	require.ErrorContains(t, err, "mongo down", "for the log")
+	require.Len(t, s.sentTo(42), 1, "the admin is told, like after every other admin button")
+	require.Contains(t, s.sentTo(42)[0].Text, "Не получилось")
+	require.NotContains(t, s.sentTo(42)[0].Text, "mongo")
+}
+
+func TestMaintenanceFlagFileTurnsOff(t *testing.T) {
+	flag := newMaintFlag(filepath.Join(t.TempDir(), "maintenance"))
+
+	require.NoError(t, flag.set(true))
+	require.True(t, flag.on())
+	require.NoError(t, flag.set(false))
+	require.False(t, flag.on())
+	require.NoError(t, flag.set(false), "already off: nothing to remove is fine")
+
+	gone := newMaintFlag(filepath.Join(t.TempDir(), "no-such-dir", "maintenance"))
+	require.Error(t, gone.set(true))
+}
+
+// After an action on a key the card of the key's OWNER (7) is redrawn, not
+// the card of the admin who pressed (42).
+func TestAdminKeyActionsRedrawTheOwnersCard(t *testing.T) {
+	for _, data := range []string{
+		"a:dis:PUB1=",
+		"a:en:PUB1=",
+		"a:ext:PUB1=",
+		"a:delok:PUB1=",
+	} {
+		svc := adminService()
+		r, s := newRouter(svc)
+
+		require.NoError(t, r.Handle(context.Background(), press(data)))
+
+		require.Len(t, s.edits, 1, data)
+		require.Equal(t, []int64{42, 7}, svc.askedUsers, "%s: the admin's role, then the owner", data)
+		require.Equal(t, []int64{7}, svc.askedAccess, data)
+		require.Equal(t, []int64{7}, svc.askedPayments, data)
+	}
+}
+
+// The user blocked the bot: the key issued by hand goes to the admin, who
+// passes it on.
+func TestAdminIssueFallsBackToTheAdminWhenTheUserIsUnreachable(t *testing.T) {
+	svc := adminService()
+	r, s := newRouter(svc)
+	s.fail[7] = true
+
+	require.NoError(t, r.Handle(context.Background(), press("a:issd:7:30")))
+
+	require.Len(t, svc.issued, 1)
+	require.Empty(t, s.sentTo(7))
+	admin := s.sentTo(42)
+	require.Len(t, admin, 1)
+	require.Equal(t, importText, admin[0].Text, "the admin gets the key with the import steps")
+	require.Equal(t, int64(42), s.files[len(s.files)-1].ChatID, "and its config and QR code")
+	require.Len(t, s.edits, 1, "then the user card")
+}
+
+func TestAdminIssueBadButton(t *testing.T) {
+	for _, data := range []string{
+		"a:issd:7",
+		"a:issd:x:30",
+		"a:issd:0:30",
+		"a:issd:7:month",
+	} {
+		svc := adminService()
+		r, _ := newRouter(svc)
+
+		require.Error(t, r.Handle(context.Background(), press(data)), data)
+		require.Empty(t, svc.issued, data)
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os/signal"
-	"runtime"
 	"slices"
 	"syscall"
 	"time"
@@ -78,23 +77,23 @@ func main() {
 	if err != nil {
 		log.Fatalf("fatal: %v", err)
 	}
-	sender := bot.NewTelegramSender(client)
-
-	// Server load alerts watch this machine's limits; none off Linux, e.g.
-	// when running the bot on a laptop.
-	var load bot.ServerLoad
-	if runtime.GOOS == "linux" {
-		load = sysload.New(
-			"/proc",
-			"/",
-		)
+	uploads, err := bot.NewUploadClient(cfg)
+	if err != nil {
+		log.Fatalf("fatal: %v", err)
 	}
+	sender := bot.NewTelegramSender(client, uploads)
+
+	// Server load alerts watch this machine's limits. Off Linux (the bot run
+	// on a laptop) there is no /proc and the monitor checks nothing.
+	load := sysload.New(
+		"/proc",
+		"/",
+	)
 	notifier := bot.NewNotifier(
 		svc,
 		sender,
-		cfg.BackupStamp,
+		cfg,
 		load,
-		cfg.RUNetsStamp,
 	)
 	splitVideo := data.SplitTunnel()
 	deps := bot.Deps{
@@ -114,7 +113,10 @@ func main() {
 	// then stop them in order.
 	// The tunnel watcher owns the bot's ip rules: through the exit tunnel
 	// while it works, direct while it is down. Its first check runs before
-	// any Telegram call, so a stale rule left with the tunnel down is gone.
+	// any Telegram call and sets the rules for the state it finds. One case
+	// it does not fix: with no handshake yet in the first 3 minutes after a
+	// start (the watcher's grace window) the rules stay as the last run left
+	// them, so a stale rule into a dead tunnel lasts until the window ends.
 	if cfg.ExitIface != "" {
 		hostNet := tunnel.NewHostNet(cfg)
 		watcher := tunnel.New(

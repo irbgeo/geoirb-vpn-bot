@@ -2,9 +2,11 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	tgbot "github.com/irbgeo/go-tgbot"
 	"github.com/stretchr/testify/require"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
@@ -65,6 +67,7 @@ func TestAndroidAndWindowsGetTheVideo(t *testing.T) {
 	withVideo(r)
 
 	require.NoError(t, r.Handle(context.Background(), press(cbSplitVideo)))
+	r.Wait() // the upload runs in the background
 
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "Раздельное туннелирование")
@@ -82,6 +85,7 @@ func TestVideoIsUploadedOnlyOnce(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+	r.Wait()
 	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
 
 	require.Len(t, s.videos, 2)
@@ -122,4 +126,97 @@ func TestMenuHasTheAppsButtonOnlyWithAVideo(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press(cbSplitAsk)))
 	require.Contains(t, s.sent[2].Text, "Какое у вас устройство?")
 	require.Equal(t, cbSplitVideo, s.sent[2].Keyboard.InlineKeyboard[0][0].CallbackData)
+}
+
+// pressFrom is a button press in another user's chat.
+func pressFrom(chatID int64, data string) tgbot.Update {
+	u := press(data)
+	u.CallbackQuery.From.ID = chatID
+	u.CallbackQuery.Message.Chat.ID = chatID
+	return u
+}
+
+// The upload is slow: it must not hold the user's request, must outlive the
+// request's context, and two presses must not upload the file twice.
+func TestVideoUploadRunsOnceInTheBackground(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	withVideo(r)
+	s.videoHold = make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+
+	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)), "returns while the upload hangs")
+	require.NoError(t, r.Handle(ctx, pressFrom(43, cbSplitVideo)))
+	cancel() // go-tgbot cancels the handler context when Handle returns
+	require.Eventually(
+		t,
+		func() bool { return len(s.sentVideos()) == 1 },
+		time.Second,
+		time.Millisecond,
+		"the upload started on the router's own context",
+	)
+
+	close(s.videoHold)
+	r.Wait()
+	videos := s.sentVideos()
+	require.Len(t, videos, 2)
+	require.NotEmpty(t, videos[0].Data)
+	require.Equal(t, "VID1", videos[1].FileID, "the second user gets it by the ID of the first upload")
+	require.Empty(t, videos[1].Data)
+	require.ElementsMatch(t, []int64{42, 43}, []int64{videos[0].ChatID, videos[1].ChatID})
+}
+
+func TestFailedVideoUploadTellsTheUserAndIsTriedAgain(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	withVideo(r)
+	s.videoErr = func(*outVideo) error {
+		return errors.New("timeout")
+	}
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+	r.Wait()
+	require.Equal(t, splitVideoFailedText, s.sent[len(s.sent)-1].Text)
+	require.Empty(t, r.splitVideo.fileID())
+
+	s.videoErr = nil
+	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+	r.Wait()
+	require.NotEmpty(t, s.videos[1].Data, "uploaded again")
+	require.Equal(t, "VID1", r.splitVideo.fileID())
+}
+
+func TestVideoIDTelegramNoLongerTakesIsUploadedAgain(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	withVideo(r)
+	r.splitVideo.remember("OLD")
+	s.videoErr = func(v *outVideo) error {
+		if v.FileID == "OLD" {
+			return errors.New("wrong file identifier")
+		}
+		return nil
+	}
+
+	require.NoError(t, r.Handle(context.Background(), press(cbSplitVideo)))
+	r.Wait()
+	require.Len(t, s.videos, 2)
+	require.Equal(t, "OLD", s.videos[0].FileID)
+	require.NotEmpty(t, s.videos[1].Data, "the bad ID is dropped and the file uploaded once more")
+	require.Equal(t, "VID1", r.splitVideo.fileID())
+}
+
+func TestVideoToAUserWhoBlockedTheBotKeepsTheID(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	withVideo(r)
+	r.splitVideo.remember("VID1")
+	s.videoErr = func(*outVideo) error {
+		return &tgbot.APIError{
+			Code:        403,
+			Description: "Forbidden: bot was blocked by the user",
+		}
+	}
+
+	require.Error(t, r.Handle(context.Background(), press(cbSplitVideo)))
+	r.Wait()
+	require.Len(t, s.videos, 1, "no upload for a chat that is gone")
+	require.Equal(t, "VID1", r.splitVideo.fileID())
 }

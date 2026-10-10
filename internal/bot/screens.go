@@ -106,8 +106,9 @@ const (
 		"Включите его, выберите режим, в котором приложения из списка идут напрямую, " +
 		"и добавьте в список банк, Госуслуги и другие нужные приложения.\n\n" +
 		"Все шаги — в видео ниже."
-	splitVideoCaption = "Видео снято на Android. На Windows шаги те же."
-	splitNoneText     = "На iPhone, iPad, Mac и Linux в приложении такой настройки нет.\n\n" +
+	splitVideoCaption    = "Видео снято на Android. На Windows шаги те же."
+	splitVideoFailedText = "Не получилось отправить видео. Нажмите кнопку ещё раз через минуту."
+	splitNoneText        = "На iPhone, iPad, Mac и Linux в приложении такой настройки нет.\n\n" +
 		"Российские сайты и так открываются напрямую — об этом заботится сервер. " +
 		"Если приложение банка не работает, выключите подключение на время."
 )
@@ -289,6 +290,16 @@ func refundAlertText(a refundAlert) string {
 			a.RefundErr,
 		)
 	}
+	if a.RecordErr != nil {
+		return fmt.Sprintf(
+			"⚠️ Оплата %s от id %d не применена (%v), звёзды возвращены, но возврат не записан в базе (%v). "+
+				"В карточке пользователя останется кнопка возврата: нажмите её, чтобы записать — второй раз Telegram не вернёт.",
+			a.ChargeID,
+			a.UserID,
+			a.Cause,
+			a.RecordErr,
+		)
+	}
 	return fmt.Sprintf("⚠️ Оплата %s от id %d не применена (%v), звёзды возвращены.", a.ChargeID, a.UserID, a.Cause)
 }
 
@@ -413,10 +424,13 @@ func broadcastPreviewText(v broadcastView) string {
 	return fmt.Sprintf("📣 Отправить это %d пользователям?\n\n%s", v.Recipients, v.Text)
 }
 
-func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
+// sendCancelKeyboard is a preview's keyboard: its "send" button and
+// "cancel". The send button carries the preview's token, so it sends only
+// what it sits under.
+func sendCancelKeyboard(send tgbot.InlineKeyboardButton) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(
-			tgbot.Button("📣 Отправить", cbAdminBcOK),
+			send,
 			tgbot.Button("Отмена", cbAdminCanc),
 		),
 	)
@@ -426,6 +440,8 @@ const (
 	statsUnavailableText  = "Данные о подключениях временно недоступны."
 	staleButtonText       = "Эта кнопка устарела — начните заново."
 	previewExpiredText    = "Этот предпросмотр устарел — ничего не отправлено. Откройте /menu и начните заново."
+	repeatedPressText     = "Это действие только что выполнено — повторное нажатие пропущено. Нужно ещё раз — нажмите через 10 секунд."
+	oldPreviewText        = "Эта кнопка от старого предпросмотра — ничего не отправлено. Нажмите «Отправить» под последним."
 	massSendBusyText      = "📣 Сейчас уже идёт рассылка — дождитесь её отчёта и нажмите «Отправить» ещё раз."
 	keyDeliveryFailedText = "🔑 Ключ создан, но отправить его сразу не получилось. Он в «📋 Мой доступ» — нажмите «📄 Конфиг»."
 )
@@ -474,6 +490,7 @@ const (
 	needFeedbackTextText = "Нужен текст — напишите отзыв одним сообщением."
 	feedbackThanksText   = "🙏 Спасибо! Сохранили ваш отзыв."
 	feedbackFailedText   = "Не получилось сохранить отзыв. Попробуйте позже."
+	feedbackLimitText    = "Слишком много отзывов за час. Напишите позже — мы всё прочитаем."
 )
 
 var badFeedbackText = fmt.Sprintf(
@@ -502,6 +519,7 @@ const (
 		"удалите старое подключение в приложении и добавьте новое. Если ключ стоял на нескольких устройствах, обновите на каждом."
 	keyDeletedText   = "🗑 Ключ удалён. Удалите подключение и в приложении — оно больше не работает."
 	ownKeyFailedText = "Не получилось. Попробуйте позже или напишите в /support."
+	tooOftenText     = "Слишком часто. Подождите минуту и нажмите ещё раз."
 )
 
 func reissueAskText(p *service.Peer) string {
@@ -539,21 +557,31 @@ func myAccessKeyboard() *tgbot.InlineKeyboardMarkup {
 	)
 }
 
-func configsKeyboard() *tgbot.InlineKeyboardMarkup {
-	return tgbot.InlineKeyboard(
-		tgbot.Row(
-			tgbot.Button("🔄 Отправить", cbAdminCfgOK),
-			tgbot.Button("Отмена", cbAdminCanc),
-		),
+func configsReportText(r broadcastResult) string {
+	return fmt.Sprintf(
+		"🔄 Отчёт о просьбе обновить конфиг: получили %d, не доставлено %d (заблокировали бота или удалили чат).%s",
+		r.Sent,
+		r.Failed,
+		stoppedNote(r),
 	)
 }
 
-func configsReportText(r broadcastResult) string {
-	return fmt.Sprintf("🔄 Просьба обновить конфиг отправлена: получили %d, не доставлено %d (заблокировали бота или удалили чат).", r.Sent, r.Failed)
+func broadcastReportText(r broadcastResult) string {
+	return fmt.Sprintf(
+		"📣 Отчёт о рассылке: доставлено %d, не доставлено %d (заблокировали бота или удалили чат).%s",
+		r.Sent,
+		r.Failed,
+		stoppedNote(r),
+	)
 }
 
-func broadcastReportText(r broadcastResult) string {
-	return fmt.Sprintf("📣 Рассылка готова: доставлено %d, не доставлено %d (заблокировали бота или удалили чат).", r.Sent, r.Failed)
+// stoppedNote ends the report of a mass send that a shutdown cut short: it
+// is not done, and so many users were never tried.
+func stoppedNote(r broadcastResult) string {
+	if r.Skipped == 0 {
+		return ""
+	}
+	return fmt.Sprintf("\n⚠️ Отправка остановлена, потому что бот выключался: не отправлено %d. Отправьте ещё раз, если нужно.", r.Skipped)
 }
 
 // statsText is the admin overview. Traffic counters restart when the VPN
@@ -681,8 +709,6 @@ func peersSection(g peersGroup) string {
 	}
 	return b.String()
 }
-
-// --- admin panel ---
 
 func usersText(v usersView) string {
 	return fmt.Sprintf("👥 Пользователи: всего %d, страница %d/%d", v.Total, v.Page+1, pages(v.Total))
@@ -938,21 +964,37 @@ func refundedToUserText(p *service.Payment) string {
 }
 
 // tariffLabel: 30 → "1 месяц", 90 → "3 месяца", 365 → "12 месяцев",
-// anything else → "N дней".
+// anything else in days: 7 → "7 дней", 21 → "21 день".
 func tariffLabel(days int) string {
-	months := days / 30
-	if days == 365 {
-		months = 12
-	} else if days%30 != 0 {
-		return fmt.Sprintf("%d дней", days)
+	months := []string{
+		"месяц",
+		"месяца",
+		"месяцев",
 	}
 	switch {
-	case months%10 == 1 && months%100 != 11:
-		return fmt.Sprintf("%d месяц", months)
-	case months%10 >= 2 && months%10 <= 4 && (months%100 < 12 || months%100 > 14):
-		return fmt.Sprintf("%d месяца", months)
+	case days == 365:
+		return "12 " + months[pluralForm(12)]
+	case days%30 == 0:
+		return fmt.Sprintf("%d %s", days/30, months[pluralForm(days/30)])
 	}
-	return fmt.Sprintf("%d месяцев", months)
+	dayForms := []string{
+		"день",
+		"дня",
+		"дней",
+	}
+	return fmt.Sprintf("%d %s", days, dayForms[pluralForm(days)])
+}
+
+// pluralForm picks the Russian noun form for n: 0 for "1 день", 1 for
+// "2 дня", 2 for "5 дней".
+func pluralForm(n int) int {
+	switch {
+	case n%10 == 1 && n%100 != 11:
+		return 0
+	case n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14):
+		return 1
+	}
+	return 2
 }
 
 func deleteConfirmText(p *service.Peer) string {

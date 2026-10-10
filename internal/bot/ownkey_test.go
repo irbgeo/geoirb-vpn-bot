@@ -2,8 +2,10 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -185,4 +187,72 @@ func TestSkipWithoutOpenNameDialogIssuesNothing(t *testing.T) {
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "Эта кнопка устарела")
 	require.NotNil(t, s.sent[0].Keyboard)
+}
+
+// Reissue, delete and "config again" make the server work (a reissue
+// rewrites its config under the service lock): one user can't loop them.
+func TestOwnKeyActionsAreLimitedPerUser(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		svc := adminService() // has the key PUB1=
+		r, s := newRouter(svc)
+		ctx := context.Background()
+		for range keyActionsPerMinute {
+			require.NoError(t, r.Handle(ctx, press(cbConfig+"PUB1=")))
+		}
+		files := len(s.files)
+
+		for _, data := range []string{
+			cbConfig + "PUB1=",
+			cbReissue + "PUB1=",
+			cbDelete + "PUB1=",
+		} {
+			require.NoError(t, r.Handle(ctx, press(data)))
+			require.Equal(t, tooOftenText, s.sent[len(s.sent)-1].Text, data)
+		}
+		require.Len(t, s.files, files, "no config sent")
+		require.Empty(t, svc.reissuedFor)
+		require.Empty(t, svc.deletedOwn)
+
+		require.NoError(t, r.Handle(ctx, press(cbReissueAsk+"PUB1=")))
+		require.NotEqual(t, tooOftenText, s.sent[len(s.sent)-1].Text, "asking costs nothing and is not limited")
+		require.NoError(t, r.Handle(ctx, pressFrom(43, cbConfig+"PUB1=")))
+		require.Greater(t, len(s.files), files, "another user is not held back")
+
+		time.Sleep(time.Minute)
+		require.NoError(t, r.Handle(ctx, press(cbDelete+"PUB1=")))
+		require.Len(t, svc.deletedOwn, 1, "a minute later it works again")
+	})
+}
+
+func TestOwnKeyErrorText(t *testing.T) {
+	cases := map[string]struct {
+		err   error
+		text  string
+		known bool
+	}{
+		"unreadable": {
+			err:   service.ErrUnreadable,
+			text:  keyUnreadableText,
+			known: true,
+		},
+		"blocked": {
+			err:   service.ErrBlocked,
+			text:  blockedKeyDeleteText,
+			known: true,
+		},
+		"gone": {
+			err:   service.ErrNotFound,
+			text:  keyNotFoundText,
+			known: true,
+		},
+		"unexpected": {
+			err:  errors.New("awg down"),
+			text: ownKeyFailedText,
+		},
+	}
+	for name, c := range cases {
+		text, known := ownKeyErrorText(c.err)
+		require.Equal(t, c.text, text, name)
+		require.Equal(t, c.known, known, name)
+	}
 }

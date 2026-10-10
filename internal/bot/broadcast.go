@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	tgbot "github.com/irbgeo/go-tgbot"
 )
 
 // adminBroadcastAsk waits for the broadcast text.
@@ -50,41 +52,35 @@ func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 		return s.reportError(ctx, errorReport)
 	}
 	p.Kind = readyBroadcast
-	p.At = time.Time{} // a fresh preview gets a fresh pendingTTL
-	s.dialogs.set(p)
+	token := s.dialogs.preview(p)
 	preview := broadcastView{
 		Recipients: len(ids),
 		Text:       p.Text,
 	}
+	send := tgbot.Button("📣 Отправить", cbAdminBcOK+":"+token)
 	outMessage := outMessage{
 		ChatID:   p.ChatID,
 		Text:     broadcastPreviewText(preview),
-		Keyboard: broadcastKeyboard(),
+		Keyboard: sendCancelKeyboard(send),
 	}
 	return s.send.Send(ctx, outMessage)
 }
 
 // adminBroadcast sends the confirmed preview in the background, so the
-// admin's chat is not blocked for the minute a big broadcast takes. A
-// second press finds nothing pending and sends nothing; an old preview
-// (pendingTTL) or a maintenance change someone already made is not sent.
-// When it can't start (another mass send runs, recipients fail) the
-// preview stays, so "send" can be pressed again.
+// admin's chat is not blocked for the minute a big broadcast takes. Only
+// the button under the newest preview sends it (takePreview); a
+// maintenance change someone already made is not sent. When it can't start
+// (another mass send runs, recipients fail) the preview stays, so "send"
+// can be pressed again.
 func (s *router) adminBroadcast(ctx context.Context, a adminAction) error {
 	dialogTake := dialogTake{
 		ChatID: a.ChatID,
 		Kind:   readyBroadcast,
+		Token:  a.Arg,
 	}
-	p, res := s.dialogs.take(dialogTake)
-	switch res {
-	case takeNone:
-		return nil
-	case takeExpired:
-		outMessage := outMessage{
-			ChatID: a.ChatID,
-			Text:   previewExpiredText,
-		}
-		return s.send.Send(ctx, outMessage)
+	p, ok, err := s.takePreview(ctx, dialogTake)
+	if !ok {
+		return err
 	}
 	if p.Maint != maintKeep && s.maint.on() == (p.Maint == maintStart) {
 		outMessage := outMessage{
@@ -121,6 +117,28 @@ func (s *router) adminBroadcast(ctx context.Context, a adminAction) error {
 		s.dialogs.set(p) // keep the preview: "send" works again later
 	}
 	return err
+}
+
+// takePreview takes the preview the pressed "send" button belongs to. ok
+// is false when there is nothing to send: a second press finds nothing
+// (silent), a preview older than pendingTTL or a button under an older
+// preview is explained to the admin.
+func (s *router) takePreview(ctx context.Context, in dialogTake) (p pendingInput, ok bool, err error) {
+	p, res := s.dialogs.take(in)
+	outMessage := outMessage{
+		ChatID: in.ChatID,
+	}
+	switch res {
+	case takeOK:
+		return p, true, nil
+	case takeExpired:
+		outMessage.Text = previewExpiredText
+	case takeStale:
+		outMessage.Text = oldPreviewText
+	default:
+		return p, false, nil
+	}
+	return p, false, s.send.Send(ctx, outMessage)
 }
 
 // startMassSend takes the one background slot, fetches the recipients,
@@ -166,7 +184,7 @@ func (s *router) startMassSend(ctx context.Context, m massSend) (started bool, e
 
 // runBroadcast runs job.Deliver for each recipient with a pause, then
 // reports how many got it. On shutdown (ctx done) it stops and reports
-// what went out.
+// what went out and how many users were not tried.
 func (s *router) runBroadcast(ctx context.Context, job broadcastJob) {
 	res := broadcastResult{}
 send:
@@ -186,6 +204,7 @@ send:
 			res.Sent++
 		}
 	}
+	res.Skipped = len(job.Recipients) - res.Sent - res.Failed
 	outMessage := outMessage{
 		ChatID: job.AdminChat,
 		Text:   job.Report(res),

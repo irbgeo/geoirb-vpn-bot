@@ -9,6 +9,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
@@ -30,11 +31,11 @@ const (
 	actIssueDays   = "issd"   // + user ID + ":" + days (0 = never expires)
 	actStats       = "stats"  //
 	actBroadcast   = "bc"     // asks for the broadcast text
-	actBroadcastOK = "bcok"   // sends the previewed broadcast
+	actBroadcastOK = "bcok"   // + preview token: sends the previewed broadcast
 	actCancel      = "cancel" // drops what the bot waits for (broadcast text)
 	actFeedback    = "fb"     // + page (from 0): reviews and suggestions
 	actConfigs     = "cfgs"   // asks to send every user a fresh config
-	actConfigsOK   = "cfgsok" // confirmed: send them
+	actConfigsOK   = "cfgsok" // + preview token: confirmed, send them
 	actMaint       = "mnt"    // previews "maintenance started" or, while on, "over"
 	actRefund      = "ref"    // + user ID + ":" + payRef: asks to confirm
 	actRefundOK    = "refok"  // confirmed: return the Stars
@@ -67,6 +68,11 @@ const (
 	adminExtendDays = 30
 )
 
+// repeatPressGap: "+30 days" and "issue a key" add something on every
+// press, and the updates of one chat run one after another, so a double
+// press would do it twice. The same button within this time is skipped.
+const repeatPressGap = 10 * time.Second
+
 // errPaymentNotFound: a refund button points at a payment that is gone.
 var errPaymentNotFound = errors.New("bot: payment not found")
 
@@ -87,6 +93,13 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		MessageID: cq.MessageID(),
 		Name:      name,
 		Arg:       arg,
+	}
+	if (name == actExtend || name == actIssueDays) && !s.adminRepeats.allow(cq.Data) {
+		outMessage := outMessage{
+			ChatID: a.ChatID,
+			Text:   repeatedPressText,
+		}
+		return s.send.Send(ctx, outMessage)
 	}
 	switch name {
 	case actUsers:
@@ -133,17 +146,21 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 // adminText handles a text an admin sent after "📣 Рассылка": the
 // broadcast text. A new text at a preview replaces it and keeps what the
 // preview does to maintenance (own wording for the same switch). Any other
-// text, text from someone who is not an admin, or an old prompt
-// (pendingTTL) is ignored. A message without text (a photo, a sticker)
-// gets "send text" and the bot keeps waiting.
+// text, text at the "update configs" question, text from someone who is
+// not an admin, or an old prompt (pendingTTL) is ignored. A message
+// without text (a photo, a sticker) gets "send text" and the bot keeps
+// waiting.
 func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 	p, waiting := s.dialogs.peek(m.Chat.ID)
-	if !waiting {
+	if !waiting || p.Kind == readyConfigs {
 		return nil
 	}
 	u, err := s.users.User(ctx, m.From.ID)
-	if err != nil || u.Role != service.RoleAdmin {
-		return nil //nolint:nilerr // not an admin (any more): ignore the text
+	if err != nil && !errors.Is(err, service.ErrNotFound) {
+		return err
+	}
+	if u == nil || u.Role != service.RoleAdmin {
+		return nil // not an admin (any more): ignore the text
 	}
 	text := strings.TrimSpace(m.Text)
 	if text == "" {
@@ -164,15 +181,10 @@ func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 // adminUsers shows one page of users: plain users, then unlimited, then
 // admins; newest first inside a role.
 func (s *router) adminUsers(ctx context.Context, a adminAction) error {
-	page, _ := strconv.ParseInt(a.Arg, 10, 64)
-	page = max(page, 0)
-	servicePage := service.Page{
-		Skip:  page * adminPageSize,
-		Limit: adminPageSize,
-	}
+	page, servicePage := adminPage(a.Arg)
 	users, total, err := s.users.Users(ctx, servicePage)
 	if err != nil {
-		return err
+		return s.reportError(ctx, a.failed(err))
 	}
 	v := usersView{
 		Users: users,
@@ -186,6 +198,17 @@ func (s *router) adminUsers(ctx context.Context, a adminAction) error {
 		Keyboard:  usersKeyboard(v),
 	}
 	return s.send.Edit(ctx, editMessage)
+}
+
+// adminPage reads the page number of a list button (from 0; a bad or
+// negative one is the first page) and the slice of the list it stands for.
+func adminPage(arg string) (int64, service.Page) {
+	page, _ := strconv.ParseInt(arg, 10, 64)
+	page = max(page, 0)
+	return page, service.Page{
+		Skip:  page * adminPageSize,
+		Limit: adminPageSize,
+	}
 }
 
 // adminUser shows a user card: role, trial, and every key with actions.
@@ -370,12 +393,7 @@ func (s *router) adminIssue(ctx context.Context, a adminAction) error {
 
 // adminFeedback shows one page of reviews and suggestions, newest first.
 func (s *router) adminFeedback(ctx context.Context, a adminAction) error {
-	page, _ := strconv.ParseInt(a.Arg, 10, 64)
-	page = max(page, 0)
-	servicePage := service.Page{
-		Skip:  page * adminPageSize,
-		Limit: adminPageSize,
-	}
+	page, servicePage := adminPage(a.Arg)
 	list, total, err := s.feedback.Feedbacks(ctx, servicePage)
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
@@ -473,7 +491,9 @@ func payRef(chargeID string) string {
 
 // adminRefund returns the Stars, records it, tells the user and redraws
 // the card. The key is left as is: the admin disables it separately if
-// needed. An already refunded payment is not refunded again.
+// needed. An already refunded payment is not refunded again; when only its
+// record was missing (Telegram says "already returned"), the record is
+// written and the user, who was told the first time, is not told again.
 func (s *router) adminRefund(ctx context.Context, a adminAction) error {
 	ref, err := parsePaymentRef(a.Arg)
 	if err != nil {
@@ -497,29 +517,29 @@ func (s *router) adminRefund(ctx context.Context, a adminAction) error {
 		UserID:   p.UserID,
 		ChargeID: p.ChargeID,
 	}
-	err = s.send.Refund(ctx, refundInput)
+	res, err := s.returnStars(ctx, refundInput)
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
 	}
-	err = s.billing.MarkRefunded(ctx, p.ChargeID)
-	if err != nil {
-		log.Printf("bot: stars returned but not recorded for %s: %v", p.ChargeID, err)
+	if res.RecordErr != nil {
 		outMessage := outMessage{
 			ChatID: a.ChatID,
 			Text:   refundNotRecordedText(p),
 		}
-		sendErr := s.send.Send(ctx, outMessage)
-		if sendErr != nil {
-			log.Printf("bot: %v", sendErr)
+		err = s.send.Send(ctx, outMessage)
+		if err != nil {
+			log.Printf("bot: %v", err)
 		}
 	}
-	outMessage := outMessage{
-		ChatID: p.UserID,
-		Text:   refundedToUserText(p),
-	}
-	err = s.send.Send(ctx, outMessage)
-	if err != nil {
-		log.Printf("bot: tell user %d about refund: %v", p.UserID, err)
+	if !res.Already {
+		outMessage := outMessage{
+			ChatID: p.UserID,
+			Text:   refundedToUserText(p),
+		}
+		err = s.send.Send(ctx, outMessage)
+		if err != nil {
+			log.Printf("bot: tell user %d about refund: %v", p.UserID, err)
+		}
 	}
 	return s.adminUser(ctx, a)
 }

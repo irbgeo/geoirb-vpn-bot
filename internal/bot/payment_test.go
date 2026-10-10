@@ -225,12 +225,12 @@ func TestPaymentNeedsReviewTellsUserAndAdmins(t *testing.T) {
 
 func TestPaymentFailureRefunds(t *testing.T) {
 	svc := &fakeService{
-		payErr: errors.New("docker down"),
+		payErr: errors.New("awg down"),
 	}
 	r, s := newRouter(svc)
 
 	err := r.Handle(context.Background(), paid())
-	require.ErrorContains(t, err, "docker down")
+	require.ErrorContains(t, err, "awg down")
 	require.Equal(
 		t,
 		[]refundInput{
@@ -247,7 +247,7 @@ func TestPaymentFailureRefunds(t *testing.T) {
 
 func TestPaymentRefundFailureAsksToContact(t *testing.T) {
 	svc := &fakeService{
-		payErr: errors.New("docker down"),
+		payErr: errors.New("awg down"),
 	}
 	r, s := newRouter(svc)
 	s.refundErr = errors.New("telegram down")
@@ -407,5 +407,68 @@ func paid() tgbot.Update {
 				TelegramPaymentChargeID: "charge1",
 			},
 		},
+	}
+}
+
+// The automatic refund and the admin button are one sequence: when the
+// Stars went back but the record failed, the admins hear that too.
+func TestPaymentRefundNotRecordedIsToldToAdmins(t *testing.T) {
+	svc := &fakeService{
+		payErr:        errors.New("awg down"),
+		refundMarkErr: errors.New("mongo down"),
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	}
+	r, s := newRouter(svc)
+
+	require.Error(t, r.Handle(context.Background(), paid()))
+
+	require.Len(t, s.refunds, 1)
+	alert := s.sentTo(1)[0].Text
+	require.Contains(t, alert, "звёзды возвращены")
+	require.Contains(t, alert, "не записан")
+	require.Contains(t, alert, "mongo down")
+	require.Contains(t, s.sentTo(42)[0].Text, "звёзды возвращены", "for the user it is a plain refund")
+}
+
+func TestInvoiceErrorsExplained(t *testing.T) {
+	cases := map[error]string{
+		service.ErrNoTariff:   noTariffText,
+		service.ErrNotFound:   keyNotFoundText,
+		service.ErrNotForSale: notForSaleText,
+	}
+	for cause, want := range cases {
+		r, s := newRouter(
+			&fakeService{
+				invoiceErr: cause,
+			},
+		)
+
+		require.NoError(t, r.Handle(context.Background(), press("buy:30")), "expected: not logged")
+		require.Equal(t, want, s.sent[0].Text)
+		require.Empty(t, s.invoices)
+	}
+}
+
+func TestPreCheckoutDeclineSaysWhy(t *testing.T) {
+	cases := map[error]string{
+		service.ErrNotForSale: notForSaleText,
+		service.ErrBlocked:    blockedKeyText,
+		service.ErrUnreadable: unreadableKeyBuyText,
+		service.ErrNotFound:   staleInvoiceText,
+	}
+	for cause, want := range cases {
+		r, s := newRouter(
+			&fakeService{
+				checkErr: cause,
+			},
+		)
+
+		require.NoError(t, r.Handle(context.Background(), preCheckout()))
+		require.False(t, s.answers[0].OK)
+		require.Equal(t, want, s.answers[0].Error)
 	}
 }

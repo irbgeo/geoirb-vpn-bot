@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 )
@@ -39,33 +40,34 @@ type notifier struct {
 	// subnetAlerted: an alert went out and the subnet is still full; it
 	// alerts again only after it cleared and came back.
 	subnetAlerted latch
-	backup        stampWatch
-	ruNets        stampWatch
+	backup        *stampWatch
+	ruNets        *stampWatch
 	online        onlineWatch
 }
 
-// NewNotifier creates a notifier. backupStamp / ruNetsStamp are the files
-// touched by each good backup / RU networks update ("" = no check); load
-// nil = no server load alerts.
+// NewNotifier creates a notifier. From cfg it takes BackupStamp and
+// RUNetsStamp: the files touched by each good backup / RU networks update
+// ("" = no check). load nil = no server load alerts.
 func NewNotifier(
 	users Users,
 	sender Sender,
-	backupStamp string,
+	cfg *config.Config,
 	load ServerLoad,
-	ruNetsStamp string,
 ) *notifier {
+	backup := newStampWatch(
+		cfg.BackupStamp,
+		backupMaxAge,
+	)
+	ruNets := newStampWatch(
+		cfg.RUNetsStamp,
+		ruNetsMaxAge,
+	)
 	return &notifier{
-		users: users,
-		send:  sender,
-		load:  load,
-		backup: stampWatch{
-			path:   backupStamp,
-			maxAge: backupMaxAge,
-		},
-		ruNets: stampWatch{
-			path:   ruNetsStamp,
-			maxAge: ruNetsMaxAge,
-		},
+		users:  users,
+		send:   sender,
+		load:   load,
+		backup: backup,
+		ruNets: ruNets,
 	}
 }
 
@@ -121,20 +123,26 @@ func (s *notifier) WatchServerLoad(ctx context.Context) {
 	}
 }
 
-// WatchTunnel checks the exit tunnel now, before it returns (so a stale
-// bot route is fixed before the bot's first calls), then every minute in
-// the background until ctx is done, and tells admins when it goes down or
-// comes back. Up at the first known state is quiet (only the bot route is
-// set); down is told once.
+// WatchTunnel checks the exit tunnel now, before it returns (so the bot
+// route is set for the state found before the bot's first calls; while the
+// state is still Unknown, the watcher's start window, a route left by the
+// last run is not touched), then every minute in the background until ctx
+// is done, and tells admins when it goes down or comes back. Up at the
+// first known state is quiet (only the bot route is set); down is told
+// once.
 func (s *notifier) WatchTunnel(ctx context.Context, w tunnelChecker) {
 	first := true
+	unsent := "" // the newest alert that reached no admin yet: tried again every check
 	check := func() {
 		st, changed, err := w.Check(ctx)
 		if err != nil {
 			log.Printf("bot: tunnel check: %v", err)
 		}
 		if changed && (st == tunnel.Down || !first) {
-			s.NotifyAdmins(ctx, tunnelText(st))
+			unsent = tunnelText(st)
+		}
+		if unsent != "" && s.NotifyAdmins(ctx, unsent) {
+			unsent = ""
 		}
 		if err == nil && st != tunnel.Unknown {
 			first = false
@@ -172,17 +180,20 @@ func (s *notifier) CheckServerLoad(ctx context.Context) {
 }
 
 // NotifyAdmins sends text to every admin. A failed send (e.g. an admin who
-// blocked the bot) is logged and the rest still get it.
-func (s *notifier) NotifyAdmins(ctx context.Context, text string) {
+// blocked the bot) is logged and the rest still get it. It reports whether
+// the text got out: at least one admin has it, or there are no admins and
+// the log line is all there can be. False means "try again later".
+func (s *notifier) NotifyAdmins(ctx context.Context, text string) bool {
 	admins, err := s.users.Admins(ctx)
 	if err != nil {
 		log.Printf("bot: list admins: %v", err)
-		return
+		return false
 	}
 	if len(admins) == 0 {
-		log.Printf("bot: no admins in the DB, alert only logged: %s", text)
-		return
+		log.Printf("bot: no admins in the DB, alert only logged: %q", text) // %q: user text stays on one line
+		return true
 	}
+	delivered := false
 	for _, a := range admins {
 		outMessage := outMessage{
 			ChatID: a.ID,
@@ -191,8 +202,11 @@ func (s *notifier) NotifyAdmins(ctx context.Context, text string) {
 		err := s.send.Send(ctx, outMessage)
 		if err != nil {
 			log.Printf("bot: notify admin %d: %v", a.ID, err)
+			continue
 		}
+		delivered = true
 	}
+	return delivered
 }
 
 // sendKeyNotice sends kn to the key's owner. A failed send (e.g. the user
@@ -216,14 +230,16 @@ func (s *notifier) sendKeyNotice(ctx context.Context, kn keyNotice) {
 }
 
 // subnetAlert warns admins once when the subnet passes subnetAlertPercent,
-// and again only after it has dropped below and risen once more.
+// and again only after it has dropped below and risen once more. An alert
+// that reached no admin does not count as sent: the next run tries again
+// (the same in stampAlerts and onlineDropAlert).
 func (s *notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
 	if m.SubnetTotal == 0 {
 		return // unknown this run: keep the alert state as it is
 	}
 	full := m.SubnetUsed*100 > m.SubnetTotal*subnetAlertPercent
-	if s.subnetAlerted.rise(full) {
-		s.NotifyAdmins(ctx, subnetAlertText(m))
+	if s.subnetAlerted.rise(full) && !s.NotifyAdmins(ctx, subnetAlertText(m)) {
+		s.subnetAlerted.drop()
 	}
 }
 
@@ -231,12 +247,12 @@ func (s *notifier) subnetAlert(ctx context.Context, m *service.Maintenance) {
 // update is too old (or never happened), and again only after a fresh one.
 func (s *notifier) stampAlerts(ctx context.Context) {
 	last, alert := s.backup.check()
-	if alert {
-		s.NotifyAdmins(ctx, backupAlertText(last))
+	if alert && !s.NotifyAdmins(ctx, backupAlertText(last)) {
+		s.backup.alerted.drop()
 	}
 	last, alert = s.ruNets.check()
-	if alert {
-		s.NotifyAdmins(ctx, ruNetsAlertText(last))
+	if alert && !s.NotifyAdmins(ctx, ruNetsAlertText(last)) {
+		s.ruNets.alerted.drop()
 	}
 }
 
@@ -247,7 +263,7 @@ func (s *notifier) onlineDropAlert(ctx context.Context, m *service.Maintenance) 
 		return // unknown this run: keep the state as it is
 	}
 	drop, alert := s.online.record(m.Online)
-	if alert {
-		s.NotifyAdmins(ctx, onlineDropText(drop))
+	if alert && !s.NotifyAdmins(ctx, onlineDropText(drop)) {
+		s.online.unsent()
 	}
 }

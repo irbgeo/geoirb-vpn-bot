@@ -127,6 +127,13 @@ type refundAlert struct {
 	UserID    int64
 	Cause     error // why it was not applied
 	RefundErr error // nil = the Stars went back
+	RecordErr error // the Stars went back, but the DB does not say so
+}
+
+// starsReturn is how returnStars went once the Stars are back.
+type starsReturn struct {
+	Already   bool  // Telegram had returned them before this call
+	RecordErr error // the refund could not be recorded in the DB
 }
 
 // paymentReviewInput is a payment that was not applied because its record
@@ -176,12 +183,15 @@ const (
 	readyBroadcast                          // admin: text given, waiting for "send"
 	pendingKeyName                          // user: the name of the key to create
 	pendingFeedback                         // user: a review or suggestion
+	readyConfigs                            // admin: "update configs" asked, waiting for "send"
 )
 
-// dialogTake asks dialogs.take for a chat's entry of one kind.
+// dialogTake asks dialogs.take for a chat's entry of one kind. Token is
+// the one in the pressed button: it must be the entry's.
 type dialogTake struct {
 	ChatID int64
 	Kind   pendingKind
+	Token  string
 }
 
 // massSend is one background send to every user with an enabled key:
@@ -202,11 +212,18 @@ const pendingTTL = 10 * time.Minute
 // pendingInput is what the bot waits for in one chat.
 type pendingInput struct {
 	ChatID int64
-	UserID int64 // pendingKeyName: only this user answers
 	Kind   pendingKind
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
 	Maint  maintChange
+	// Token ties a preview (readyBroadcast, readyConfigs) to the "send"
+	// button under it: a button of an older preview does not match.
+	Token uint32
+}
+
+// token is Token as the button carries it.
+func (s pendingInput) token() string {
+	return strconv.FormatUint(uint64(s.Token), 36)
 }
 
 // maintChange: what sending a ready broadcast does to the maintenance state.
@@ -234,10 +251,12 @@ type broadcastJob struct {
 	Report     func(broadcastResult) string
 }
 
-// broadcastResult counts delivered and failed broadcast messages.
+// broadcastResult counts delivered and failed broadcast messages, and the
+// recipients a shutdown left untried.
 type broadcastResult struct {
-	Sent   int
-	Failed int
+	Sent    int
+	Failed  int
+	Skipped int
 }
 
 // outFile is one file (document or photo) to send.
