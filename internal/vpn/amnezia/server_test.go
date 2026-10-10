@@ -136,7 +136,8 @@ func TestUpdateSyncsThenPersists(t *testing.T) {
 
 	require.Len(t, r.calls, 3, "read, syncconf, persist")
 	sync := r.calls[1]
-	require.Contains(t, sync.Args[2], "awg syncconf awg0")
+	require.Contains(t, sync.Args[2], "awg syncconf awg0 /dev/stdin")
+	require.NotContains(t, sync.Args[2], "mktemp", "no file with the keys is left behind when the command is killed")
 	require.NotContains(t, sync.Stdin, "Address", "syncconf gets the stripped config")
 	require.Contains(t, sync.Stdin, "PUB3=")
 

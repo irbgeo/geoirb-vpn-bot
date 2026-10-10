@@ -159,10 +159,12 @@ func sha256Hex(s string) string {
 }
 
 // syncLive applies the stripped config with `awg syncconf`: it adds and
-// removes only the changed peers, other clients stay connected.
+// removes only the changed peers, other clients stay connected. The config
+// (server private key, every PSK) is read from stdin, never from a temp
+// file: a timeout kills the script, which could not clean one up.
 func (s *server) syncLive(ctx context.Context, l liveSync) error {
 	script := fmt.Sprintf(
-		`set -e; f=%q; %s t=$(mktemp); trap 'rm -f "$t"' EXIT; cat > "$t"; %s syncconf %s "$t"`,
+		`set -e; f=%q; %s %s syncconf %s /dev/stdin`,
 		s.confPath,
 		unchangedCheck(l.Expect),
 		s.tool,
