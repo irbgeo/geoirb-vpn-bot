@@ -129,6 +129,13 @@ check "update: the backup comes before any other change" "2" "$(line '^systemctl
 check "update: awg0.conf kept" "1" "$(cmp -s "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first" && echo 1)"
 check "ufw inactive: no rules" "0" "$(grep -c '^ufw .*allow' "$TMP/calls")"
 check "packages present: no apt-get" "0" "$(grep -c '^apt-get' "$TMP/calls")"
+check "Address 10.8.0.1/22: no subnet warning" "0" "$(grep -c 'warning: Address in awg0.conf' "$TMP/out")"
+
+# NAT, DNS and split routing are written for 10.8.0.0/22: a hand-widened Address is reported.
+sed 's|^Address = .*|Address = 10.8.0.1/21|' "$TMP/awg0.first" >"$R/etc/amnezia/amneziawg/awg0.conf"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
+check "another Address: warned, the deploy goes on" "0 1" "$? $(grep -c 'warning: Address in awg0.conf is not 10.8.0.1/22' "$TMP/out")"
+cp "$TMP/awg0.first" "$R/etc/amnezia/amneziawg/awg0.conf"
 
 # A failed backup stops the deploy with everything as the old version left it.
 echo OLDBOT >"$OPT/bot"

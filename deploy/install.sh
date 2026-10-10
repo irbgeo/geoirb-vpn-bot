@@ -82,6 +82,12 @@ sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf"
 
 # awg0.conf: created on the first install only, never overwritten.
 ROOT="$ROOT" bash "$S/awg0-init.sh"
+# The client subnet is written in more places than awg0.conf: geoirb-vpn.nft
+# (mark, NAT), unbound-geoirb.conf, the ufw rule below and CLIENT_DNS
+# (scripts/server-env.sh). They do not follow a hand-changed Address.
+if ! grep -Eq '^Address[[:space:]]*=[[:space:]]*10\.8\.0\.1/22[[:space:]]*$' "$ROOT/etc/amnezia/amneziawg/awg0.conf"; then
+  echo "warning: Address in awg0.conf is not 10.8.0.1/22. NAT, split routing and DNS are set for 10.8.0.0/22 only: clients outside it get no internet and no DNS. Change deploy/geoirb-vpn.nft, deploy/unbound-geoirb.conf, deploy/install.sh (ufw) and scripts/server-env.sh (CLIENT_DNS) to match." >&2
+fi
 
 # systemd-networkd drops foreign ip rules and routes whenever it reconfigures
 # a link (see networkd-geoirb.conf). It reads this file at start only, so
