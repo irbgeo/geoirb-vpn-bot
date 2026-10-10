@@ -52,12 +52,24 @@ func TestLastHandshakeNever(t *testing.T) {
 	require.True(t, got.IsZero())
 }
 
+// A stopped or failed awg-exit unit leaves no interface: that is a dead
+// tunnel, not a failed read, or the watcher would never go Down.
+func TestLastHandshakeNoInterfaceIsNever(t *testing.T) {
+	fakeBins(t, map[string]string{
+		"awg": `echo "Unable to access interface: No such device" >&2; exit 1`,
+	})
+
+	got, err := newTestNet().LastHandshake(context.Background())
+	require.NoError(t, err)
+	require.True(t, got.IsZero())
+}
+
 func TestLastHandshakeErrors(t *testing.T) {
 	fakeBins(t, map[string]string{
-		"awg": `echo "Unable to access interface" >&2; exit 1`,
+		"awg": `echo "Unable to access interface: Operation not permitted" >&2; exit 1`,
 	})
 	_, err := newTestNet().LastHandshake(context.Background())
-	require.ErrorContains(t, err, "Unable to access interface")
+	require.ErrorContains(t, err, "Operation not permitted")
 	require.ErrorContains(t, err, "tunnel: awg show awg-exit")
 
 	fakeBins(t, map[string]string{

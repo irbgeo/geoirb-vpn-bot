@@ -43,9 +43,14 @@ func NewHostNet(cfg *config.Config) *hostNet {
 }
 
 // LastHandshake returns the newest handshake over all peers of the exit
-// interface (awg-exit has one); zero = never.
+// interface (awg-exit has one); zero = never. No interface at all (its unit
+// stopped or failed) is "never" too, not an error: the watcher keeps its
+// state on an error and would leave the bot on a dead route for good.
 func (s *hostNet) LastHandshake(ctx context.Context) (time.Time, error) {
 	out, err := s.exec(ctx, "awg", "show", s.iface, "latest-handshakes")
+	if err != nil && strings.Contains(err.Error(), "No such device") {
+		return time.Time{}, nil
+	}
 	if err != nil {
 		return time.Time{}, err
 	}
