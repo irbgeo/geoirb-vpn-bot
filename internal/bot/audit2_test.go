@@ -154,7 +154,7 @@ func TestKeyCreatedButNotDeliveredTellsTheUser(t *testing.T) {
 		created: &service.Peer{
 			PublicKey: "PUB=",
 		},
-		configErr: errors.New("docker down"),
+		configErr: errors.New("awg down"),
 	}
 	r, s := newRouter(svc)
 

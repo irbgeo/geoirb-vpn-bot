@@ -148,9 +148,9 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 		DeliveryErr: err,
 	}
 	if err != nil {
-		// Paid, but the key or the message did not get through (a docker
-		// timeout, Telegram down): the user must still hear that the
-		// payment worked and where the key is.
+		// Paid, but the key or the message did not get through (an awg
+		// command timeout, Telegram down): the user must still hear that
+		// the payment worked and where the key is.
 		ctx = context.WithoutCancel(ctx)
 		outMessage := outMessage{
 			ChatID: m.Chat.ID,

@@ -727,12 +727,12 @@ func TestCreateKeyErrorsExplained(t *testing.T) {
 func TestCreateKeyUnexpectedErrorIsReturned(t *testing.T) {
 	r, s := newRouter(
 		&fakeService{
-			createErr: errors.New("docker down"),
+			createErr: errors.New("awg down"),
 		},
 	)
 
 	err := r.Handle(context.Background(), pressCreateKey())
-	require.ErrorContains(t, err, "docker down", "logged by the poll loop")
+	require.ErrorContains(t, err, "awg down", "logged by the poll loop")
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "Не получилось", "the user still gets an answer")
 }
@@ -920,10 +920,10 @@ func TestReconcileNotifiesAdminsOnlyOnDifferences(t *testing.T) {
 	require.Len(t, s.sent, 1)
 	require.Contains(t, s.sent[0].Text, "tg:alice")
 
-	svc.reportErr = errors.New("docker down")
+	svc.reportErr = errors.New("awg down")
 	r.Reconcile(context.Background())
 	require.Len(t, s.sent, 2)
-	require.Contains(t, s.sent[1].Text, "docker down")
+	require.Contains(t, s.sent[1].Text, "awg down")
 }
 
 func TestReconcileText(t *testing.T) {

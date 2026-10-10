@@ -225,12 +225,12 @@ func TestPaymentNeedsReviewTellsUserAndAdmins(t *testing.T) {
 
 func TestPaymentFailureRefunds(t *testing.T) {
 	svc := &fakeService{
-		payErr: errors.New("docker down"),
+		payErr: errors.New("awg down"),
 	}
 	r, s := newRouter(svc)
 
 	err := r.Handle(context.Background(), paid())
-	require.ErrorContains(t, err, "docker down")
+	require.ErrorContains(t, err, "awg down")
 	require.Equal(
 		t,
 		[]refundInput{
@@ -247,7 +247,7 @@ func TestPaymentFailureRefunds(t *testing.T) {
 
 func TestPaymentRefundFailureAsksToContact(t *testing.T) {
 	svc := &fakeService{
-		payErr: errors.New("docker down"),
+		payErr: errors.New("awg down"),
 	}
 	r, s := newRouter(svc)
 	s.refundErr = errors.New("telegram down")
