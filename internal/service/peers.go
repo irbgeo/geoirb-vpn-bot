@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net/netip"
 	"time"
@@ -19,7 +18,15 @@ func (s *service) Issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.useUpTrial(ctx, in.UserID)
+	if in.UserID != 0 {
+		// A key issued by an admin counts as the plain user's free trial, so
+		// deleting it does not give a new one. Best effort, like startTrial:
+		// the key itself stops a second trial, and DeleteOwnKey marks again.
+		err = s.closeTrial(ctx, in.UserID)
+		if err != nil {
+			log.Printf("service: mark trial used for %d: %v", in.UserID, err)
+		}
+	}
 	return p.public(), nil
 }
 
@@ -189,25 +196,6 @@ func (s *service) countKeys(ctx context.Context, d KeysDelta) {
 	err := s.users.AddKeys(ctx, d)
 	if err != nil {
 		log.Printf("service: keys count of %d: %v", d.UserID, err)
-	}
-}
-
-// useUpTrial: a key issued by an admin counts as the plain user's free
-// trial, so deleting it does not give a new one. Best effort, like startTrial.
-func (s *service) useUpTrial(ctx context.Context, userID int64) {
-	if userID == 0 {
-		return
-	}
-	u, err := s.User(ctx, userID)
-	if errors.Is(err, ErrNotFound) {
-		return
-	}
-	if err != nil {
-		log.Printf("service: trial check for %d: %v", userID, err)
-		return
-	}
-	if u.Role == RoleUser && !u.TrialUsed {
-		s.markTrialUsed(ctx, userID)
 	}
 }
 

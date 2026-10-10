@@ -113,9 +113,10 @@ func (s *service) unswap(ctx context.Context, in PeerSwap) {
 	}
 }
 
-// closeTrial makes sure a plain user's trial is marked used before their
-// key goes: the mark made when the key was issued is best effort, and
-// after the delete nothing else would stop a second trial.
+// closeTrial marks a plain user's trial used, if it is not yet. Issue calls
+// it best effort (an admin's key counts as the trial). DeleteOwnKey must
+// not go on when it fails: after the delete nothing else would stop a
+// second trial.
 func (s *service) closeTrial(ctx context.Context, userID int64) error {
 	u, err := s.User(ctx, userID)
 	if errors.Is(err, ErrNotFound) {
