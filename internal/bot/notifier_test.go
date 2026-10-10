@@ -285,6 +285,8 @@ func TestLoadAlertTextForEveryMetric(t *testing.T) {
 				Limit:   90,
 			},
 		)
+		require.NotEmpty(t, loadMetricNames()[m], "%s has no name: the alert would read \"Сервер:  — 95%%\"", m)
+		require.Contains(t, text, loadMetricNames()[m])
 		require.NotContains(t, text, string(m), "a Russian name, not the code name")
 	}
 }
