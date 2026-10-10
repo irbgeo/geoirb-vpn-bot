@@ -386,6 +386,12 @@ type logKey struct {
 	Kind      string
 }
 
+// maintainStep is one key of a Maintain run and the report it adds to.
+type maintainStep struct {
+	Peer   *Peer
+	Report *Maintenance
+}
+
 // keyNumberInput is the names taken and the base name for nextKeyNumber.
 type keyNumberInput struct {
 	Names []string
