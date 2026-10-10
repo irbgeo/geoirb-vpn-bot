@@ -829,3 +829,33 @@ func TestAdminCardForeverKeyHasNoExtend(t *testing.T) {
 	require.NotContains(t, got, "a:ext:"+forever.Peer.PublicKey)
 	require.Contains(t, got, "a:ext:PUB2=")
 }
+
+// refundButton is the "return the Stars" button of a user card ("" = none).
+func refundButton(card editMessage) string {
+	for _, b := range buttons(card) {
+		if strings.HasPrefix(b, cbAdminRef) {
+			return b
+		}
+	}
+	return ""
+}
+
+func TestAdminRefundThatTelegramRefusesChangesNothing(t *testing.T) {
+	svc := withPayments(adminService())
+	r, s := newRouter(svc)
+	s.refundErr = errors.New("telegram down")
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:user:7")))
+	require.NoError(t, r.Handle(ctx, press(refundButton(s.edits[0]))))
+
+	err := r.Handle(ctx, press(buttons(s.edits[1])[0]))
+
+	require.ErrorContains(t, err, "telegram down", "for the log")
+	require.Len(t, s.refunds, 1, "it was tried")
+	require.Empty(t, svc.refunded, "not recorded as returned")
+	require.Empty(t, s.sentTo(7), "the user is told nothing")
+	admin := s.sentTo(42)
+	require.Len(t, admin, 1)
+	require.Contains(t, admin[0].Text, "Не получилось")
+	require.Len(t, s.edits, 2, "the card is not redrawn as if it worked")
+}
