@@ -112,6 +112,64 @@ func TestShortTermGetsNoReminderAtOnce(t *testing.T) {
 	})
 }
 
+// A reminder whose mark could not be saved is not sent (it would repeat
+// every minute) and is tried again on the next run.
+func TestMaintainHoldsAReminderWhoseMarkWasNotSaved(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		in2days := e.seed(t, now.Add(48*time.Hour))
+		in12h := e.seed(t, now.Add(12*time.Hour))
+		ctx := context.Background()
+		e.peers.saveErr = errBoom
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Empty(t, m.Remind3d)
+		require.Empty(t, m.Remind1d)
+
+		e.peers.saveErr = nil
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Equal(t, []string{in2days.PublicKey}, keysOf(m.Remind3d))
+		require.Equal(t, []string{in12h.PublicKey}, keysOf(m.Remind1d))
+	})
+}
+
+// A server error while a key is made forever is not about that key: the
+// run stops there and the next one does them all.
+func TestMaintainStopsMakingForeverAtTheFirstServerError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		a := expiredKey(t, e)
+		b := expiredKey(t, e)
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited})
+		e.vpn.err = errBoom
+		changes := e.vpn.changes
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Empty(t, m.MadeForever)
+		require.Equal(t, changes+1, e.vpn.changes, "one failed try, not one per key")
+		require.False(t, e.peers.m[a.PublicKey].Enabled)
+
+		e.vpn.err = nil
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.ElementsMatch(
+			t,
+			[]string{
+				a.PublicKey,
+				b.PublicKey,
+			},
+			keysOf(m.MadeForever),
+		)
+		require.True(t, e.vpn.hasPeer(a.PublicKey))
+		require.True(t, e.vpn.hasPeer(b.PublicKey))
+	})
+}
+
 func TestMaintainSubnetUsage(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()
