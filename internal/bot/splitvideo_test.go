@@ -129,7 +129,8 @@ func TestIPhoneGuideFitsOneMessage(t *testing.T) {
 	require.Len(t, tgbot.SplitText(iphoneHowToText), 1)
 	require.True(t, strings.HasPrefix(iphoneHowToText, "🍏 iPhone и iPad: банк и Госуслуги"))
 	require.True(t, strings.HasSuffix(iphoneHowToText, "Вопросы — в /support."))
-	require.Contains(t, iphoneHowToText, "11. Нажмите «Готово».\n\nШАГ 2. Включать обратно при выходе\n")
+	require.Contains(t, iphoneHowToText, "11. Нажмите «Готово».\n\nПРОВЕРКА\n")
+	require.NotContains(t, iphoneHowToText, "ШАГ 2", "the owner dropped the switch-back automation")
 }
 
 // The iPhone video is added later: until then the guide is its text.
