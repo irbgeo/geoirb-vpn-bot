@@ -44,7 +44,7 @@ func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 		}
 		return s.send.Send(ctx, outMessage)
 	}
-	if !s.feedbackLimit.allow(m.From.ID) {
+	if s.feedbackLimit.full(m.From.ID) {
 		s.dialogs.drop(m.Chat.ID)
 		outMessage := outMessage{
 			ChatID:   m.Chat.ID,
@@ -75,6 +75,7 @@ func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 		}
 		return s.replyError(ctx, userError)
 	}
+	s.feedbackLimit.allow(m.From.ID) // only a saved review counts
 	s.dialogs.drop(m.Chat.ID)
 	feedback := service.Feedback{
 		UserID:   m.From.ID,

@@ -357,6 +357,20 @@ func newRateLimit[K comparable](
 	}
 }
 
+// full says whether key has used up its tries, without counting one: for
+// a caller that counts only what worked (allow after the work).
+func (s *rateLimit[K]) full(key K) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	live := 0
+	for _, t := range s.seen[key] {
+		if time.Since(t) < s.window {
+			live++
+		}
+	}
+	return live >= s.max
+}
+
 func (s *rateLimit[K]) allow(key K) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -255,3 +255,30 @@ func TestFeedbackSaveErrorKeepsTheQuestionOpen(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, startUpdate("отзыв")))
 	require.Len(t, svc.feedback, 1, "sent again without pressing the button: saved")
 }
+
+// Only saved reviews use up the hourly limit: a DB that is down for a few
+// tries, or a text that is refused, does not lock the user out.
+func TestFailedFeedbackSavesAreNotCounted(t *testing.T) {
+	svc := &fakeService{
+		feedbackErr: errors.New("mongo down"),
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press(cbFeedback)))
+	for range feedbackPerHour {
+		require.Error(t, r.Handle(ctx, startUpdate("отзыв")))
+	}
+	svc.feedbackErr = service.ErrBadFeedback
+	require.NoError(t, r.Handle(ctx, startUpdate("отзыв")))
+
+	svc.feedbackErr = nil
+	for range feedbackPerHour {
+		require.NoError(t, r.Handle(ctx, startUpdate("отзыв")))
+		require.Equal(t, feedbackThanksText, s.sent[len(s.sent)-1].Text)
+		require.NoError(t, r.Handle(ctx, press(cbFeedback)))
+	}
+	require.Len(t, svc.feedback, feedbackPerHour)
+
+	require.NoError(t, r.Handle(ctx, startUpdate("ещё один")))
+	require.Equal(t, feedbackLimitText, s.sent[len(s.sent)-1].Text, "the saved ones are counted")
+}
