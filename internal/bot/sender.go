@@ -3,8 +3,8 @@ package bot
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log"
+	"strings"
 	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
@@ -58,30 +58,54 @@ func NewTelegramSender(
 	}
 }
 
-// Send sends a text message, with inline buttons if any.
+// Send sends a text message, with inline buttons if any. This is the one
+// place that knows Telegram's message size: a longer text goes out as
+// several messages, cut at line breaks, with the buttons under the last.
 func (s *telegramSender) Send(ctx context.Context, m outMessage) error {
-	var opts *tgbot.SendMessageOptions
-	if m.Keyboard != nil {
-		opts = &tgbot.SendMessageOptions{
-			ReplyMarkup: m.Keyboard,
+	parts := tgbot.SplitText(m.Text)
+	for i, part := range parts {
+		var opts *tgbot.SendMessageOptions
+		if m.Keyboard != nil && i == len(parts)-1 {
+			opts = &tgbot.SendMessageOptions{
+				ReplyMarkup: m.Keyboard,
+			}
+		}
+		_, err := s.client.SendMessage(ctx, m.ChatID, part, opts)
+		if err != nil {
+			return err
 		}
 	}
-	_, err := s.client.SendMessage(ctx, m.ChatID, m.Text, opts)
-	return err
+	return nil
 }
 
 // Edit replaces a message's text and buttons in place. "Message is not
-// modified" (same content twice) is not an error.
+// modified" (same content twice) is not an error. Of a text too long for
+// one message, the message gets the first part and the rest follows as new
+// messages, the buttons under the last one.
 func (s *telegramSender) Edit(ctx context.Context, m editMessage) error {
+	parts := tgbot.SplitText(m.Text)
 	editMessageTextOptions := tgbot.EditMessageTextOptions{
 		ReplyMarkup: m.Keyboard,
 	}
-	_, err := s.client.EditMessageText(ctx, m.ChatID, m.MessageID, m.Text, &editMessageTextOptions)
-	var apiErr *tgbot.APIError
-	if errors.As(err, &apiErr) && apiErr.IsNotModified() {
-		return nil
+	if len(parts) > 1 {
+		// An empty keyboard takes the old buttons off the first part.
+		editMessageTextOptions.ReplyMarkup = &tgbot.InlineKeyboardMarkup{
+			InlineKeyboard: [][]tgbot.InlineKeyboardButton{},
+		}
 	}
-	return err
+	_, err := s.client.EditMessageText(ctx, m.ChatID, m.MessageID, parts[0], &editMessageTextOptions)
+	if tgbot.IsNotModified(err) {
+		err = nil
+	}
+	if err != nil || len(parts) == 1 {
+		return err
+	}
+	rest := outMessage{
+		ChatID:   m.ChatID,
+		Text:     strings.Join(parts[1:], ""),
+		Keyboard: m.Keyboard,
+	}
+	return s.Send(ctx, rest)
 }
 
 // SendDocument uploads a file.
