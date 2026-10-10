@@ -166,7 +166,7 @@ func (s *router) startMassSend(ctx context.Context, m massSend) (started bool, e
 
 // runBroadcast runs job.Deliver for each recipient with a pause, then
 // reports how many got it. On shutdown (ctx done) it stops and reports
-// what went out.
+// what went out and how many users were not tried.
 func (s *router) runBroadcast(ctx context.Context, job broadcastJob) {
 	res := broadcastResult{}
 send:
@@ -186,6 +186,7 @@ send:
 			res.Sent++
 		}
 	}
+	res.Skipped = len(job.Recipients) - res.Sent - res.Failed
 	outMessage := outMessage{
 		ChatID: job.AdminChat,
 		Text:   job.Report(res),

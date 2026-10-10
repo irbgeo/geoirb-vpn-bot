@@ -457,7 +457,19 @@ func TestAdminBroadcastStopsOnShutdownAndReports(t *testing.T) {
 	}
 	report := s.sent[len(s.sent)-1]
 	require.Equal(t, int64(42), report.ChatID)
+	require.Contains(t, report.Text, "остановлена", "not \"done\": it was cut short")
 	require.Contains(t, report.Text, "доставлено 1")
+	require.Contains(t, report.Text, "не отправлено 2", "the users it never tried")
+	require.Contains(
+		t,
+		configsReportText(
+			broadcastResult{
+				Sent:    1,
+				Skipped: 2,
+			},
+		),
+		"не отправлено 2",
+	)
 }
 
 func TestAdminPendingKeepsWaitingOnNonText(t *testing.T) {

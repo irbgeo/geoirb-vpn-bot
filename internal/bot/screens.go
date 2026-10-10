@@ -550,11 +550,30 @@ func configsKeyboard() *tgbot.InlineKeyboardMarkup {
 }
 
 func configsReportText(r broadcastResult) string {
-	return fmt.Sprintf("🔄 Просьба обновить конфиг отправлена: получили %d, не доставлено %d (заблокировали бота или удалили чат).", r.Sent, r.Failed)
+	return fmt.Sprintf(
+		"🔄 Отчёт о просьбе обновить конфиг: получили %d, не доставлено %d (заблокировали бота или удалили чат).%s",
+		r.Sent,
+		r.Failed,
+		stoppedNote(r),
+	)
 }
 
 func broadcastReportText(r broadcastResult) string {
-	return fmt.Sprintf("📣 Рассылка готова: доставлено %d, не доставлено %d (заблокировали бота или удалили чат).", r.Sent, r.Failed)
+	return fmt.Sprintf(
+		"📣 Отчёт о рассылке: доставлено %d, не доставлено %d (заблокировали бота или удалили чат).%s",
+		r.Sent,
+		r.Failed,
+		stoppedNote(r),
+	)
+}
+
+// stoppedNote ends the report of a mass send that a shutdown cut short: it
+// is not done, and so many users were never tried.
+func stoppedNote(r broadcastResult) string {
+	if r.Skipped == 0 {
+		return ""
+	}
+	return fmt.Sprintf("\n⚠️ Отправка остановлена, потому что бот выключался: не отправлено %d. Отправьте ещё раз, если нужно.", r.Skipped)
 }
 
 // statsText is the admin overview. Traffic counters restart when the VPN

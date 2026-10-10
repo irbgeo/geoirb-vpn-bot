@@ -234,10 +234,12 @@ type broadcastJob struct {
 	Report     func(broadcastResult) string
 }
 
-// broadcastResult counts delivered and failed broadcast messages.
+// broadcastResult counts delivered and failed broadcast messages, and the
+// recipients a shutdown left untried.
 type broadcastResult struct {
-	Sent   int
-	Failed int
+	Sent    int
+	Failed  int
+	Skipped int
 }
 
 // outFile is one file (document or photo) to send.
