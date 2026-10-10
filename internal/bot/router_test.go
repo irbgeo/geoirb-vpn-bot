@@ -140,6 +140,8 @@ func (s *fakeSender) setFail(chatID int64, fail bool) {
 }
 
 type fakeService struct {
+	userErr       error // User fails
+	usersErr      error // Users fails
 	reissued      *service.Peer
 	reissuedFor   []service.UserKey
 	deletedOwn    []service.UserKey
@@ -262,6 +264,9 @@ func (s *fakeService) Issue(_ context.Context, in service.IssueInput) (*service.
 }
 
 func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
+	if s.userErr != nil {
+		return nil, s.userErr
+	}
 	if id == 0 {
 		return nil, service.ErrNotFound
 	}

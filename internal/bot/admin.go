@@ -155,8 +155,11 @@ func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 		return nil
 	}
 	u, err := s.users.User(ctx, m.From.ID)
-	if err != nil || u.Role != service.RoleAdmin {
-		return nil //nolint:nilerr // not an admin (any more): ignore the text
+	if err != nil && !errors.Is(err, service.ErrNotFound) {
+		return err
+	}
+	if u == nil || u.Role != service.RoleAdmin {
+		return nil // not an admin (any more): ignore the text
 	}
 	text := strings.TrimSpace(m.Text)
 	if text == "" {

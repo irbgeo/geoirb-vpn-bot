@@ -989,3 +989,16 @@ func TestAdminDoublePressExtendsAndIssuesOnce(t *testing.T) {
 		require.Len(t, svc.calls, 2, "on purpose, a little later: fine")
 	})
 }
+
+func TestAdminTextReturnsADatabaseError(t *testing.T) {
+	svc := adminService()
+	r, _ := newRouter(svc)
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+
+	svc.userErr = errors.New("mongo down")
+	require.ErrorContains(t, r.Handle(ctx, startUpdate("hello")), "mongo down", "not dropped without a word")
+
+	svc.userErr = service.ErrNotFound
+	require.NoError(t, r.Handle(ctx, startUpdate("hello")), "an unknown user is just not an admin")
+}
