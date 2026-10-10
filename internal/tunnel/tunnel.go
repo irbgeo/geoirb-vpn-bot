@@ -17,7 +17,9 @@ type watcher struct {
 
 // New creates a watcher: a handshake older than maxAge means down. During
 // the first maxAge after New, no handshake at all is Unknown, not down:
-// right after boot the tunnel may not have shaken hands yet.
+// right after boot the tunnel may not have shaken hands yet. In that window
+// the bot route is left as it is, so a rule left by the last run stays until
+// the window ends (removing it would send the bot direct after every deploy).
 func New(
 	net Net,
 	maxAge time.Duration,
@@ -31,8 +33,9 @@ func New(
 
 // Check reads the handshake and sets the bot route for the state it finds,
 // every time: someone else (a systemd-networkd restart) may have removed the
-// rules while the state stayed the same. changed is false when the state is
-// the same as last time (no alert).
+// rules while the state stayed the same. The one exception is the start
+// window (see New): no handshake yet changes neither state nor route.
+// changed is false when the state is the same as last time (no alert).
 // On an error the state stays as it was and the next Check tries again.
 func (s *watcher) Check(ctx context.Context) (st State, changed bool, err error) {
 	last, err := s.net.LastHandshake(ctx)
