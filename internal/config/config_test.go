@@ -96,6 +96,24 @@ func TestLoadRequired(t *testing.T) {
 	}
 }
 
+// A variable set to an empty string skips its default: the bot must not
+// start with nothing to sell or with a server name that owns no key.
+func TestLoadRejectsEmptyValuesThatHaveDefaults(t *testing.T) {
+	for _, name := range []string{
+		"SERVER_ID",
+		"MONGO_DB",
+		"CLIENT_DNS",
+		"TARIFFS",
+	} {
+		t.Run(name, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv(name, "")
+			_, err := Load()
+			require.ErrorContains(t, err, name)
+		})
+	}
+}
+
 func TestLoadTelegramTestEnv(t *testing.T) {
 	setRequired(t)
 	c, err := Load()
