@@ -141,6 +141,7 @@ func (s *service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	if in.Days > 0 {
 		p.ExpiresAt = now.AddDate(0, 0, in.Days)
 	}
+	p.resetReminders()
 
 	addPeerInput := &AddPeerInput{
 		Peer:     p.vpnPeer(),
@@ -224,8 +225,7 @@ func (s *service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 		}
 		p.ExpiresAt = from.AddDate(0, 0, in.Days)
 	}
-	p.Reminded3d = false
-	p.Reminded1d = false
+	p.resetReminders()
 	p.Blocked = false // only admins and paying users get here; checkBuyer and chooseKey stop a blocked buyer, with or without a key named
 	err = s.enableAndSave(ctx, p)
 	if err != nil {

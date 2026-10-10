@@ -324,6 +324,16 @@ func (s *Peer) hasSecrets() bool {
 	return s.PSK != ""
 }
 
+// resetReminders starts the reminders of a new term: none is sent yet,
+// except those whose window the term already starts inside (a 3-day trial
+// must not get "3 days left" the minute it is issued).
+func (s *Peer) resetReminders() {
+	left := time.Until(s.ExpiresAt)
+	timed := !s.ExpiresAt.IsZero()
+	s.Reminded3d = timed && left <= remind3d
+	s.Reminded1d = timed && left <= remind1d
+}
+
 // dead: the key is off the server and has no secrets to go back with, so
 // paid days could never be used on it.
 func (s *Peer) dead() bool {

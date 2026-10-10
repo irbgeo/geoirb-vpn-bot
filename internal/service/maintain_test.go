@@ -60,13 +60,55 @@ func TestMaintainRemindersOncePerTerm(t *testing.T) {
 			ctx,
 			ExtendInput{
 				PublicKey: in12h.PublicKey,
+				Days:      4,
+			},
+		)
+		require.NoError(t, err)
+		time.Sleep(36 * time.Hour) // 3 days left on it now
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Contains(t, keysOf(m.Remind3d), in12h.PublicKey, "extension resets reminders")
+	})
+}
+
+// A term that starts inside a reminder window must not get that reminder
+// the minute the key is issued or extended.
+func TestShortTermGetsNoReminderAtOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		e.svc.cfg.TrialDays = 3
+		ctx := context.Background()
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Empty(t, m.Remind3d, "a 3-day trial just started")
+		require.Empty(t, m.Remind1d)
+
+		time.Sleep(49 * time.Hour)
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Equal(t, []string{p.PublicKey}, keysOf(m.Remind1d), "the 1-day reminder still comes")
+
+		_, err = e.svc.Extend(
+			ctx,
+			ExtendInput{
+				PublicKey: p.PublicKey,
 				Days:      1,
 			},
 		)
 		require.NoError(t, err)
 		m, err = e.svc.Maintain(ctx)
 		require.NoError(t, err)
-		require.Equal(t, []string{in12h.PublicKey}, keysOf(m.Remind3d), "extension resets reminders")
+		require.Empty(t, m.Remind3d, "a day bought: under 2 days left is no news")
+		require.Empty(t, m.Remind1d)
 	})
 }
 
