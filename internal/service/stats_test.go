@@ -29,8 +29,8 @@ func TestStats(t *testing.T) {
 			{
 				PublicKey:     idle.PublicKey,
 				LastHandshake: now.Add(-time.Hour),
-				Sent:          5,
-				Received:      50,
+				Sent:          5000,
+				Received:      50000, // the most traffic, on the second IP
 			},
 		}
 		e.payments.m = map[string]Payment{
@@ -64,8 +64,19 @@ func TestStats(t *testing.T) {
 		require.Equal(t, 1, st.Online)
 		require.Equal(t, 150, st.Revenue30d, "refunded and old payments don't count")
 		require.Equal(t, 1, st.Payments30d)
-		require.Equal(t, online.PublicKey, st.TopTraffic[0].Peer.PublicKey, "sorted by traffic")
 		require.Len(t, st.TopTraffic, 4)
+		require.Equal(
+			t,
+			[]string{
+				idle.PublicKey,
+				online.PublicKey,
+			},
+			[]string{
+				st.TopTraffic[0].Peer.PublicKey,
+				st.TopTraffic[1].Peer.PublicKey,
+			},
+			"sorted by traffic, not by IP",
+		)
 		_ = forever
 	})
 }
