@@ -14,13 +14,21 @@ mkdir "$TMP/bin"
 # nft: logs; fails on the saved set when $BAD_SET is set.
 printf '#!/usr/bin/env bash\necho "nft $*" >>"$CALLS"\n[[ -z "${BAD_SET:-}" || "$2" != *ru4.nft ]]\n' >"$TMP/bin/nft"
 # ip: logs; `rule show` prints the rule when $HAS_RULE is set.
-printf '#!/usr/bin/env bash\necho "ip $*" >>"$CALLS"\n[[ "$1 $2" != "rule show" || -z "${HAS_RULE:-}" ]] || echo "110:\tfrom all fwmark 0x1 lookup 100"\n' >"$TMP/bin/ip"
+cat >"$TMP/bin/ip" <<'EOF2'
+#!/usr/bin/env bash
+echo "ip $*" >>"$CALLS"
+if [[ "$1 $2" == "link show" ]]; then [[ -n "${HAS_EXIT:-}" ]]; exit; fi
+# the tunnel link exists but is not up yet: the kernel refuses the route
+if [[ "$*" == "route replace default dev awg-exit table 100" && -n "${EXIT_DOWN:-}" ]]; then echo "RTNETLINK answers: Network is down" >&2; exit 2; fi
+[[ "$1 $2" != "rule show" || -z "${HAS_RULE:-}" ]] || echo "110:	from all fwmark 0x1 lookup 100"
+EOF2
 chmod +x "$TMP/bin"/*
 
 R="$TMP/root"
 mkdir -p "$R/etc/geoirb-vpn" "$R/var/lib/geoirb-vpn-bot"
 touch "$R/etc/geoirb-vpn/geoirb-vpn.nft"
-run() { : >"$TMP/calls"; env CALLS="$TMP/calls" ROOT="$R" PATH="$TMP/bin:$PATH" "$@" bash "$DIR/vpn-routes.sh" >/dev/null 2>&1; }
+MODE=""
+run() { : >"$TMP/calls"; env CALLS="$TMP/calls" ROOT="$R" PATH="$TMP/bin:$PATH" "$@" bash "$DIR/vpn-routes.sh" $MODE >/dev/null 2>"$TMP/err"; }
 n() { grep -c "$1" "$TMP/calls"; }
 
 run
@@ -40,6 +48,33 @@ check "rule present: not added again" "0" "$(n '^ip rule add')"
 run BAD_SET=1
 check "bad saved set tolerated" "0" "$?"
 check "bad saved set: rule and route still set" "1 1" "$(n '^ip rule add') $(n '^ip route replace unreachable')"
+
+# The exit route: networkd or anything else may drop it while the tunnel is up.
+run
+check "no tunnel yet: exit route not set" "0" "$(n '^ip route replace default dev awg-exit table 100$')"
+run HAS_EXIT=1
+check "tunnel up: exit route ensured" "1" "$(n '^ip route replace default dev awg-exit table 100$')"
+
+run HAS_EXIT=1 EXIT_DOWN=1
+check "tunnel link not up yet: not fatal" "0" "$?"
+check "tunnel link not up yet: rule and unreachable still set" "1 1" "$(n '^ip rule add') $(n '^ip route replace unreachable')"
+
+# `rules` mode (the every-minute check): only ip rule/routes, no nft reload.
+MODE=rules
+run HAS_EXIT=1
+check "rules mode: exits 0" "0" "$?"
+check "rules mode: nft untouched" "0" "$(n '^nft ')"
+check "rules mode: rule, unreachable and exit route ensured" "1 1 1" \
+  "$(n '^ip rule add fwmark 0x1 lookup 100 prio 110$') $(n '^ip route replace unreachable default metric 4096 table 100$') $(n '^ip route replace default dev awg-exit table 100$')"
+check "rules mode: a missing rule is reported" "1" "$(grep -c 'warning: split-routing rule was missing' "$TMP/err")"
+run HAS_EXIT=1 HAS_RULE=1
+check "rules mode: nothing deleted, rule not re-added" "0 0" "$(n '^ip rule del') $(n '^ip rule add')"
+check "rules mode: quiet when all is in place" "0" "$(wc -c <"$TMP/err" | tr -d ' ')"
+MODE=""
+
+# The check unit hides systemd's "Started/Finished" each minute, not the script's errors.
+CU="$DIR/geoirb-vpn-routes-check.service"
+check "check unit: quiet start/stop, script stderr still logged" "1 1" "$(grep -cx 'LogLevelMax=notice' "$CU") $(grep -cx 'SyslogLevel=warning' "$CU")"
 
 # The real nft file: clients may not reach each other or private networks.
 NFT="${NFT_FILE:-$DIR/geoirb-vpn.nft}"

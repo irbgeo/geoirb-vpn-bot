@@ -65,6 +65,19 @@ sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf"
 # awg0.conf: created on the first install only, never overwritten.
 ROOT="$ROOT" bash "$S/awg0-init.sh"
 
+# systemd-networkd drops foreign ip rules and routes whenever it reconfigures
+# a link (see networkd-geoirb.conf). It reads this file at start only, so
+# restart it once; a restart itself removes nothing, and the routes are
+# (re)applied right after anyway.
+ND="$ROOT/etc/systemd/networkd.conf.d"
+if ! cmp -s "$S/networkd-geoirb.conf" "$ND/geoirb.conf"; then
+  install -d "$ND"
+  install -m 644 "$S/networkd-geoirb.conf" "$ND/geoirb.conf"
+  if systemctl is-active --quiet systemd-networkd.service; then
+    systemctl restart systemd-networkd.service
+  fi
+fi
+
 systemctl daemon-reload
 systemctl enable --quiet geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service
 # Split routing first; it stays while the tunnel restarts. Reload, never
@@ -74,6 +87,8 @@ if systemctl is-active --quiet geoirb-vpn-routes.service; then
 else
   systemctl start geoirb-vpn-routes.service
 fi
+# and re-assert the rule and routes every minute, whatever drops them
+systemctl enable --quiet --now geoirb-vpn-routes-check.timer
 # Stop first: `down` must run with the OLD tunnel conf, before it is replaced.
 systemctl stop geoirb-awg-exit.service 2>/dev/null || true
 install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"

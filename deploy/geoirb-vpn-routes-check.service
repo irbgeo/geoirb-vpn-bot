@@ -1,0 +1,16 @@
+# Every minute (geoirb-vpn-routes-check.timer): put the split-routing ip rule
+# and the table-100 routes back if anything dropped them (networkd
+# reconfiguring a link, a manual `netplan apply`). Without the rule, client traffic to foreign
+# addresses leaves from the RU address. `rules` skips the nft reload.
+[Unit]
+Description=Re-assert the VPN split-routing rule and routes
+After=geoirb-vpn-routes.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/geoirb-vpn-bot/vpn-routes.sh rules
+# One quiet run a minute: keep systemd's "Started/Finished" (info) out of the
+# journal, but log what the script prints (it only prints when something is
+# wrong) as a warning, so it passes the filter.
+LogLevelMax=notice
+SyslogLevel=warning

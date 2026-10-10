@@ -30,7 +30,7 @@ printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/id"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" == genkey ]] && echo KEY || echo "amneziawg-tools %s"\n' "$TAG" >"$TMP/bin/awg"
 printf '#!/usr/bin/env bash\necho "ufw $*" >>"$CALLS"\n[[ "$1" != status ]] || echo "Status: $UFW"\n' >"$TMP/bin/ufw"
 # systemctl also logs the awg-exit conf and the bot binary it sees, to prove the order.
-printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\ncase "$*" in\n  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;\n  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;\nesac\n' >"$TMP/bin/systemctl"
+printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\ncase "$*" in\n  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;\n  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;\n  *is-active*systemd-networkd*) [[ -z "${NO_NETWORKD:-}" ]] ;;\nesac\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
 run() { # run <ufw state> [env...]: installs a fresh copy of the package as deploy.sh lays it out.
@@ -56,9 +56,18 @@ echo "[Interface] OLD" >"$R/etc/geoirb-vpn/awg-exit.conf"
 run active
 check "first install exits 0" "0" "$?"
 for u in geoirb-vpn-bot.service geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service \
-  geoirb-ru-nets.service geoirb-ru-nets.timer geoirb-vpn-mss.service geoirb-vpn-bot-backup.service geoirb-vpn-bot-backup.timer; do
+  geoirb-ru-nets.service geoirb-ru-nets.timer geoirb-vpn-mss.service geoirb-vpn-bot-backup.service geoirb-vpn-bot-backup.timer \
+  geoirb-vpn-routes-check.service geoirb-vpn-routes-check.timer; do
   check "unit $u installed" "1" "$(has "$SD/$u")"
 done
+# systemd-networkd must keep the ip rules and routes it did not create.
+ND="$R/etc/systemd/networkd.conf.d/geoirb.conf"
+check "networkd keeps foreign rules and routes" "1 1" \
+  "$(grep -cx 'ManageForeignRoutingPolicyRules=no' "$ND") $(grep -cx 'ManageForeignRoutes=no' "$ND")"
+check "networkd restarted once to read it" "1" "$(grep -c '^systemctl restart systemd-networkd' "$TMP/calls")"
+check "networkd restarted before the routes are applied" "1" "$([[ "$(line '^systemctl restart systemd-networkd')" -lt "$(line '^systemctl start geoirb-vpn-routes')" ]] && echo 1)"
+check "routes check timer on" "1" "$(grep -c '^systemctl enable --quiet --now geoirb-vpn-routes-check.timer' "$TMP/calls")"
+check "routes check runs the rules mode" "ExecStart=/opt/geoirb-vpn-bot/vpn-routes.sh rules" "$(grep '^ExecStart' "$SD/geoirb-vpn-routes-check.service")"
 check "unbound drop-in" "1" "$(has "$SD/unbound.service.d/geoirb.conf")"
 check "unbound conf" "1" "$(has "$R/etc/unbound/unbound.conf.d/geoirb.conf")"
 check "nft file" "1" "$(has "$R/etc/geoirb-vpn/geoirb-vpn.nft")"
@@ -103,11 +112,17 @@ run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
 check "update exits 0" "0" "$?"
 check "update: active routes reloaded, not started" "1 0" "$(grep -c '^systemctl reload geoirb-vpn-routes' "$TMP/calls") $(grep -c '^systemctl start geoirb-vpn-routes' "$TMP/calls")"
 check "update: active awg0 left alone" "0" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls")"
+check "update: networkd conf unchanged, not restarted" "0" "$(grep -c '^systemctl restart systemd-networkd' "$TMP/calls")"
 check "update: backup of the old state" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service .*bot=OLDBOT' "$TMP/calls")"
 check "update: one backup" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service' "$TMP/calls")"
 check "update: awg0.conf kept" "1" "$(cmp -s "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first" && echo 1)"
 check "ufw inactive: no rules" "0" "$(grep -c '^ufw .*allow' "$TMP/calls")"
 check "packages present: no apt-get" "0" "$(grep -c '^apt-get' "$TMP/calls")"
+
+# A host that does not run systemd-networkd: the file is installed, nothing is restarted.
+rm -f "$R/etc/systemd/networkd.conf.d/geoirb.conf"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 NO_NETWORKD=1
+check "no networkd: conf installed, no restart" "1 0" "$(has "$R/etc/systemd/networkd.conf.d/geoirb.conf") $(grep -c '^systemctl restart systemd-networkd' "$TMP/calls")"
 
 # The env on the server has another BOT_TOKEN/DB_SECRET_KEY.
 printf 'BOT_TOKEN=2:b\nDB_SECRET_KEY=other\n' >"$R/etc/geoirb-vpn-bot/env"
