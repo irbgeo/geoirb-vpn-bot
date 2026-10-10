@@ -14,7 +14,8 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -m 700 "$TMP/pkg"
 (umask 077 && "$ROOT/scripts/render-tunnel.sh" exit "$SERVER_HOST" >"$TMP/pkg/awg-exit.conf")
 cp "$ROOT/deploy/exit/install.sh" "$ROOT/deploy/exit/geoirb-awg-exit.service" \
-  "$ROOT/deploy/awg-tools.sh" "$ROOT/deploy/99-geoirb-vpn.conf" "$TMP/pkg/"
+  "$ROOT/deploy/awg-tools.sh" "$ROOT/deploy/99-geoirb-vpn.conf" \
+  "$ROOT/deploy/nf_conntrack-modules.conf" "$ROOT/deploy/nf_conntrack-modprobe.conf" "$TMP/pkg/"
 
 echo "▶ Installing on $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
 # One ssh login (the server throttles quick repeated ones). The package, with

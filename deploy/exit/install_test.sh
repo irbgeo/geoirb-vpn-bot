@@ -23,9 +23,10 @@ printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\necho "$AWG_VERSION"\n' >"
 printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null)" >>"$CALLS"\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
-# Package as deploy-exit.sh lays it out: flat directory.
+# Package as deploy-exit.sh lays it out: flat directory, the files of its own cp line.
 mkdir "$TMP/pkg"
-cp "$DIR/install.sh" "$DIR/geoirb-awg-exit.service" "$DIR/../awg-tools.sh" "$DIR/../99-geoirb-vpn.conf" "$TMP/pkg/"
+PKG="$(sed -n '/^cp "\$ROOT\/deploy\/exit\/install.sh"/,/"\$TMP\/pkg\/"$/p' "$DIR/../../scripts/deploy-exit.sh" | grep -o '\$ROOT/deploy/[^" ]*' | sed 's|^\$ROOT/deploy/||')"
+for f in $PKG; do cp "$DIR/../$f" "$TMP/pkg/"; done
 echo "[Interface]" >"$TMP/pkg/awg-exit.conf"
 
 run() { # run <awg version output>
@@ -41,6 +42,10 @@ check "conf content" "[Interface]" "$(cat "$CONF")"
 check "conf mode" "600" "$(mode "$CONF")"
 check "unit installed" "1" "$([[ -f "$TMP/root/etc/systemd/system/geoirb-awg-exit.service" ]] && echo 1)"
 check "sysctl file installed" "1" "$([[ -f "$TMP/root/etc/sysctl.d/99-geoirb-vpn.conf" ]] && echo 1)"
+# After a reboot the conntrack settings need the module loaded before systemd-sysctl.
+check "conntrack loaded at boot, hash size set" "nf_conntrack options nf_conntrack hashsize=16384" \
+  "$(grep -v '^#' "$TMP/root/etc/modules-load.d/nf_conntrack.conf" "$TMP/root/etc/modprobe.d/nf_conntrack.conf" 2>&1 | cut -d: -f2- | tr '\n' ' ' | sed 's/ $//')"
+check "conntrack loaded before sysctl" "1" "$([[ "$(grep -n '^modprobe nf_conntrack' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^sysctl ' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"
 check "enable called" "1" "$(grep -c '^systemctl enable.* geoirb-awg-exit' "$TMP/calls")"
 check "start called" "1" "$(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
 check "stop before start" "1" "$([[ "$(grep -n '^systemctl stop geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^systemctl start geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"

@@ -15,9 +15,16 @@ systemctl stop geoirb-awg-exit.service 2>/dev/null || true
 
 install -d -m 700 "$ROOT/etc/geoirb-vpn"
 install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
-install -d "$ROOT/etc/systemd/system" "$ROOT/etc/sysctl.d"
+install -d "$ROOT/etc/systemd/system" "$ROOT/etc/sysctl.d" "$ROOT/etc/modules-load.d" "$ROOT/etc/modprobe.d"
 install -m 644 "$S/geoirb-awg-exit.service" "$ROOT/etc/systemd/system/"
 install -m 644 "$S/99-geoirb-vpn.conf" "$ROOT/etc/sysctl.d/"
+# conntrack must be loaded before systemd-sysctl at boot, or the two
+# nf_conntrack settings fall back to the defaults after a reboot; the
+# modprobe file sets the hash size at the next load of the module. Warnings
+# only: the tunnel is stopped here and must come back up.
+install -m 644 "$S/nf_conntrack-modules.conf" "$ROOT/etc/modules-load.d/nf_conntrack.conf"
+install -m 644 "$S/nf_conntrack-modprobe.conf" "$ROOT/etc/modprobe.d/nf_conntrack.conf"
+modprobe nf_conntrack || echo "warning: module nf_conntrack not loaded" >&2
 sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf" || echo "warning: sysctl settings not applied" >&2
 
 systemctl daemon-reload
