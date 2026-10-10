@@ -41,6 +41,7 @@ func (s *Runner) Run(ctx context.Context, in Input) (string, error) {
 	if s.wrapper != "" {
 		args = append([]string{s.wrapper}, args...)
 	}
+	//nolint:gosec // G204: running host commands is this package's job; callers pass fixed text, config values and keys, never user text
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	// Own process group: on timeout the whole group dies, not only the direct
 	// child (sh -c scripts, ssh under a wrapper keep the pipes open).

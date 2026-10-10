@@ -2,12 +2,25 @@ package sysload
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// Counters far beyond any real value must not overflow into a small or
+// negative percent.
+func TestPercentOfHugeValues(t *testing.T) {
+	huge := uint64(math.MaxUint64)
+	require.Equal(t, 100, share{Part: huge, Whole: huge}.percent(), "Part*100 does not fit 64 bits")
+	require.Equal(t, 49, share{Part: huge / 2, Whole: huge}.percent(), "rounded down, as before")
+	require.Equal(t, maxPercent, share{Part: huge, Whole: 1}.percent(), "clamped, not wrapped")
+	require.Equal(t, maxPercent, share{Part: huge, Whole: 50}.percent(), "the quotient does not fit 64 bits")
+	require.Equal(t, 0, share{Part: huge}.percent())
+	require.Equal(t, 80, share{Part: 8, Whole: 10}.percent())
+}
 
 // fakeProc is a /proc with the files the monitor reads.
 type fakeProc struct {

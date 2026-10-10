@@ -2,8 +2,9 @@ package bot
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
-	"math/rand/v2"
 	"os"
 	"slices"
 	"sync"
@@ -47,10 +48,13 @@ func (s *dialogs) set(p pendingInput) {
 }
 
 // preview records p as a preview that waits for its "send" button, with a
-// fresh pendingTTL, and returns the token that button must carry.
+// fresh pendingTTL, and returns the token that button must carry. The token
+// guards a mass send, so it comes from crypto/rand.
 func (s *dialogs) preview(p pendingInput) string {
 	p.At = time.Time{}
-	p.Token = rand.Uint32()
+	var b [4]byte
+	_, _ = rand.Read(b[:]) // never fails (Go 1.24+)
+	p.Token = binary.BigEndian.Uint32(b[:])
 	s.set(p)
 	return p.token()
 }
@@ -191,7 +195,7 @@ func (s *maintFlag) set(on bool) error {
 		return nil
 	}
 	if on {
-		return os.WriteFile(s.path, nil, 0o644)
+		return os.WriteFile(s.path, nil, 0o600) // only the bot reads it
 	}
 	err := os.Remove(s.path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

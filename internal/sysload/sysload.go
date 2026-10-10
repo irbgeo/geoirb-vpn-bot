@@ -5,6 +5,7 @@ package sysload
 import (
 	"errors"
 	"fmt"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,10 @@ import (
 // recoverGap: a metric is back to normal only this many points under its
 // limit, so a value going up and down around it doesn't alert every minute.
 const recoverGap = 10
+
+// maxPercent is the most share.percent returns: a count far over its limit
+// (or a broken counter) is "very high", not a number that overflows int.
+const maxPercent = 1_000_000
 
 // monitor keeps what it needs between checks: the last CPU counters and
 // which metrics are high. Not safe for concurrent use (one worker calls it).
@@ -131,6 +136,7 @@ func (s *monitor) conntrack() (int, error) {
 }
 
 func (s *monitor) readInt(name string) (uint64, error) {
+	//nolint:gosec // G304: the proc root plus a name fixed in this file
 	b, err := os.ReadFile(filepath.Join(s.proc, name))
 	if err != nil {
 		return 0, fmt.Errorf("sysload: %w", err)
@@ -229,12 +235,21 @@ func (s *monitor) cpuTimes() (cpuTimes, error) {
 	return t, nil
 }
 
-// percent is Part as a share of Whole, 0 when Whole is 0.
+// percent is Part as a share of Whole, 0 when Whole is 0. Huge values can't
+// overflow: the product is 128 bits wide and the answer stops at maxPercent.
 func (s share) percent() int {
 	if s.Whole == 0 {
 		return 0
 	}
-	return int(s.Part * 100 / s.Whole)
+	hi, lo := bits.Mul64(s.Part, 100)
+	if hi >= s.Whole { // the quotient does not fit 64 bits
+		return maxPercent
+	}
+	q, _ := bits.Div64(hi, lo, s.Whole)
+	if q > maxPercent {
+		return maxPercent
+	}
+	return int(q)
 }
 
 // limits: CPU must be high for 5 checks (minutes) in a row, short peaks are
