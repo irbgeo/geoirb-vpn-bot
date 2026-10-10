@@ -74,11 +74,12 @@ func (s *service) CheckPurchase(ctx context.Context, in PaymentInput) error {
 //     price or role change can't turn a repeat into a refund;
 //   - a record that is neither applied nor refunded (a crash in the
 //     middle) is not applied again: NeedsReview, admins check the key;
-//   - a new charge is checked, recorded unapplied, the days added (or a
-//     key issued), then marked applied.
+//   - a new charge is recorded unapplied (also when its checks fail), then
+//     the days are added (or a key issued) and it is marked applied.
 //
 // On error nothing was bought and the caller refunds. A crash in the
-// middle leaves an unapplied record: UnfinishedPayments finds it.
+// middle, or a refund that failed, leaves an unapplied record:
+// UnfinishedPayments finds it.
 func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -102,21 +103,22 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		return nil, ErrAlreadyRefunded
 	}
 
-	pu, err := s.purchase(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	// Every recorded charge returned above: this one is new.
+	// Every recorded charge returned above: this one is new. It is recorded
+	// before the purchase checks decide anything: the Stars are already
+	// taken, so if a check fails and the refund fails too, the record is
+	// what lets admins find the charge and return it.
 	// PeerKey is the key to extend ("" = a new key), known before the
 	// days are added: if the bot stops in the middle, admins see which
-	// key to check before refunding.
+	// key to check before refunding. A refused purchase has no key or days.
+	pu, purchaseErr := s.purchase(ctx, in)
 	pay = &Payment{
 		ChargeID:  in.ChargeID,
-		UserID:    pu.UserID,
-		PeerKey:   pu.PublicKey,
+		UserID:    in.PayerID,
 		Stars:     in.Stars,
-		Days:      pu.Days,
 		CreatedAt: time.Now(),
+	}
+	if purchaseErr == nil {
+		pay.PeerKey, pay.Days = pu.PublicKey, pu.Days
 	}
 	added, err := s.payments.Add(ctx, pay)
 	if err != nil {
@@ -128,6 +130,9 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		return &PayResult{
 			NeedsReview: true,
 		}, nil
+	}
+	if purchaseErr != nil {
+		return nil, purchaseErr
 	}
 
 	res, err := s.applyPurchase(ctx, pu)
@@ -176,7 +181,7 @@ func (s *service) Payments(ctx context.Context, userID int64) ([]*Payment, error
 }
 
 // MarkRefunded records that the Stars of a charge were returned. A charge
-// that never got a record (refused before saving) is fine.
+// that never got a record (Pay could not save it) is fine.
 func (s *service) MarkRefunded(ctx context.Context, chargeID string) error {
 	paymentMark := PaymentMark{
 		ChargeID: chargeID,

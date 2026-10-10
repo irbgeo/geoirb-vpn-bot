@@ -222,7 +222,7 @@ func TestPurchaseOfAnotherUsersKeyIsNotFound(t *testing.T) {
 		require.ErrorIs(t, e.svc.CheckPurchase(ctx, forged), ErrNotFound)
 		_, err = e.svc.Pay(ctx, forged)
 		require.ErrorIs(t, err, ErrNotFound)
-		require.Empty(t, e.payments.m, "nothing recorded")
+		require.False(t, e.payments.m["c1"].Applied, "recorded for the refund, never applied")
 		require.Equal(t, now.AddDate(0, 0, 10), e.peers.m[theirs.PublicKey].ExpiresAt)
 	})
 }
@@ -268,7 +268,20 @@ func TestPayRejectsBadPurchase(t *testing.T) {
 			},
 		)
 		require.ErrorIs(t, err, ErrWrongPayer)
-		require.Empty(t, e.payments.m, "nothing recorded: the bot refunds it")
+		require.Equal(
+			t,
+			Payment{
+				ChargeID:  "c1",
+				UserID:    7,
+				Stars:     150,
+				CreatedAt: now,
+			},
+			e.payments.m["c1"],
+			"the charge is real: recorded under the payer, so a failed refund can be found",
+		)
+		left, err := e.svc.UnfinishedPayments(context.Background())
+		require.NoError(t, err)
+		require.Len(t, left, 1, "admins see it until the Stars go back")
 	})
 }
 
