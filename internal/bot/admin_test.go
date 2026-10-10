@@ -1048,3 +1048,36 @@ func TestAdminKeyActionsRedrawTheOwnersCard(t *testing.T) {
 		require.Equal(t, []int64{7}, svc.askedPayments, data)
 	}
 }
+
+// The user blocked the bot: the key issued by hand goes to the admin, who
+// passes it on.
+func TestAdminIssueFallsBackToTheAdminWhenTheUserIsUnreachable(t *testing.T) {
+	svc := adminService()
+	r, s := newRouter(svc)
+	s.fail[7] = true
+
+	require.NoError(t, r.Handle(context.Background(), press("a:issd:7:30")))
+
+	require.Len(t, svc.issued, 1)
+	require.Empty(t, s.sentTo(7))
+	admin := s.sentTo(42)
+	require.Len(t, admin, 1)
+	require.Equal(t, importText, admin[0].Text, "the admin gets the key with the import steps")
+	require.Equal(t, int64(42), s.files[len(s.files)-1].ChatID, "and its config and QR code")
+	require.Len(t, s.edits, 1, "then the user card")
+}
+
+func TestAdminIssueBadButton(t *testing.T) {
+	for _, data := range []string{
+		"a:issd:7",
+		"a:issd:x:30",
+		"a:issd:0:30",
+		"a:issd:7:month",
+	} {
+		svc := adminService()
+		r, _ := newRouter(svc)
+
+		require.Error(t, r.Handle(context.Background(), press(data)), data)
+		require.Empty(t, svc.issued, data)
+	}
+}
