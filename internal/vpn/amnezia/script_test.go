@@ -27,6 +27,37 @@ type realHost struct {
 
 func newRealHost(t *testing.T) *realHost {
 	t.Helper()
+	return newRealHostVia(t, "")
+}
+
+// socketWrapper is an AWG_EXEC wrapper that runs the command with a socket
+// as stdin, as sshd does for scripts/dev-remote.sh: /dev/stdin can't be
+// opened there, only read.
+func socketWrapper(t *testing.T) string {
+	t.Helper()
+	_, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("no python3 on this host")
+	}
+	p := filepath.Join(t.TempDir(), "via-socket")
+	script := `#!/usr/bin/env python3
+import socket, subprocess, sys
+ours, theirs = socket.socketpair()
+data = sys.stdin.buffer.read()
+child = subprocess.Popen(sys.argv[1:], stdin=theirs.fileno())
+theirs.close()
+ours.sendall(data)
+ours.shutdown(socket.SHUT_WR)
+sys.exit(child.wait())
+`
+	require.NoError(t, os.WriteFile(p, []byte(script), 0o700))
+	return p
+}
+
+// newRealHostVia is newRealHost with every command run through wrapper
+// (AWG_EXEC); "" = directly.
+func newRealHostVia(t *testing.T, wrapper string) *realHost {
+	t.Helper()
 	_, err := exec.LookPath("sha256sum")
 	if err != nil {
 		t.Skip("no sha256sum on this host")
@@ -40,7 +71,10 @@ func newRealHost(t *testing.T) *realHost {
 	require.NoError(t, os.WriteFile(h.conf, []byte(serverConfText), 0o600))
 	fakeBin(t, fakeBinInput{
 		Name: "awg",
+		// Linux can't open /dev/stdin when it is a socket (ENXIO); macOS can,
+		// so the fake refuses a socket itself, as the real awg does on the server.
 		Script: `[ "$1" = syncconf ] || exit 0
+if [ -S "$3" ]; then echo "awg: $3: No such device or address" >&2; exit 1; fi
 cat "$3" > ` + h.live + `
 if [ -f ` + h.editOnSync + ` ]; then echo "# manual edit" >> ` + h.conf + `; fi`,
 	})
@@ -51,7 +85,10 @@ if [ -f ` + h.editOnSync + ` ]; then echo "# manual edit" >> ` + h.conf + `; fi`
 			Script: `case "$2" in %u:%g) echo "$(id -u):$(id -g)" ;; %a) echo 600 ;; esac`,
 		})
 	}
-	cfg := &config.Config{AWGTimeout: 10 * time.Second}
+	cfg := &config.Config{
+		AWGTimeout: 10 * time.Second,
+		AWGExec:    wrapper,
+	}
 	h.srv, err = Open(context.Background(), NewLocalRunner(cfg), h.conf)
 	require.NoError(t, err)
 	return h
@@ -87,6 +124,32 @@ func TestUpdateOnARealFile(t *testing.T) {
 	info, err := os.Stat(h.conf)
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+}
+
+// Through ssh (the dev wrapper) the script's stdin is a socket, which awg
+// can't open as /dev/stdin: the script must hand it over through a pipe.
+func TestUpdateWorksWhenStdinIsASocket(t *testing.T) {
+	h := newRealHostVia(t, socketWrapper(t))
+
+	require.NoError(t, h.srv.Update(context.Background(), addPUB3))
+
+	require.Contains(t, h.read(t, h.live), "PublicKey = PUB3=", "awg got the config")
+	require.Contains(t, h.read(t, h.conf), "PublicKey = PUB3=")
+	require.NoFileExists(t, h.conf+".tmp")
+}
+
+// A failed awg must fail the update although it now runs behind a pipe.
+func TestUpdateFailsWhenSyncconfFails(t *testing.T) {
+	h := newRealHost(t)
+	fakeBin(t, fakeBinInput{
+		Name:   "awg",
+		Script: `cat > /dev/null; echo "awg: bad config" >&2; exit 1`,
+	})
+
+	err := h.srv.Update(context.Background(), addPUB3)
+	require.ErrorContains(t, err, "bad config")
+	require.NotErrorIs(t, err, ErrNotPersisted)
+	require.Equal(t, serverConfText, h.read(t, h.conf), "the file is not touched")
 }
 
 func TestUpdateRefusesAFileChangedBeforeSync(t *testing.T) {

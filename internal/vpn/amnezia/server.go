@@ -167,10 +167,13 @@ func sha256Hex(s string) string {
 // syncLive applies the stripped config with `awg syncconf`: it adds and
 // removes only the changed peers, other clients stay connected. The config
 // (server private key, every PSK) is read from stdin, never from a temp
-// file: a timeout kills the script, which could not clean one up.
+// file: a timeout kills the script, which could not clean one up. `cat |`
+// gives awg a pipe whatever the script's own stdin is: under ssh (AWG_EXEC)
+// it is a socket, and Linux can't open /dev/stdin on a socket. The
+// pipeline's exit status is awg's.
 func (s *server) syncLive(ctx context.Context, l liveSync) error {
 	script := fmt.Sprintf(
-		`set -e; f=%q; %s %s syncconf %s /dev/stdin`,
+		`set -e; f=%q; %s cat | %s syncconf %q /dev/stdin`,
 		s.confPath,
 		unchangedCheck(l.Expect),
 		s.tool,
