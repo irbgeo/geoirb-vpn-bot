@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs the exit side of the RU <-> exit tunnel on the host in
 # secret/exit-access.yaml (host, port, user, password). Creates
-# secret/tunnel.yaml on first run. Two ssh connections: install, then status.
+# secret/tunnel.yaml on first run. One ssh connection: install, then status.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export ACCESS_FILE="$ROOT/secret/exit-access.yaml"

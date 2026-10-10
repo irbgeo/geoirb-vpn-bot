@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Runs as root on the RU server (geoirb-ru-nets.timer: weekly and at boot).
+# Runs as root on the RU server (geoirb-ru-nets.timer: weekly; deploy/install.sh
+# also runs it at every deploy. At boot the last good set is restored by
+# deploy/vpn-routes.sh, not by a download).
 # Fills the nftables set `inet geoirb ru4` (deploy/geoirb-vpn.nft) with the
 # Russian IPv4 networks from the RIPE NCC delegated stats: client traffic to
 # them leaves here directly, the rest goes through the exit tunnel. A failed

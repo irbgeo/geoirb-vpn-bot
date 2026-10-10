@@ -35,7 +35,7 @@ done
 # 0xc0-0xc3: Initial type, version 1, 8-byte DCID), random bytes after. Trade-off: a real
 # Initial is >= 1200 bytes, but that makes client configs too long for a QR
 # code. Commented: the server does not send it, the bot un-comments it for clients.
-i1="c$(rand 0 3)00000001 08$(hex 8)$(hex "$(rand 50 114)")"
+i1="c$(rand 0 3)0000000108$(hex 8)$(hex "$(rand 50 114)")"
 key="$(awg genkey)"
 
 umask 077
@@ -53,7 +53,7 @@ umask 077
   echo "S3 = $(rand 8 32)"
   echo "S4 = $(rand 8 32)"
   for i in 0 1 2 3; do echo "H$((i + 1)) = ${hs[$i]}"; done
-  echo "# I1 = <b 0x${i1// /}>"
+  echo "# I1 = <b 0x$i1>"
 } >"$CONF.tmp"
 mv "$CONF.tmp" "$CONF"
 chown vpnbot:vpnbot "$CONF"
