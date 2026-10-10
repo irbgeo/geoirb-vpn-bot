@@ -282,14 +282,14 @@ func TestAdminCardShowsPaymentsAndRefundButton(t *testing.T) {
 	require.Contains(t, card.Text, "27.09.2026 15:30 по Москве — 150 ⭐, 1 месяц")
 	require.Contains(t, card.Text, "400 ⭐, 3 месяца, ↩️ возвращено")
 
-	var refunds []string
+	refunds := 0
 	for _, b := range buttons(card) {
-		if len(b) > 6 && b[:6] == "a:ref:" {
-			refunds = append(refunds, b)
+		if strings.HasPrefix(b, cbAdminRef) {
+			refunds++
 		}
 	}
-	require.Len(t, refunds, 1, "only the not-refunded payment")
-	require.LessOrEqual(t, len(refunds[0]), 64, "Telegram callback_data limit")
+	require.Equal(t, 1, refunds, "only the not-refunded payment")
+	require.LessOrEqual(t, len(refundButton(card)), 64, "Telegram callback_data limit")
 }
 
 func TestAdminRefund(t *testing.T) {
@@ -297,12 +297,7 @@ func TestAdminRefund(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:user:7")))
-	var ask string
-	for _, b := range buttons(s.edits[0]) {
-		if len(b) > 6 && b[:6] == "a:ref:" {
-			ask = b
-		}
-	}
+	ask := refundButton(s.edits[0])
 
 	require.NoError(t, r.Handle(ctx, press(ask)))
 	require.Empty(t, s.refunds, "asks first")
@@ -505,12 +500,7 @@ func TestAdminRefundInProgressIsNotStartedTwice(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:user:7")))
-	var ask string
-	for _, b := range buttons(s.edits[0]) {
-		if len(b) > 6 && b[:6] == "a:ref:" {
-			ask = b
-		}
-	}
+	ask := refundButton(s.edits[0])
 	confirm := "a:refok:" + ask[len("a:ref:"):]
 	charge := "stxLongTelegramChargeID-0123456789-abcdefghijklmnopqrstuvwxyz"
 	require.True(t, r.refunds.start(charge)) // another press is refunding it right now
@@ -784,12 +774,7 @@ func TestAdminRefundTellsWhenTheRecordFailed(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:user:7")))
-	var ask string
-	for _, b := range buttons(s.edits[0]) {
-		if strings.HasPrefix(b, "a:ref:") {
-			ask = b
-		}
-	}
+	ask := refundButton(s.edits[0])
 	require.NoError(t, r.Handle(ctx, press(ask)))
 	require.NoError(t, r.Handle(ctx, press(buttons(s.edits[1])[0])))
 

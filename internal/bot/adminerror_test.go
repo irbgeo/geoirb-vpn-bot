@@ -4,41 +4,68 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/stretchr/testify/require"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
+// Every expected error gets its own text (a word of it is checked, not a
+// copy of the text); anything else gets the generic one and is not "known".
 func TestAdminErrorText(t *testing.T) {
 	cases := map[string]struct {
 		err   error
-		text  string
+		word  string
 		known bool
 	}{
+		"expired": {
+			err:   service.ErrExpired,
+			word:  "Срок ключа закончился",
+			known: true,
+		},
+		"no private key": {
+			err:   service.ErrNoPrivateKey,
+			word:  "только на устройстве",
+			known: true,
+		},
+		"not found": {
+			err:   service.ErrNotFound,
+			word:  "Не найдено",
+			known: true,
+		},
+		"payment not found": {
+			err:   errPaymentNotFound,
+			word:  "Оплата не найдена",
+			known: true,
+		},
 		"ip taken": {
 			err:   service.ErrIPTaken,
-			text:  "⚠️ IP этого ключа уже занят другим ключом на сервере. Проверьте сверку (Reconcile) в журнале.",
+			word:  "IP этого ключа уже занят",
 			known: true,
 		},
 		"unreadable": {
 			err:   service.ErrUnreadable,
-			text:  "⚠️ Данные ключа повреждены (не расшифровываются): вернуть его на сервер нельзя. Удалите ключ и выдайте новый.",
+			word:  "не расшифровываются",
 			known: true,
 		},
 		"blocked": {
 			err:   service.ErrBlocked,
-			text:  "⚠️ Ключ отключён администратором: сначала включите его.",
+			word:  "сначала включите",
 			known: true,
 		},
 		"unknown": {
-			err:  errors.New("docker down"),
-			text: "⚠️ Не получилось, подробности в журнале бота.",
+			err:  errors.New("awg down"),
+			word: "подробности в журнале",
 		},
 	}
+	seen := map[string]bool{}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			text, known := adminErrorText(c.err)
-			require.Equal(t, c.text, text)
+			require.Contains(t, text, c.word)
 			require.Equal(t, c.known, known)
+			require.NotContains(t, text, c.err.Error(), "the raw error stays out of the chat")
+			require.False(t, seen[text], "each case has its own text")
+			seen[text] = true
 		})
 	}
 }
