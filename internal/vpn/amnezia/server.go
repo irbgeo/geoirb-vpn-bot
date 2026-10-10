@@ -29,7 +29,8 @@ type server struct {
 }
 
 // Open checks the config at confPath and detects the tool; the interface
-// is the base name of the config.
+// is the base name of the config. A config that cannot be parsed fails here,
+// at start, not on the first key change.
 func Open(
 	ctx context.Context,
 	run Runner,
@@ -45,12 +46,17 @@ func Open(
 		return nil, fmt.Errorf("amnezia: neither awg nor wg found: %w", err)
 	}
 
-	return &server{
+	s := &server{
 		run:      run,
 		confPath: confPath,
 		iface:    strings.TrimSuffix(path.Base(confPath), ".conf"),
 		tool:     path.Base(strings.TrimSpace(tool)),
-	}, nil
+	}
+	_, err = s.ReadConf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 // GenKeys generates a client private key, its public key and a preshared key.
@@ -159,10 +165,12 @@ func sha256Hex(s string) string {
 }
 
 // syncLive applies the stripped config with `awg syncconf`: it adds and
-// removes only the changed peers, other clients stay connected.
+// removes only the changed peers, other clients stay connected. The config
+// (server private key, every PSK) is read from stdin, never from a temp
+// file: a timeout kills the script, which could not clean one up.
 func (s *server) syncLive(ctx context.Context, l liveSync) error {
 	script := fmt.Sprintf(
-		`set -e; f=%q; %s t=$(mktemp); trap 'rm -f "$t"' EXIT; cat > "$t"; %s syncconf %s "$t"`,
+		`set -e; f=%q; %s %s syncconf %s /dev/stdin`,
 		s.confPath,
 		unchangedCheck(l.Expect),
 		s.tool,

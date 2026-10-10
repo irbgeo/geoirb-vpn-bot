@@ -65,6 +65,9 @@ func TestOpenDetectsLayout(t *testing.T) {
 
 func TestOpenOldWireGuardLayout(t *testing.T) {
 	r := &fakeRunner{handler: func(in execInput) (string, error) {
+		if in.Args[0] == "cat" {
+			return serverConfText, nil
+		}
 		return "/usr/bin/wg\n", nil
 	}}
 	s, err := Open(context.Background(), r, "/etc/amnezia/amneziawg/wg0.conf")
@@ -82,6 +85,12 @@ func TestOpenFailsWithoutConf(t *testing.T) {
 	}}
 	_, err := Open(context.Background(), r, confFile)
 	require.ErrorContains(t, err, confFile)
+}
+
+func TestOpenFailsOnAConfItCannotRead(t *testing.T) {
+	conf := "stray = 1\n" + serverConfText
+	_, err := Open(context.Background(), awgContainer(&conf), confFile)
+	require.ErrorContains(t, err, "outside a section", "better at start than on the first key")
 }
 
 func TestGenKeys(t *testing.T) {
@@ -136,7 +145,8 @@ func TestUpdateSyncsThenPersists(t *testing.T) {
 
 	require.Len(t, r.calls, 3, "read, syncconf, persist")
 	sync := r.calls[1]
-	require.Contains(t, sync.Args[2], "awg syncconf awg0")
+	require.Contains(t, sync.Args[2], "awg syncconf awg0 /dev/stdin")
+	require.NotContains(t, sync.Args[2], "mktemp", "no file with the keys is left behind when the command is killed")
 	require.NotContains(t, sync.Stdin, "Address", "syncconf gets the stripped config")
 	require.Contains(t, sync.Stdin, "PUB3=")
 
@@ -235,7 +245,9 @@ func TestServerPublicKey(t *testing.T) {
 	require.Equal(t, "SERVERPUB=", k)
 }
 
-func TestUpdateRefusesAConfigChangedByAnotherWriter(t *testing.T) {
+// The refusal itself runs for real in script_test.go; this only checks that
+// both steps are pinned to the file that was read.
+func TestUpdatePinsBothStepsToTheFileRead(t *testing.T) {
 	conf := serverConfText
 	r := awgContainer(&conf)
 	s, err := Open(context.Background(), r, confFile)

@@ -3,8 +3,6 @@ package amnezia
 import (
 	"errors"
 	"time"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
 // ErrNotPersisted: Update changed the live interface but could not save
@@ -30,6 +28,8 @@ type peer struct {
 // serverConf is the parsed awg0.conf. The [Interface] lines are kept
 // verbatim (comments included) so the file is written back unchanged.
 type serverConf struct {
+	// Header is the comment lines a person put above [Interface].
+	Header    []string
 	Interface []string
 	Peers     []peer
 }
@@ -85,11 +85,4 @@ type persistInput struct {
 type liveSync struct {
 	Conf   *serverConf
 	Expect string
-}
-
-// takeOffInput is a peer to take back off after a failed change, and the
-// error of that change.
-type takeOffInput struct {
-	Peer  *service.VPNPeer
-	Cause error
 }

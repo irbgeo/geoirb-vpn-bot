@@ -177,6 +177,47 @@ func TestAddPeerRollbackResyncsWhenOnlyTheLiveInterfaceChanged(t *testing.T) {
 	require.Equal(t, 2, b.syncs, "rollback re-syncs from the file even though the file lacks the peer")
 }
 
+// failFirstSync makes the first syncconf fail the way a timeout does: the
+// command may have run, the caller only sees an error.
+func failFirstSync(b *box) {
+	b.syncErr = errBoom
+	b.onSync = func() {
+		if b.syncs > 1 {
+			b.syncErr = nil
+		}
+	}
+}
+
+func TestAddPeerRollbackResyncsWhenSyncItselfFailed(t *testing.T) {
+	b := newBox(t)
+	failFirstSync(b)
+
+	_, err := addNew(context.Background(), b)
+	require.ErrorIs(t, err, errBoom)
+	require.Equal(t, 2, b.syncs, "a timed-out syncconf may have put the peer on the interface")
+	require.False(t, b.onServer(t, "NEW="))
+}
+
+func TestPutPeerRollbackResyncsWhenSyncItselfFailed(t *testing.T) {
+	b := newBox(t)
+	failFirstSync(b)
+	p := newPeer()
+	p.IP = "10.8.1.5"
+
+	require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), errBoom)
+	require.Equal(t, 2, b.syncs)
+}
+
+func TestReplacePeerRollbackResyncsWhenSyncItselfFailed(t *testing.T) {
+	b := newBox(t)
+	failFirstSync(b)
+
+	require.ErrorIs(t, b.vpn.ReplacePeer(context.Background(), replaceInput()), errBoom)
+	require.Greater(t, b.syncs, 1, "the interface is put back on the file")
+	require.True(t, b.onServer(t, "PUB1="))
+	require.False(t, b.onServer(t, "NEW="))
+}
+
 func TestAddPeerRollbackSurvivesCancelledContext(t *testing.T) {
 	b := newBox(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -195,6 +236,28 @@ func TestPutPeerRefusesATakenIP(t *testing.T) {
 	err := b.vpn.PutPeer(context.Background(), p)
 	require.ErrorIs(t, err, service.ErrIPTaken)
 	require.ErrorContains(t, err, "10.8.1.2")
+	require.Equal(t, serverConfText, b.files[confFile])
+}
+
+func TestPutPeerRefusesAnIPHeldInAnyForm(t *testing.T) {
+	for _, allowed := range []string{"10.8.1.5", "10.8.1.0/29", "fd00::5/128, 10.8.1.5/32"} {
+		b := newBox(t)
+		b.files[confFile] += "\n[Peer]\nPublicKey = OTHER=\nAllowedIPs = " + allowed + "\n"
+		before := b.files[confFile]
+		p := newPeer()
+		p.IP = "10.8.1.5"
+
+		require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), service.ErrIPTaken, allowed)
+		require.Equal(t, before, b.files[confFile])
+	}
+}
+
+func TestPutPeerRefusesABadIP(t *testing.T) {
+	b := newBox(t)
+	p := newPeer()
+	p.IP = "not-an-ip"
+
+	require.ErrorContains(t, b.vpn.PutPeer(context.Background(), p), "not-an-ip")
 	require.Equal(t, serverConfText, b.files[confFile])
 }
 
@@ -217,6 +280,19 @@ func TestPutPeerTakesThePeerOffWhenItTimesOut(t *testing.T) {
 
 	require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), errBoom)
 	require.False(t, b.onServer(t, "NEW="))
+}
+
+func TestPutPeerFailureKeepsAPeerThatWasAlreadyThere(t *testing.T) {
+	b := newBox(t)
+	b.confErr = errBoom // syncconf ran, the file was not saved
+	p := &service.VPNPeer{
+		PublicKey: "PUB1=",
+		PSK:       "PSK1=",
+		IP:        "10.8.1.1",
+	}
+
+	require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), ErrNotPersisted)
+	require.True(t, b.onServer(t, "PUB1="), "the call added nothing, so it takes nothing off")
 }
 
 func TestRemovePeer(t *testing.T) {

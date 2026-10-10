@@ -174,3 +174,25 @@ func TestCheckOldHandshakeIsDownAtOnce(t *testing.T) {
 		require.Equal(t, []bool{false}, n.routes, "a stale bot rule is removed at start")
 	})
 }
+
+func TestCheckInterfaceGoneIsDown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		n := &fakeNet{handshake: time.Now()}
+		w := New(n, 3*time.Minute)
+		_, _, err := w.Check(ctx)
+		require.NoError(t, err)
+
+		time.Sleep(3 * time.Minute)
+		n.handshake = time.Time{} // hostNet answers "never" when awg-exit is gone
+		st, changed, err := w.Check(ctx)
+		require.NoError(t, err)
+		require.Equal(t, Down, st)
+		require.True(t, changed, "admins are told")
+		wantRoutes := []bool{
+			true,
+			false,
+		}
+		require.Equal(t, wantRoutes, n.routes, "the bot leaves the dead route")
+	})
+}

@@ -19,11 +19,9 @@ const (
 
 // worker runs Job every Every and hands the result to Delivery.
 type worker struct {
-	job           Job
-	delivery      Delivery
-	every         time.Duration
-	maintainLimit time.Duration
-	deliverLimit  time.Duration
+	job      Job
+	delivery Delivery
+	every    time.Duration
 }
 
 // New creates a worker.
@@ -33,11 +31,9 @@ func New(
 	every time.Duration,
 ) *worker {
 	return &worker{
-		job:           job,
-		delivery:      delivery,
-		every:         every,
-		maintainLimit: maintainLimit,
-		deliverLimit:  deliverLimit,
+		job:      job,
+		delivery: delivery,
+		every:    every,
 	}
 }
 
@@ -63,14 +59,14 @@ func (s *worker) Run(ctx context.Context) {
 // stop timeout.
 func (s *worker) once(ctx context.Context) {
 	base := context.WithoutCancel(ctx)
-	mctx, cancel := context.WithTimeout(base, s.maintainLimit)
+	mctx, cancel := context.WithTimeout(base, maintainLimit)
 	m, err := s.job.Maintain(mctx)
 	cancel()
 	if err != nil {
 		log.Printf("worker: %v", err)
 		return
 	}
-	dctx, cancel := context.WithTimeout(base, s.deliverLimit)
+	dctx, cancel := context.WithTimeout(base, deliverLimit)
 	defer cancel()
 	s.delivery.DeliverMaintenance(dctx, m)
 }
