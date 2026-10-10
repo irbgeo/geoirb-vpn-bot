@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -31,37 +32,41 @@ func (s *fakeJob) DeliverMaintenance(context.Context, *service.Maintenance) {
 }
 
 func TestRunStartsAtOnceThenTicks(t *testing.T) {
-	job := &fakeJob{}
-	w := New(
-		job,
-		job,
-		10*time.Millisecond,
-	)
-	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Millisecond)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		job := &fakeJob{}
+		w := New(
+			job,
+			job,
+			time.Minute,
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute+time.Second)
+		defer cancel()
 
-	w.Run(ctx)
+		w.Run(ctx)
 
-	require.GreaterOrEqual(t, job.runs.Load(), int32(3), "at start and on every tick")
-	require.Equal(t, job.runs.Load(), job.delivered.Load())
+		require.Equal(t, int32(4), job.runs.Load(), "at start and on every tick")
+		require.Equal(t, job.runs.Load(), job.delivered.Load())
+	})
 }
 
 func TestRunKeepsGoingAfterErrors(t *testing.T) {
-	job := &fakeJob{
-		fail: true,
-	}
-	w := New(
-		job,
-		job,
-		10*time.Millisecond,
-	)
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Millisecond)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		job := &fakeJob{
+			fail: true,
+		}
+		w := New(
+			job,
+			job,
+			time.Minute,
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute+time.Second)
+		defer cancel()
 
-	w.Run(ctx)
+		w.Run(ctx)
 
-	require.GreaterOrEqual(t, job.runs.Load(), int32(2))
-	require.Zero(t, job.delivered.Load(), "nothing to deliver after a failed run")
+		require.Equal(t, int32(3), job.runs.Load())
+		require.Zero(t, job.delivered.Load(), "nothing to deliver after a failed run")
+	})
 }
 
 type slowJob struct {
@@ -81,25 +86,27 @@ func (s *slowJob) Maintain(ctx context.Context) (*service.Maintenance, error) {
 }
 
 func TestRunFinishesTheCurrentRunOnShutdown(t *testing.T) {
-	job := &slowJob{
-		started: make(chan struct{}),
-	}
-	w := New(
-		job,
-		job,
-		time.Hour,
-	)
-	ctx, cancel := context.WithCancel(context.Background())
-	finished := make(chan struct{})
-	go func() {
-		w.Run(ctx)
-		close(finished)
-	}()
-	<-job.started
-	cancel()
-	<-finished
+	synctest.Test(t, func(t *testing.T) {
+		job := &slowJob{
+			started: make(chan struct{}),
+		}
+		w := New(
+			job,
+			job,
+			time.Hour,
+		)
+		ctx, cancel := context.WithCancel(context.Background())
+		finished := make(chan struct{})
+		go func() {
+			w.Run(ctx)
+			close(finished)
+		}()
+		<-job.started
+		cancel()
+		<-finished
 
-	require.True(t, job.done.Load(), "the run was not cut half-way")
+		require.True(t, job.done.Load(), "the run was not cut half-way")
+	})
 }
 
 type deadlineJob struct {
@@ -142,14 +149,17 @@ func (s *limitJob) DeliverMaintenance(ctx context.Context, _ *service.Maintenanc
 }
 
 func TestDeliveryGetsItsOwnTimeLimit(t *testing.T) {
-	job := &limitJob{}
-	w := New(
-		job,
-		job,
-		time.Hour,
-	)
-	w.maintainLimit = 20 * time.Millisecond
+	synctest.Test(t, func(t *testing.T) {
+		job := &limitJob{}
+		w := New(
+			job,
+			job,
+			time.Hour,
+		)
+		start := time.Now()
 
-	w.once(context.Background())
-	require.NoError(t, job.deliverErr, "a slow maintenance does not leave the notices a dead context")
+		w.once(context.Background())
+		require.Equal(t, maintainLimit, time.Since(start), "maintenance used its whole limit")
+		require.NoError(t, job.deliverErr, "a slow maintenance does not leave the notices a dead context")
+	})
 }
