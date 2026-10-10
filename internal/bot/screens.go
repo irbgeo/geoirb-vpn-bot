@@ -974,21 +974,37 @@ func refundedToUserText(p *service.Payment) string {
 }
 
 // tariffLabel: 30 → "1 месяц", 90 → "3 месяца", 365 → "12 месяцев",
-// anything else → "N дней".
+// anything else in days: 7 → "7 дней", 21 → "21 день".
 func tariffLabel(days int) string {
-	months := days / 30
-	if days == 365 {
-		months = 12
-	} else if days%30 != 0 {
-		return fmt.Sprintf("%d дней", days)
+	months := []string{
+		"месяц",
+		"месяца",
+		"месяцев",
 	}
 	switch {
-	case months%10 == 1 && months%100 != 11:
-		return fmt.Sprintf("%d месяц", months)
-	case months%10 >= 2 && months%10 <= 4 && (months%100 < 12 || months%100 > 14):
-		return fmt.Sprintf("%d месяца", months)
+	case days == 365:
+		return "12 " + months[pluralForm(12)]
+	case days%30 == 0:
+		return fmt.Sprintf("%d %s", days/30, months[pluralForm(days/30)])
 	}
-	return fmt.Sprintf("%d месяцев", months)
+	dayForms := []string{
+		"день",
+		"дня",
+		"дней",
+	}
+	return fmt.Sprintf("%d %s", days, dayForms[pluralForm(days)])
+}
+
+// pluralForm picks the Russian noun form for n: 0 for "1 день", 1 for
+// "2 дня", 2 for "5 дней".
+func pluralForm(n int) int {
+	switch {
+	case n%10 == 1 && n%100 != 11:
+		return 0
+	case n%10 >= 2 && n%10 <= 4 && (n%100 < 12 || n%100 > 14):
+		return 1
+	}
+	return 2
 }
 
 func deleteConfirmText(p *service.Peer) string {

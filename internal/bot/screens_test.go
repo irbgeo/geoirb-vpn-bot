@@ -59,3 +59,23 @@ func TestConfigFileName(t *testing.T) {
 		require.Equal(t, want, configFileName(p), name)
 	}
 }
+
+func TestTariffLabel(t *testing.T) {
+	cases := map[int]string{
+		1:   "1 день",
+		3:   "3 дня",
+		7:   "7 дней",
+		11:  "11 дней",
+		14:  "14 дней",
+		21:  "21 день",
+		22:  "22 дня",
+		45:  "45 дней",
+		30:  "1 месяц",
+		90:  "3 месяца",
+		180: "6 месяцев",
+		365: "12 месяцев",
+	}
+	for days, want := range cases {
+		require.Equal(t, want, tariffLabel(days))
+	}
+}
