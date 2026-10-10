@@ -83,6 +83,9 @@ check "only the Endpoint line depends on the host" "$(grep -v '^Endpoint' <<<"$r
 grep -v '^psk:' "$TUNNEL_FILE" >"$TMP/nopsk.yaml"
 TUNNEL_FILE="$TMP/nopsk.yaml" "$DIR/render-tunnel.sh" ru 1.2.3.4 >/dev/null 2>&1
 check "missing key fails" "1" "$?"
+: >"$TMP/empty.yaml"
+out="$(TUNNEL_FILE="$TMP/empty.yaml" "$DIR/render-tunnel.sh" ru 1.2.3.4 2>/dev/null)"
+check "empty tunnel.yaml fails, prints no conf" "1|" "$?|$out"
 
 # A failing openssl must leave neither tunnel.yaml nor its .tmp behind.
 mkdir -p "$TMP/bin"

@@ -12,6 +12,9 @@ case "$side" in
   *) echo "usage: $0 <ru|exit> <exit_host>" >&2; exit 1 ;;
 esac
 [[ -n "$host" ]] || { echo "usage: $0 <ru|exit> <exit_host>" >&2; exit 1; }
+# An empty file would make awk read the template as the key file and print
+# an empty conf with exit code 0.
+[[ -s "$FILE" ]] || { echo "error: $FILE is missing or empty" >&2; exit 1; }
 
 # One awk run: the keys are read from the file and the host from the
 # environment, so no secret is ever in argv (ps). Replacements are literal
