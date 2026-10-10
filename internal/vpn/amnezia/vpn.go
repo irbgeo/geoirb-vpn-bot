@@ -2,7 +2,6 @@ package amnezia
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -46,6 +45,7 @@ func (s *vpn) GenKeys(ctx context.Context) (service.VPNKeys, error) {
 // the server untouched.
 func (s *vpn) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 	p := *in.Peer
+	added := false
 	err := s.srv.Update(ctx, func(c *serverConf) error {
 		ip, err := c.FreeIP(in.Reserved)
 		if err != nil {
@@ -57,40 +57,33 @@ func (s *vpn) AddPeer(ctx context.Context, in *service.AddPeerInput) error {
 			return err
 		}
 		c.AddPeer(serverPeer(&p))
+		added = true
 		return nil
 	})
-	if err != nil {
-		takeOffInput := &takeOffInput{
-			Peer:  &p,
-			Cause: err,
-		}
-		s.undo(ctx, takeOffInput)
-		return err
+	if err != nil && added {
+		s.undo(ctx, &p)
 	}
-	return nil
+	return err
 }
 
 // ReplacePeer swaps in.Old for in.New in one config update. On failure
 // the new peer is taken off and the old one put back.
 func (s *vpn) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) error {
+	swapped := false
 	err := s.srv.Update(ctx, func(c *serverConf) error {
 		c.RemovePeer(in.Old.PublicKey)
 		c.AddPeer(serverPeer(in.New))
+		swapped = true
 		return nil
 	})
-	if err != nil {
-		takeOffInput := &takeOffInput{
-			Peer:  in.New,
-			Cause: err,
-		}
-		s.undo(ctx, takeOffInput)
+	if err != nil && swapped {
+		s.undo(ctx, in.New)
 		putErr := s.PutPeer(context.WithoutCancel(ctx), in.Old)
 		if putErr != nil {
 			log.Printf("amnezia: put %s back: %v", in.Old.IP, putErr)
 		}
-		return err
 	}
-	return nil
+	return err
 }
 
 // PutPeer puts a known key back on its IP, unless another peer (e.g. one
@@ -118,11 +111,7 @@ func (s *vpn) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 		return nil
 	})
 	if err != nil && added {
-		takeOffInput := &takeOffInput{
-			Peer:  p,
-			Cause: err,
-		}
-		s.undo(ctx, takeOffInput)
+		s.undo(ctx, p)
 	}
 	return err
 }
@@ -209,31 +198,19 @@ func serverPeer(p *service.VPNPeer) peer {
 	}
 }
 
-// undo takes a peer back off after a failed change. A docker timeout can
-// come after the command already ran in the container, so the peer may be
-// there. It runs even when ctx is cancelled (the failure may be ctx
-// itself); errors are logged, this is an error path already.
-func (s *vpn) undo(ctx context.Context, in *takeOffInput) {
-	ctx = context.WithoutCancel(ctx)
-	err := s.takeOff(ctx, in)
-	if err != nil {
-		log.Printf("amnezia: roll back %s: %v", in.Peer.IP, err)
-	}
-}
-
-// takeOff removes the peer from the config. A peer missing from the file
-// costs no syncconf, unless the failure left the live interface ahead of
-// the file (ErrNotPersisted): then the update re-syncs it from the file.
-func (s *vpn) takeOff(ctx context.Context, in *takeOffInput) error {
-	c, err := s.srv.ReadConf(ctx)
-	if err != nil {
-		return err
-	}
-	if c.FindPeer(in.Peer.PublicKey) == nil && !errors.Is(in.Cause, ErrNotPersisted) {
-		return nil
-	}
-	return s.srv.Update(ctx, func(c *serverConf) error {
-		c.RemovePeer(in.Peer.PublicKey)
+// undo takes a peer back off after a change failed past the callback. The
+// failed step (syncconf or the save) may still have run: a timeout kills
+// the command after any part of it. So the state of the live interface is
+// unknown, and undo always runs a full update: it drops the peer from the
+// file if it got there and re-syncs the interface from the file. It runs
+// even when ctx is cancelled (the failure may be ctx itself); errors are
+// logged, this is an error path already.
+func (s *vpn) undo(ctx context.Context, p *service.VPNPeer) {
+	err := s.srv.Update(context.WithoutCancel(ctx), func(c *serverConf) error {
+		c.RemovePeer(p.PublicKey)
 		return nil
 	})
+	if err != nil {
+		log.Printf("amnezia: roll back %s: %v", p.IP, err)
+	}
 }
