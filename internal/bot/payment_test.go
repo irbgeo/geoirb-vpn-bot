@@ -109,6 +109,19 @@ func TestBlockedKeyPurchaseExplains(t *testing.T) {
 	require.Contains(t, preCheckoutErrorText(service.ErrBlocked), "отключил администратор")
 }
 
+func TestBuyForAnUnreadableKeyExplains(t *testing.T) {
+	r, s := newRouter(
+		&fakeService{
+			invoiceErr: service.ErrUnreadable,
+		},
+	)
+
+	require.NoError(t, r.Handle(context.Background(), press("buy:30")))
+	require.Empty(t, s.invoices)
+	require.Equal(t, unreadableKeyBuyText, s.sent[0].Text)
+	require.Equal(t, unreadableKeyBuyText, preCheckoutErrorText(service.ErrUnreadable))
+}
+
 func TestPreCheckout(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	require.NoError(t, r.Handle(context.Background(), preCheckout()))

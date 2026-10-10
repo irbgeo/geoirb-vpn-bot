@@ -225,6 +225,9 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) error {
 	if p.Blocked {
 		return ErrBlocked
 	}
+	if p.dead() {
+		return ErrUnreadable
+	}
 	return nil
 }
 
@@ -232,8 +235,9 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) error {
 // with the lowest IP among those that can end (a key that never ends
 // can't be extended). nil means the user has no keys (a new one is
 // issued); ErrNotForSale: keys, none of them timed; ErrBlocked: timed
-// keys exist but an admin disabled them all. Invoice, CheckPurchase and
-// Pay all go through it, so they agree.
+// keys exist but an admin disabled them all; ErrUnreadable: the only keys
+// left can't go back on the server (see Peer.dead). Invoice, CheckPurchase
+// and Pay all go through it, so they agree.
 func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	keys, err := s.peers.ByUser(ctx, userID)
 	if err != nil {
@@ -241,12 +245,17 @@ func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	}
 	var first *Peer
 	timed := false
+	dead := false
 	for _, p := range keys {
 		if p.ExpiresAt.IsZero() {
 			continue
 		}
 		timed = true
 		if p.Blocked {
+			continue
+		}
+		if p.dead() {
+			dead = true
 			continue
 		}
 		if first == nil || parseIP(p.IP).Less(parseIP(first.IP)) {
@@ -256,6 +265,8 @@ func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	switch {
 	case first != nil:
 		return first, nil
+	case dead:
+		return nil, ErrUnreadable
 	case timed:
 		return nil, ErrBlocked
 	case len(keys) > 0:

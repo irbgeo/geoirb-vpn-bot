@@ -211,6 +211,8 @@ func invoiceErrorText(err error) (text string, known bool) {
 		return notForSaleText, true
 	case errors.Is(err, service.ErrBlocked):
 		return blockedKeyText, true
+	case errors.Is(err, service.ErrUnreadable):
+		return unreadableKeyBuyText, true
 	case errors.Is(err, service.ErrNoTariff):
 		return noTariffText, true
 	case errors.Is(err, service.ErrNotFound):
@@ -225,6 +227,8 @@ func preCheckoutErrorText(err error) string {
 		return notForSaleText
 	case errors.Is(err, service.ErrBlocked):
 		return blockedKeyText
+	case errors.Is(err, service.ErrUnreadable):
+		return unreadableKeyBuyText
 	}
 	return staleInvoiceText
 }

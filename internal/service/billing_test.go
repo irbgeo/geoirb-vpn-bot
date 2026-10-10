@@ -399,6 +399,60 @@ func TestExtendOfADisabledKeyStaysOnWhenTheSaveReplyWasLost(t *testing.T) {
 	})
 }
 
+// A disabled key without readable secrets can't go back on the server, so
+// it must be refused before Telegram charges, not refunded after.
+func TestPurchaseForADeadUnreadableKeyIsRefusedBeforePaying(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		p := expiredKey(t, e)
+		row := e.peers.m[p.PublicKey]
+		row.PrivateKey, row.PSK = "", ""
+		e.peers.m[p.PublicKey] = row
+
+		for _, key := range []string{
+			"",
+			p.PublicKey,
+		} {
+			_, err := e.svc.Invoice(
+				ctx,
+				PurchaseInput{
+					UserID:    42,
+					Days:      30,
+					PublicKey: key,
+				},
+			)
+			require.ErrorIs(t, err, ErrUnreadable, "key %q", key)
+			err = e.svc.CheckPurchase(
+				ctx,
+				PaymentInput{
+					PayerID: 42,
+					Payload: "v1|42|30|150|" + key,
+					Stars:   150,
+				},
+			)
+			require.ErrorIs(t, err, ErrUnreadable, "key %q", key)
+		}
+	})
+}
+
+// An enabled key is already on the server: extending it needs no secrets.
+func TestPurchaseForAnEnabledUnreadableKeyWorks(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		p := e.seed(t, now.AddDate(0, 0, 10))
+		row := e.peers.m[p.PublicKey]
+		row.PrivateKey, row.PSK = "", ""
+		e.peers.m[p.PublicKey] = row
+
+		res := e.pay(t, "c1")
+		require.Equal(t, p.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, now.AddDate(0, 0, 40), e.peers.m[p.PublicKey].ExpiresAt)
+	})
+}
+
 func TestUnfinishedPayments(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()

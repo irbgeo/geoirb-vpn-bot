@@ -324,6 +324,12 @@ func (s *Peer) hasSecrets() bool {
 	return s.PSK != ""
 }
 
+// dead: the key is off the server and has no secrets to go back with, so
+// paid days could never be used on it.
+func (s *Peer) dead() bool {
+	return !s.Enabled && !s.hasSecrets()
+}
+
 // vpnPeer is the key as the VPN server needs it.
 func (s *Peer) vpnPeer() *VPNPeer {
 	return &VPNPeer{
