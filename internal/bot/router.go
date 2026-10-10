@@ -162,8 +162,6 @@ func New(
 		repeatPressGap,
 	)
 	return &router{
-		adminRepeats:  adminRepeats,
-		keyActions:    keyActions,
 		users:         d.Users,
 		keys:          d.Keys,
 		billing:       d.Billing,
@@ -178,6 +176,8 @@ func New(
 		maint:         maint,
 		refunds:       refunds,
 		feedbackLimit: feedbackLimit,
+		keyActions:    keyActions,
+		adminRepeats:  adminRepeats,
 		pause:         50 * time.Millisecond,
 	}
 }

@@ -147,8 +147,9 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 // broadcast text. A new text at a preview replaces it and keeps what the
 // preview does to maintenance (own wording for the same switch). Any other
 // text, text at the "update configs" question, text from someone who is
-// not an admin, or an old prompt (pendingTTL) is ignored. A message without text (a photo, a sticker)
-// gets "send text" and the bot keeps waiting.
+// not an admin, or an old prompt (pendingTTL) is ignored. A message
+// without text (a photo, a sticker) gets "send text" and the bot keeps
+// waiting.
 func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 	p, waiting := s.dialogs.peek(m.Chat.ID)
 	if !waiting || p.Kind == readyConfigs {
