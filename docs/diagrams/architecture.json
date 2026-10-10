@@ -9,7 +9,7 @@
       "url": "https://github.com/irbgeo/geoirb-vpn-bot",
       "provider": "github",
       "link_mode": "web",
-      "revision": "e230eb165cc8bff5494a86f60a0f8483bfdaaeaa"
+      "revision": "80c60f4b46425eee719a2b81753544dc7f765c0d"
     },
     "viewBox": [
       1395,
@@ -81,6 +81,9 @@
       "sources": [
         {
           "path": "internal/bot/router.go"
+        },
+        {
+          "path": "internal/bot/splitvideo.go"
         }
       ]
     },
@@ -278,6 +281,25 @@
           "path": "deploy/exit/install.sh"
         }
       ]
+    },
+    {
+      "id": "video",
+      "type": "backend",
+      "label": "data",
+      "sublabel": "SplitTunnel.mp4, embedded",
+      "pos": [
+        355,
+        450
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "data/video.go"
+        }
+      ]
     }
   ],
   "boundaries": [
@@ -294,7 +316,8 @@
         "amnezia",
         "awg",
         "awgExit",
-        "tunnel"
+        "tunnel",
+        "video"
       ],
       "pad": 20
     },
@@ -308,7 +331,8 @@
         "store",
         "worker",
         "amnezia",
-        "tunnel"
+        "tunnel",
+        "video"
       ],
       "pad": 12
     }
@@ -417,6 +441,14 @@
       "to": "exit",
       "label": "UDP 26214",
       "variant": "security"
+    },
+    {
+      "from": "video",
+      "to": "router",
+      "label": "how-to video",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
     }
   ],
   "cards": [
@@ -424,7 +456,7 @@
       "dot": "cyan",
       "title": "Inside the bot app",
       "items": [
-        "bot.Router — menu, admin panel, Stars payments, broadcasts, feedback",
+        "bot.Router — menu, admin panel, Stars payments, broadcasts, feedback, app split-tunneling video",
         "service — keys, roles, users reissue and delete their own keys",
         "worker, sysload, tunnel — 1-minute timers in the same process"
       ]
