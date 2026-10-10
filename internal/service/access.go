@@ -19,23 +19,19 @@ func (s *service) Access(ctx context.Context, userID int64) ([]KeyInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	stats, err := s.vpn.Stats(ctx)
-	if err != nil {
-		log.Printf("service: access: vpn stats: %v", err)
-		joinInput := joinInput{
-			Peers: ps,
-		}
-		keys := join(joinInput)
-		for i := range keys {
-			keys[i].StatsUnavailable = true // the same on every key
-		}
+	keys, err := s.withStats(ctx, ps)
+	if err == nil {
 		return keys, nil
 	}
+	log.Printf("service: access: vpn stats: %v", err)
 	joinInput := joinInput{
 		Peers: ps,
-		Stats: stats,
 	}
-	return join(joinInput), nil
+	keys = join(joinInput)
+	for i := range keys {
+		keys[i].StatsUnavailable = true // the same on every key
+	}
+	return keys, nil
 }
 
 // UserConfig renders a key's config for its owner. Someone else's key is
