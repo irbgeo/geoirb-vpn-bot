@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -195,4 +196,69 @@ func TestCheckInterfaceGoneIsDown(t *testing.T) {
 		}
 		require.Equal(t, wantRoutes, n.routes, "the bot leaves the dead route")
 	})
+}
+
+// A stopped bot must not leave its rules behind: with the tunnel dead they
+// would point the next start at "unreachable" until the start window ends.
+func TestCloseTakesTheBotOffTheTunnel(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		n := &fakeNet{handshake: time.Now()}
+		w := New(n, 3*time.Minute)
+		_, _, err := w.Check(ctx)
+		require.NoError(t, err)
+
+		require.NoError(t, w.Close(ctx))
+		wantRoutes := []bool{
+			true,
+			false,
+		}
+		require.Equal(t, wantRoutes, n.routes)
+
+		st, changed, err := w.Check(ctx)
+		require.NoError(t, err)
+		require.Equal(t, Up, st)
+		require.True(t, changed, "after Close the state is unknown again")
+	})
+}
+
+func TestCloseReturnsTheHostError(t *testing.T) {
+	n := &fakeNet{routeErr: errors.New("ip: permission denied")}
+	w := New(n, 3*time.Minute)
+
+	require.ErrorContains(t, w.Close(context.Background()), "permission denied")
+}
+
+// Close comes from main while the last Check may still run.
+func TestCloseAndCheckDoNotRace(t *testing.T) {
+	n := &lockedNet{}
+	w := New(n, 3*time.Minute)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 100 {
+			_, _, _ = w.Check(context.Background())
+		}
+	}()
+	for range 100 {
+		_ = w.Close(context.Background())
+	}
+	<-done
+}
+
+// lockedNet is a Net safe for calls from two goroutines.
+type lockedNet struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (s *lockedNet) LastHandshake(context.Context) (time.Time, error) {
+	return time.Now(), nil
+}
+
+func (s *lockedNet) RouteBot(context.Context, bool) error {
+	s.mu.Lock()
+	s.n++
+	s.mu.Unlock()
+	return nil
 }

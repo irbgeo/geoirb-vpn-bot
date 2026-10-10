@@ -115,16 +115,25 @@ func main() {
 	// then stop them in order.
 	// The tunnel watcher owns the bot's ip rules: through the exit tunnel
 	// while it works, direct while it is down. Its first check runs before
-	// any Telegram call and sets the rules for the state it finds. One case
-	// it does not fix: with no handshake yet in the first 3 minutes after a
-	// start (the watcher's grace window) the rules stay as the last run left
-	// them, so a stale rule into a dead tunnel lasts until the window ends.
+	// any Telegram call and sets the rules for the state it finds, and a
+	// clean stop removes them (the deferred Close runs after the dispatcher
+	// is done). Only a killed bot leaves rules behind; with no handshake in
+	// the first 3 minutes after the next start (the watcher's grace window)
+	// such a stale rule lasts until the window ends.
 	if cfg.ExitIface != "" {
 		hostNet := tunnel.NewHostNet(cfg)
 		watcher := tunnel.New(
 			hostNet,
 			3*time.Minute,
 		)
+		defer func() {
+			closeCtx, cancelClose := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelClose()
+			closeErr := watcher.Close(closeCtx)
+			if closeErr != nil {
+				log.Printf("tunnel: remove the bot rules: %v", closeErr)
+			}
+		}()
 		notifier.WatchTunnel(ctx, watcher)
 	}
 	_, err = client.SetMyCommands(ctx, bot.Commands())
