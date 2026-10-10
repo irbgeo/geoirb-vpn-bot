@@ -11,13 +11,16 @@ set -euo pipefail
 umask 077
 OLD="${1:?usage: import-peers.sh <old.conf>}"
 CONF="${ROOT:-}/etc/amnezia/amneziawg/awg0.conf"
-W="$CONF.import" # own temp names, distinct from the bot's .tmp/.bak
 BOT=geoirb-vpn-bot
 restart=0
-tmp="$(mktemp -d)" # root only; the name awg0.conf in it is what `awg-quick strip` wants
+# Work files live in a root-only directory, not next to the conf: the bot
+# user can write there, and a fixed name could be a symlink it planted for
+# root to write through. The name awg0.conf is what `awg-quick strip` wants.
+tmp="$(mktemp -d)"
+W="" # the one file made next to the conf, under a random name
 cleanup() {
   rm -rf "$tmp"
-  rm -f "$W.tmp" "$W.new" "$W.skip"
+  [[ -z "$W" ]] || rm -f "$W"
   [[ "$restart" == 0 ]] || systemctl start "$BOT"
 }
 trap cleanup EXIT
@@ -28,9 +31,9 @@ if systemctl is-active --quiet "$BOT"; then
 fi
 
 # Pass 1 reads the new conf (keys, taken IPs, subnet), pass 2 the old one.
-# Blocks to import go to $W.new; the summary (skipped keys by 8-char prefix,
-# never the PSK) to $W.skip.
-awk -v new="$CONF" -v skipfile="$W.skip" '
+# Blocks to import go to $tmp/new; the summary (skipped keys by 8-char prefix,
+# never the PSK) to $tmp/skip.
+awk -v new="$CONF" -v skipfile="$tmp/skip" '
 function ip2n(s,  a) { split(s, a, "."); return ((a[1] * 256 + a[2]) * 256 + a[3]) * 256 + a[4] }
 function skip(why) { skipped++; skiplist = skiplist " " substr(key, 1, 8) "(" why ")" }
 function flush(  n, ips, a, ip) {
@@ -69,9 +72,9 @@ sect == "Peer" {
   if ($0 !~ /^[ \t]*$/) blk = blk $0 "\n"
 }
 END { flush(); print "imported " imported + 0 ", skipped " skipped + 0 (skiplist != "" ? " (" substr(skiplist, 2) ")" : "") > skipfile }
-' "$OLD" >"$W.new"
+' "$OLD" >"$tmp/new"
 
-summary="$(cat "$W.skip")"
+summary="$(cat "$tmp/skip")"
 echo "$summary"
 n="${summary#imported }"
 n="${n%%,*}"
@@ -79,15 +82,19 @@ n="${n%%,*}"
 
 cp -p "$CONF" "$tmp/awg0.conf" # same owner and mode
 [[ -z "$(tail -c1 "$CONF")" ]] || echo >>"$tmp/awg0.conf"
-cat "$W.new" >>"$tmp/awg0.conf"
+cat "$tmp/new" >>"$tmp/awg0.conf"
 # Strip into a file, and before the conf is replaced: bash does not see a
 # failure inside <(...), and `awg syncconf` with an empty file would remove
 # every live peer. A failure here leaves the server as it was.
 awg-quick strip "$tmp/awg0.conf" >"$tmp/strip"
 [[ -s "$tmp/strip" ]] || { echo "error: awg-quick strip gave an empty conf, nothing changed" >&2; exit 1; }
 
-cp -p "$CONF" "$CONF.bak-import-$(date -u +%Y%m%dT%H%M%SZ)"
-cp -p "$tmp/awg0.conf" "$W.tmp" # same dir, so the mv is atomic
-mv "$W.tmp" "$CONF"
+# mktemp makes both files itself (new, random names); cp -p then gives them
+# the conf's owner and mode.
+bak="$(mktemp "$CONF.bak-import-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
+cp -p "$CONF" "$bak"
+W="$(mktemp "$CONF.import.XXXXXX")"
+cp -p "$tmp/awg0.conf" "$W" # same dir, so the mv is atomic
+mv "$W" "$CONF"
 
 awg syncconf awg0 "$tmp/strip"

@@ -100,8 +100,14 @@ for sw in STRIP_FAIL=1 STRIP_EMPTY=1; do
 done
 : >"$TMP/calls"
 
+# The bot user can write to the conf directory: symlinks planted at fixed
+# work-file names must not make root write through them.
+echo keep >"$TMP/victim"
+for n in tmp new skip; do ln -s "$TMP/victim" "$CONF.import.$n"; done
 out="$(run)"
 check "exit 0" "0" "$?"
+check "planted symlinks are not written through" "keep" "$(cat "$TMP/victim")"
+rm "$CONF".import.*
 check "summary" "imported 4, skipped 7" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
 check "peers in conf" "5" "$(grep -c '^\[Peer\]' "$CONF")"
 check "duplicate once" "1" "$(grep -c 'bbbbbbbbbb=' "$CONF")"

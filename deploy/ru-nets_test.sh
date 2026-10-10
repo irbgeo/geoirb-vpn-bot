@@ -44,8 +44,18 @@ run() { # run [env...]
     PATH="$TMP/bin:$PATH" "$@" bash "$DIR/ru-nets.sh" >/dev/null 2>&1
 }
 
+# The bot user owns the state directory: symlinks planted at the stamp and at
+# the old fixed temp name must not make root write through them.
+mkdir -p "$(dirname "$STAMP")"
+echo keep >"$TMP/victim"
+touch -t 200001010000 "$TMP/victim"
+ln -s "$TMP/victim" "$STAMP"
+ln -s "$TMP/victim" "$(dirname "$STAMP")/ru4.nft.tmp"
 run RU_NETS_MIN=3
 check "exits 0" "0" "$?"
+check "planted symlinks: target untouched, the stamp is a file" "keep 1 1" \
+  "$(cat "$TMP/victim") $([[ "$TMP/victim" -ot "$TMP/ripe" ]] && echo 1) $([[ -f "$STAMP" && ! -L "$STAMP" ]] && echo 1)"
+rm "$(dirname "$STAMP")/ru4.nft.tmp"
 check "nft input" "flush set inet geoirb ru4
 add element inet geoirb ru4 {
 5.8.0.0/19,

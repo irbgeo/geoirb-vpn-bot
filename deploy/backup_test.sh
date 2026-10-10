@@ -65,6 +65,17 @@ check "failed dump fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 check "failed dump: no new archive, no .part, old ones kept" "$before" "$(archives)"
 check "failed dump: stamp not touched" "1" "$([[ "$STAMP" -ot "$TMP/env" ]] && echo 1)"
 
+# The bot user owns the stamp's directory: a symlink planted as the stamp is
+# replaced, root never writes through it.
+echo keep >"$TMP/victim"
+touch -t 200001010000 "$TMP/victim"
+ln -sf "$TMP/victim" "$STAMP"
+run
+check "planted stamp symlink: replaced by a file, target untouched" "0 1 1 keep" \
+  "$? $([[ -f "$STAMP" && ! -L "$STAMP" ]] && echo 1) $([[ "$TMP/victim" -ot "$TMP/env" ]] && echo 1) $(cat "$TMP/victim")"
+check "no temp stamp left" "last-backup" "$(ls "$(dirname "$STAMP")")"
+before="$(archives)"
+
 grep -v '^MONGO_URI=' "$TMP/env" >"$TMP/env.nouri"
 run ENV_FILE="$TMP/env.nouri"
 check "no MONGO_URI fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
