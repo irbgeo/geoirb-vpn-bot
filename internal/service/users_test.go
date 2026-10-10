@@ -526,3 +526,29 @@ func TestRegisterKeepsARoleSetByHandInBetween(t *testing.T) {
 		require.Equal(t, "bob2", u.Username)
 	})
 }
+
+// CreateKey must read the user under s.mu. Read before it, the user can be
+// stale by the time the lock is taken: another CreateKey used the trial and
+// the key was deleted meanwhile, and this call would start a second trial.
+func TestCreateKeyReadsTheUserUnderTheLock(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		unlocked := 0
+		e.users().onGet = func() {
+			if e.svc.mu.TryLock() {
+				e.svc.mu.Unlock()
+				unlocked++
+			}
+		}
+
+		_, err := e.svc.CreateKey(
+			context.Background(),
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		require.Zero(t, unlocked, "the user was read while the lock was free")
+	})
+}

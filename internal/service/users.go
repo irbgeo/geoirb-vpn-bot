@@ -69,14 +69,16 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	if err != nil {
 		return nil, err
 	}
-	u, err := s.User(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Under the lock, like the key count: a user read before it could be
+	// stale (role, trial) by the time this call gets its turn.
+	u, err := s.User(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	have, err := s.peers.ByUser(ctx, userID)
 	if err != nil {
 		return nil, err

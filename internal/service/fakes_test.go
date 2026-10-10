@@ -13,10 +13,14 @@ import (
 
 type fakeUsers struct {
 	m        map[int64]User
-	trialErr error // SetTrialUsed fails
+	trialErr error  // SetTrialUsed fails
+	onGet    func() // called by every Get
 }
 
 func (s *fakeUsers) Get(_ context.Context, id int64) (*User, error) {
+	if s.onGet != nil {
+		s.onGet()
+	}
 	u, ok := s.m[id]
 	if !ok {
 		return nil, nil
