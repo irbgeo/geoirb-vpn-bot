@@ -9,6 +9,10 @@ RemainAfterExit=yes
 ExecStartPre=-/usr/bin/awg-quick down /etc/geoirb-vpn/awg-exit.conf
 ExecStart=/usr/bin/awg-quick up /etc/geoirb-vpn/awg-exit.conf
 ExecStop=/usr/bin/awg-quick down /etc/geoirb-vpn/awg-exit.conf
+# a failed start (the network or the exit host's name not ready at boot) is
+# tried again; without the tunnel all foreign traffic stays dead
+Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

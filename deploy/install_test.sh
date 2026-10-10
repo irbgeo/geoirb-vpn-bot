@@ -93,6 +93,9 @@ check "routes unit: wanted by multi-user only" "WantedBy=multi-user.target" "$(g
 check "routes unit: start and reload run the same script" "ExecStart=/opt/geoirb-vpn-bot/vpn-routes.sh
 ExecReload=/opt/geoirb-vpn-bot/vpn-routes.sh" "$(grep -E '^Exec' "$U")"
 check "awg0 unit requires the routes unit" "1" "$(grep -cx 'Requires=geoirb-vpn-routes.service' "$SD/geoirb-awg0.service")"
+for u in geoirb-awg0 geoirb-awg-exit; do
+  check "$u: a failed start is retried" "Restart=on-failure RestartSec=10" "$(grep -E '^Restart(Sec)?=' "$SD/$u.service" | tr '\n' ' ' | sed 's/ $//')"
+done
 check "unbound-resolvconf off" "1" "$(grep -c '^systemctl disable --quiet --now unbound-resolvconf.service' "$TMP/calls")"
 check "apt-get update before install" "1 1" "$(grep -c '^apt-get update' "$TMP/calls") $([[ "$(line '^apt-get update')" -lt "$(line '^apt-get install')" ]] && echo 1)"
 check "units enabled" "1" "$(grep -c '^systemctl enable.*geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service' "$TMP/calls")"
