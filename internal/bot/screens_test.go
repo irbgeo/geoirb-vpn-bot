@@ -22,7 +22,6 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 		"DefaultVPN", "",
 		"org.amnezia.vpn", "",
 		"geoirb-vpn-bot", "", // systemd unit in an admin hint
-		"НЕ должны использовать VPN", "",
 	)
 	ast.Inspect(file, func(n ast.Node) bool {
 		_, ok := n.(*ast.ImportSpec)

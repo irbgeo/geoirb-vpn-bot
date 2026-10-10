@@ -710,8 +710,6 @@ func peersSection(g peersGroup) string {
 	return b.String()
 }
 
-// --- admin panel ---
-
 func usersText(v usersView) string {
 	return fmt.Sprintf("👥 Пользователи: всего %d, страница %d/%d", v.Total, v.Page+1, pages(v.Total))
 }
