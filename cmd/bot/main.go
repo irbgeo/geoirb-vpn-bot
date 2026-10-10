@@ -113,7 +113,10 @@ func main() {
 	// then stop them in order.
 	// The tunnel watcher owns the bot's ip rules: through the exit tunnel
 	// while it works, direct while it is down. Its first check runs before
-	// any Telegram call, so a stale rule left with the tunnel down is gone.
+	// any Telegram call and sets the rules for the state it finds. One case
+	// it does not fix: with no handshake yet in the first 3 minutes after a
+	// start (the watcher's grace window) the rules stay as the last run left
+	// them, so a stale rule into a dead tunnel lasts until the window ends.
 	if cfg.ExitIface != "" {
 		hostNet := tunnel.NewHostNet(cfg)
 		watcher := tunnel.New(

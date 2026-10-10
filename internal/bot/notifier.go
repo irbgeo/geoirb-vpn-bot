@@ -123,11 +123,13 @@ func (s *notifier) WatchServerLoad(ctx context.Context) {
 	}
 }
 
-// WatchTunnel checks the exit tunnel now, before it returns (so a stale
-// bot route is fixed before the bot's first calls), then every minute in
-// the background until ctx is done, and tells admins when it goes down or
-// comes back. Up at the first known state is quiet (only the bot route is
-// set); down is told once.
+// WatchTunnel checks the exit tunnel now, before it returns (so the bot
+// route is set for the state found before the bot's first calls; while the
+// state is still Unknown, the watcher's start window, a route left by the
+// last run is not touched), then every minute in the background until ctx
+// is done, and tells admins when it goes down or comes back. Up at the
+// first known state is quiet (only the bot route is set); down is told
+// once.
 func (s *notifier) WatchTunnel(ctx context.Context, w tunnelChecker) {
 	first := true
 	unsent := "" // the newest alert that reached no admin yet: tried again every check
