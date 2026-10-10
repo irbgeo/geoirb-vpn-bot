@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os/signal"
-	"runtime"
 	"slices"
 	"syscall"
 	"time"
@@ -84,15 +83,12 @@ func main() {
 	}
 	sender := bot.NewTelegramSender(client, uploads)
 
-	// Server load alerts watch this machine's limits; none off Linux, e.g.
-	// when running the bot on a laptop.
-	var load bot.ServerLoad
-	if runtime.GOOS == "linux" {
-		load = sysload.New(
-			"/proc",
-			"/",
-		)
-	}
+	// Server load alerts watch this machine's limits. Off Linux (the bot run
+	// on a laptop) there is no /proc and the monitor checks nothing.
+	load := sysload.New(
+		"/proc",
+		"/",
+	)
 	notifier := bot.NewNotifier(
 		svc,
 		sender,

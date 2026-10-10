@@ -19,6 +19,7 @@ const recoverGap = 10
 // monitor keeps what it needs between checks: the last CPU counters and
 // which metrics are high. Not safe for concurrent use (one worker calls it).
 type monitor struct {
+	off     bool // no procRoot on this machine: Check does nothing
 	proc    string
 	disk    string
 	prevCPU *cpuTimes
@@ -27,11 +28,15 @@ type monitor struct {
 }
 
 // New creates a monitor. procRoot is "/proc"; diskPath "" = no disk check.
+// On a machine without procRoot (not Linux: the bot run on a laptop) the
+// monitor checks nothing, so the caller needs no OS switch.
 func New(
 	procRoot string,
 	diskPath string,
 ) *monitor {
+	_, err := os.Stat(procRoot)
 	return &monitor{
+		off:     err != nil,
 		proc:    procRoot,
 		disk:    diskPath,
 		hot:     map[Metric]int{},
@@ -44,6 +49,9 @@ func New(
 // skipped (its state kept) and reported in the error; the others still
 // work.
 func (s *monitor) Check() ([]Alert, error) {
+	if s.off {
+		return nil, nil
+	}
 	u, err := s.usage()
 	var out []Alert
 	for _, l := range limits() {

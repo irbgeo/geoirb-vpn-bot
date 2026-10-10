@@ -219,3 +219,18 @@ func TestMissingFileIsAnErrorButOtherMetricsStillWork(t *testing.T) {
 	require.Len(t, alerts, 1)
 	require.Equal(t, Memory, alerts[0].Metric)
 }
+
+// Off Linux there is no /proc: the monitor checks nothing and reports
+// nothing, so main builds it on every OS.
+func TestMonitorWithoutProcChecksNothing(t *testing.T) {
+	m := New(
+		filepath.Join(t.TempDir(), "no-proc"),
+		"/",
+	)
+
+	for range 3 {
+		alerts, err := m.Check()
+		require.NoError(t, err, "not an error every minute in the log")
+		require.Empty(t, alerts)
+	}
+}
