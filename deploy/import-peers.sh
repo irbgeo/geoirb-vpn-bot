@@ -2,8 +2,9 @@
 # Usage: import-peers.sh <old.conf>. Runs as root on the RU server.
 # Appends the [Peer] blocks of the old server's conf to awg0.conf, verbatim,
 # when their PublicKey is not there yet and AllowedIPs is one IPv4 /32 inside
-# the Address subnet of awg0.conf and not used by another peer; then applies
-# them live (no client drops).
+# the Address subnet of awg0.conf (not its network or broadcast address) and
+# not used by another peer or by the server; then applies them live (no
+# client drops).
 # The running bot also rewrites awg0.conf (its sha check cannot see this
 # script), so the bot is stopped first and started again on exit, if it ran.
 # ROOT is a path prefix for tests.
@@ -45,7 +46,7 @@ function flush(  n, ips, a, ip) {
   if (key == "") skip("no-key")
   else if (key in seen) skip("dup")
   else if (n != 2 || ips[2] !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\/32$/) skip("not-32")
-  else if (ip2n(ip) < base || ip2n(ip) >= base + size) skip("subnet")
+  else if (ip2n(ip) <= base || ip2n(ip) >= base + size - 1) skip("subnet") # also the network and broadcast addresses
   else if (ip in taken) skip("ip-taken")
   else { imported++; seen[key] = 1; taken[ip] = 1; printf "\n%s", blk }
   blk = ""
@@ -60,7 +61,7 @@ BEGIN {
       for (i = 1; i <= m; i++) { gsub(/[ \t]/, "", parts[i]); split(parts[i], a, "/"); taken[a[1]] = 1 }
     }
     else if (l ~ /^Address[ \t]*=/) { sub(/^[^=]*=[ \t]*/, "", l); split(l, a, "/")
-      size = 2 ^ (32 - a[2]); base = int(ip2n(a[1]) / size) * size }
+      size = 2 ^ (32 - a[2]); base = int(ip2n(a[1]) / size) * size; taken[a[1]] = 1 } # the server itself
   }
   if (size == 0) { print "error: no Address in " new > "/dev/stderr"; exit 1 }
 }

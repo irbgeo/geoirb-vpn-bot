@@ -75,8 +75,20 @@ AllowedIPs = 10.8.1.11/32
 
 [Peer]
 PublicKey = hhhhhhhhhh=
-AllowedIPs = 10.8.3.255/32
+AllowedIPs = 10.8.3.254/32
 PersistentKeepalive = 25
+
+[Peer]
+PublicKey = kkkkkkkkkk=
+AllowedIPs = 10.8.3.255/32
+
+[Peer]
+PublicKey = llllllllll=
+AllowedIPs = 10.8.0.0/32
+
+[Peer]
+PublicKey = mmmmmmmmmm=
+AllowedIPs = 10.8.0.1/32
 
 [Peer]
 PublicKey = iiiiiiiiii=
@@ -108,12 +120,14 @@ out="$(run)"
 check "exit 0" "0" "$?"
 check "planted symlinks are not written through" "keep" "$(cat "$TMP/victim")"
 rm "$CONF".import.*
-check "summary" "imported 4, skipped 7" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
+check "summary" "imported 4, skipped 10" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
 check "peers in conf" "5" "$(grep -c '^\[Peer\]' "$CONF")"
 check "duplicate once" "1" "$(grep -c 'bbbbbbbbbb=' "$CONF")"
 check "new peers added" "4" "$(grep -c '^PublicKey = \(aaaaaaaaaa\|cccccccccc\|hhhhhhhhhh\|jjjjjjjjjj\)=$' "$CONF")"
 check "keepalive kept" "1" "$(grep -c '^PersistentKeepalive = 25$' "$CONF")"
-check "/22 top in" "1" "$(grep -c '^AllowedIPs = 10.8.3.255/32$' "$CONF")"
+check "/22 top in" "1" "$(grep -c '^AllowedIPs = 10.8.3.254/32$' "$CONF")"
+check "broadcast, network and the server's own address out" "0 1 1 1" \
+  "$(grep -c 'kkkkkkkkkk\|llllllllll\|mmmmmmmmmm' "$CONF") $(grep -c 'kkkkkkkk(subnet)' <<<"$out") $(grep -c 'llllllll(subnet)' <<<"$out") $(grep -c 'mmmmmmmm(ip-taken)' <<<"$out")"
 check "/22 outside out" "0" "$(grep -c '10.8.4.0' "$CONF")"
 check "ip-taken skipped" "0" "$(grep -c 'eeeeeeeeee' "$CONF")"
 check "ip-taken listed" "1" "$(grep -c 'eeeeeeee(ip-taken)' <<<"$out")"
@@ -138,7 +152,7 @@ check "syncconf got the conf" "5" "$(grep -c '^\[Peer\]' "$TMP/calls.synced")"
 cp "$CONF" "$TMP/after1"
 : >"$TMP/calls"
 out="$(run)"
-check "second run imports 0" "imported 0, skipped 11" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
+check "second run imports 0" "imported 0, skipped 14" "$(tail -1 <<<"$out" | sed 's/ (.*//')"
 check "second run keeps conf" "1" "$(cmp -s "$CONF" "$TMP/after1" && echo 1)"
 check "second run no syncconf" "0" "$(grep -c '^awg syncconf' "$TMP/calls")"
 check "second run no new backup" "1" "$(ls "$CONF".bak-import-* | wc -l | tr -d ' ')"
