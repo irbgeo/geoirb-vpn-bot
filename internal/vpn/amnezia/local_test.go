@@ -23,33 +23,16 @@ func fakeBin(t *testing.T, in fakeBinInput) string {
 	return p
 }
 
-func TestLocalRunnerExec(t *testing.T) {
-	fakeBin(t, fakeBinInput{Name: "awg", Script: `echo "$@"; cat`})
-	cfg := &config.Config{AWGTimeout: 5 * time.Second}
-
-	out, err := NewLocalRunner(cfg).Exec(
-		context.Background(),
-		execInput{
-			Args:  []string{"awg", "pubkey"},
-			Stdin: "SECRET",
-		},
-	)
-	require.NoError(t, err)
-	require.Equal(t, "pubkey\nSECRET", out)
-}
-
-func TestLocalRunnerErrorHasStderrNotStdin(t *testing.T) {
+// The runner itself is tested in hostexec; localRunner only adds its prefix.
+func TestLocalRunnerPrefixesErrors(t *testing.T) {
 	fakeBin(t, fakeBinInput{Name: "awg", Script: `echo "bad key" >&2; exit 1`})
 	cfg := &config.Config{AWGTimeout: 5 * time.Second}
 
 	_, err := NewLocalRunner(cfg).Exec(
 		context.Background(),
 		execInput{
-			Args:  []string{"awg", "pubkey"},
-			Stdin: "SECRET",
+			Args: []string{"awg", "pubkey"},
 		},
 	)
 	require.ErrorContains(t, err, "amnezia: awg pubkey")
-	require.ErrorContains(t, err, "bad key")
-	require.NotContains(t, err.Error(), "SECRET")
 }
