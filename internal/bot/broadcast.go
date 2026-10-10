@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	tgbot "github.com/irbgeo/go-tgbot"
 )
 
 // adminBroadcastAsk waits for the broadcast text.
@@ -58,7 +60,7 @@ func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 	outMessage := outMessage{
 		ChatID:   p.ChatID,
 		Text:     broadcastPreviewText(preview),
-		Keyboard: broadcastKeyboard(token),
+		Keyboard: sendCancelKeyboard(tgbot.Button("📣 Отправить", cbAdminBcOK+":"+token)),
 	}
 	return s.send.Send(ctx, outMessage)
 }

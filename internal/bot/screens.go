@@ -424,12 +424,13 @@ func broadcastPreviewText(v broadcastView) string {
 	return fmt.Sprintf("📣 Отправить это %d пользователям?\n\n%s", v.Recipients, v.Text)
 }
 
-// broadcastKeyboard: "send" carries the preview's token, so it sends only
-// the text it sits under.
-func broadcastKeyboard(token string) *tgbot.InlineKeyboardMarkup {
+// sendCancelKeyboard is a preview's keyboard: its "send" button and
+// "cancel". The send button carries the preview's token, so it sends only
+// what it sits under.
+func sendCancelKeyboard(send tgbot.InlineKeyboardButton) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(
-			tgbot.Button("📣 Отправить", cbAdminBcOK+":"+token),
+			send,
 			tgbot.Button("Отмена", cbAdminCanc),
 		),
 	)
@@ -553,15 +554,6 @@ func maintButtonText(on bool) string {
 func myAccessKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(tgbot.Button("📋 Мой доступ", cbMyAccess)),
-	)
-}
-
-func configsKeyboard(token string) *tgbot.InlineKeyboardMarkup {
-	return tgbot.InlineKeyboard(
-		tgbot.Row(
-			tgbot.Button("🔄 Отправить", cbAdminCfgOK+":"+token),
-			tgbot.Button("Отмена", cbAdminCanc),
-		),
 	)
 }
 

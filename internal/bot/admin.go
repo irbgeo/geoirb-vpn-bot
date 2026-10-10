@@ -180,12 +180,7 @@ func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 // adminUsers shows one page of users: plain users, then unlimited, then
 // admins; newest first inside a role.
 func (s *router) adminUsers(ctx context.Context, a adminAction) error {
-	page, _ := strconv.ParseInt(a.Arg, 10, 64)
-	page = max(page, 0)
-	servicePage := service.Page{
-		Skip:  page * adminPageSize,
-		Limit: adminPageSize,
-	}
+	page, servicePage := adminPage(a.Arg)
 	users, total, err := s.users.Users(ctx, servicePage)
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
@@ -202,6 +197,17 @@ func (s *router) adminUsers(ctx context.Context, a adminAction) error {
 		Keyboard:  usersKeyboard(v),
 	}
 	return s.send.Edit(ctx, editMessage)
+}
+
+// adminPage reads the page number of a list button (from 0; a bad or
+// negative one is the first page) and the slice of the list it stands for.
+func adminPage(arg string) (int64, service.Page) {
+	page, _ := strconv.ParseInt(arg, 10, 64)
+	page = max(page, 0)
+	return page, service.Page{
+		Skip:  page * adminPageSize,
+		Limit: adminPageSize,
+	}
 }
 
 // adminUser shows a user card: role, trial, and every key with actions.
@@ -386,12 +392,7 @@ func (s *router) adminIssue(ctx context.Context, a adminAction) error {
 
 // adminFeedback shows one page of reviews and suggestions, newest first.
 func (s *router) adminFeedback(ctx context.Context, a adminAction) error {
-	page, _ := strconv.ParseInt(a.Arg, 10, 64)
-	page = max(page, 0)
-	servicePage := service.Page{
-		Skip:  page * adminPageSize,
-		Limit: adminPageSize,
-	}
+	page, servicePage := adminPage(a.Arg)
 	list, total, err := s.feedback.Feedbacks(ctx, servicePage)
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))

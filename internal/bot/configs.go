@@ -1,6 +1,10 @@
 package bot
 
-import "context"
+import (
+	"context"
+
+	tgbot "github.com/irbgeo/go-tgbot"
+)
 
 // adminConfigsAsk shows how many users get the "update your config"
 // notice and waits for "send" or "cancel", like a broadcast preview.
@@ -17,7 +21,7 @@ func (s *router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 	outMessage := outMessage{
 		ChatID:   a.ChatID,
 		Text:     configsAskText(len(ids)),
-		Keyboard: configsKeyboard(token),
+		Keyboard: sendCancelKeyboard(tgbot.Button("🔄 Отправить", cbAdminCfgOK+":"+token)),
 	}
 	return s.send.Send(ctx, outMessage)
 }
