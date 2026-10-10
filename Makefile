@@ -16,6 +16,8 @@ test:
 	./scripts/import-peers_test.sh
 	./deploy/ru-nets_test.sh
 	./deploy/vpn-routes_test.sh
+	./deploy/backup_test.sh
+	./scripts/backup-pull_test.sh
 
 # Linux binary for the VPN server (deploy.sh builds with OUT=<its package>).
 OUT ?= bot

@@ -6,6 +6,7 @@
 #   mongo-geoirb_vpn.archive.gz mongodump of the bot database
 # and keeps the newest KEEP archives. DB_SECRET_KEY is NOT in the archive:
 # keep it separately, or the encrypted client keys in the dump can't be read.
+# ROOT is a path prefix for tests (deploy/backup_test.sh).
 set -euo pipefail
 
 DEST="${DEST:-/var/backups/geoirb-vpn-bot}"
@@ -21,7 +22,7 @@ mkdir -p "$DEST"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-tar -C /etc/amnezia -czf - amneziawg >"$tmp/amnezia-awg.tar.gz"
+tar -C "${ROOT:-}/etc/amnezia" -czf - amneziawg >"$tmp/amnezia-awg.tar.gz"
 # The URI (with the password) goes in through a config file on stdin, so it
 # never shows up in `ps`.
 printf 'uri: %s\n' "$MONGO_URI" | docker exec -i "$MONGO_CONTAINER" sh -c \
