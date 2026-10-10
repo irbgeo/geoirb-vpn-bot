@@ -278,3 +278,90 @@ func TestRefund(t *testing.T) {
 	_, err = s.Refund(ctx, in)
 	require.ErrorContains(t, err, "CHARGE_NOT_FOUND")
 }
+
+func TestEditNotModifiedIsNotAnError(t *testing.T) {
+	s, api := newTelegramSender(t)
+	m := editMessage{
+		ChatID:    42,
+		MessageID: 7,
+		Text:      "menu",
+		Keyboard:  menuKeyboard(),
+	}
+
+	require.NoError(t, s.Edit(context.Background(), m))
+	require.Equal(t, "editMessageText", api.calls[0].Method)
+	require.Equal(t, "menu", api.calls[0].Fields["text"])
+	require.Contains(t, api.calls[0].Fields, "reply_markup")
+
+	api.replies["editMessageText"] = `{"ok":false,"error_code":400,"description":"Bad Request: message is not modified"}`
+	require.NoError(t, s.Edit(context.Background(), m), "the same content twice")
+
+	api.replies["editMessageText"] = `{"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}`
+	require.ErrorContains(t, s.Edit(context.Background(), m), "not found")
+}
+
+func TestSendInvoiceIsInStars(t *testing.T) {
+	s, api := newTelegramSender(t)
+
+	err := s.SendInvoice(
+		context.Background(),
+		&outInvoice{
+			ChatID:      42,
+			Title:       "Доступ на 1 месяц",
+			Description: "desc",
+			Payload:     "v1|42|30|150|",
+			Label:       "1 месяц",
+			Stars:       150,
+		},
+	)
+	require.NoError(t, err)
+
+	f := api.calls[0].Fields
+	require.Equal(t, "sendInvoice", api.calls[0].Method)
+	require.Equal(t, "XTR", f["currency"])
+	require.Empty(t, f["provider_token"], "Stars need no payment provider")
+	require.Equal(t, "v1|42|30|150|", f["payload"])
+	require.Equal(
+		t,
+		[]any{
+			map[string]any{
+				"label":  "1 месяц",
+				"amount": float64(150),
+			},
+		},
+		f["prices"],
+	)
+}
+
+func TestSenderFilesAndAnswers(t *testing.T) {
+	s, api := newTelegramSender(t)
+	ctx := context.Background()
+	file := outFile{
+		ChatID:  42,
+		Name:    "key.conf",
+		Data:    []byte("[Interface]"),
+		Caption: "your key",
+	}
+
+	require.NoError(t, s.SendDocument(ctx, file))
+	require.NoError(t, s.SendPhoto(ctx, file))
+	require.NoError(t, s.Answer(ctx, "cb1"))
+	require.NoError(
+		t,
+		s.AnswerPreCheckout(
+			ctx,
+			preCheckoutAnswer{
+				ID:    "pc1",
+				Error: "stale",
+			},
+		),
+	)
+
+	require.Equal(t, []string{"sendDocument", "sendPhoto", "answerCallbackQuery", "answerPreCheckoutQuery"}, api.methods())
+	require.Equal(t, "key.conf:[Interface]", api.calls[0].Fields["document"])
+	require.Equal(t, "your key", api.calls[0].Fields["caption"])
+	require.Equal(t, "key.conf:[Interface]", api.calls[1].Fields["photo"])
+	require.Equal(t, "cb1", api.calls[2].Fields["callback_query_id"])
+	require.Equal(t, false, api.calls[3].Fields["ok"])
+	require.Equal(t, "stale", api.calls[3].Fields["error_message"])
+}
