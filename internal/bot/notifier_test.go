@@ -435,3 +435,98 @@ func TestRUNetsAlertWhenTheListIsOld(t *testing.T) {
 	r.notify.DeliverMaintenance(ctx, maintenance())
 	require.Len(t, s.sent, 2, "alerts again after a fresh touch")
 }
+
+// An alert that reached no admin is tried again at the next check instead
+// of being lost for as long as the condition holds.
+func TestUndeliveredAlertsAreSentAgain(t *testing.T) {
+	stamp := filepath.Join(t.TempDir(), "last-backup")
+	old := time.Now().Add(-30 * time.Hour)
+	require.NoError(t, os.WriteFile(stamp, nil, 0o600))
+	require.NoError(t, os.Chtimes(stamp, old, old))
+	r, s := newRouter(&fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	})
+	r.notify.backup.path = stamp
+	ctx := context.Background()
+	m := &service.Maintenance{
+		SubnetUsed:  250,
+		SubnetTotal: 254,
+		Online:      10,
+	}
+	s.fail[1] = true                    // Telegram is down
+	r.notify.DeliverMaintenance(ctx, m) // also the peak the drop is measured from
+	m.Online = 1
+	r.notify.DeliverMaintenance(ctx, m)
+	require.Empty(t, s.sent)
+
+	s.fail[1] = false
+	r.notify.DeliverMaintenance(ctx, m)
+	require.Len(t, s.sent, 3, "subnet, backup and clients dropping: all told once Telegram is back")
+
+	r.notify.DeliverMaintenance(ctx, m)
+	require.Len(t, s.sent, 3, "and only once")
+}
+
+func TestNotifyAdminsSaysWhetherAnyoneGotIt(t *testing.T) {
+	svc := &fakeService{
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+			{
+				ID: 2,
+			},
+		},
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	s.fail[1] = true
+	require.True(t, r.notify.NotifyAdmins(ctx, "x"), "one admin is enough")
+	s.fail[2] = true
+	require.False(t, r.notify.NotifyAdmins(ctx, "x"))
+
+	svc.admins = nil
+	require.True(t, r.notify.NotifyAdmins(ctx, "x"), "no admins: the log line is all there is, nothing to retry")
+}
+
+func TestWatchTunnelSendsAnUndeliveredAlertAtTheNextCheck(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, s := newRouter(&fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
+			},
+		})
+		s.fail[1] = true
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		r.notify.WatchTunnel(ctx, &fakeTunnel{
+			steps: []tunnelStep{
+				{
+					st:      tunnel.Down,
+					changed: true,
+				},
+				{
+					st: tunnel.Down,
+				},
+			},
+		})
+		require.Empty(t, s.sentTo(1))
+
+		s.setFail(1, false)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, s.sentTo(1), 1)
+		require.Equal(t, tunnelDownText, s.sentTo(1)[0].Text)
+
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		require.Len(t, s.sentTo(1), 1, "told once")
+	})
+}

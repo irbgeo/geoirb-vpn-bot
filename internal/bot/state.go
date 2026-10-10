@@ -191,6 +191,14 @@ func (s *latch) rise(now bool) bool {
 	return now && !was
 }
 
+// drop forgets a rise whose alert reached no one, so the next check that
+// finds the condition still true alerts again.
+func (s *latch) drop() {
+	s.mu.Lock()
+	s.up = false
+	s.mu.Unlock()
+}
+
 // stampWatch watches a file touched by a job after every good run: it says
 // once when the file gets older than maxAge (or is missing), and again
 // only after a fresh touch. An empty path = no check.
@@ -244,6 +252,14 @@ func (s *onlineWatch) record(online int) (drop onlineDrop, alert bool) {
 	alert = low && !s.low
 	s.low = low
 	return drop, alert
+}
+
+// unsent forgets a drop whose alert reached no one: the next record that
+// still sees it alerts again.
+func (s *onlineWatch) unsent() {
+	s.mu.Lock()
+	s.low = false
+	s.mu.Unlock()
 }
 
 // inFlight is a set of running operations by ID (refunds by charge ID),

@@ -104,6 +104,14 @@ func (s *fakeSender) Send(_ context.Context, m outMessage) error {
 	return nil
 }
 
+// setFail makes sends to a chat fail (or work again) while a background
+// goroutine may be sending.
+func (s *fakeSender) setFail(chatID int64, fail bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fail[chatID] = fail
+}
+
 type fakeService struct {
 	reissued      *service.Peer
 	reissuedFor   []service.UserKey
