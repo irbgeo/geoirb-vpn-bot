@@ -81,6 +81,7 @@ check "awg-exit.conf mode" "600" "$(mode "$R/etc/geoirb-vpn/awg-exit.conf")"
 check "awg-exit stopped with the old conf" "1" "$(grep -c '^systemctl stop geoirb-awg-exit.service conf=\[Interface\] OLD' "$TMP/calls")"
 check "awg-exit started after the stop" "1" "$([[ "$(line '^systemctl stop geoirb-awg-exit')" -lt "$(line '^systemctl start geoirb-awg-exit')" ]] && echo 1)"
 check "inactive awg0 started" "1" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls")"
+check "the tunnel is started before awg0" "1" "$([[ "$(line '^systemctl start geoirb-awg-exit')" -lt "$(line '^systemctl start geoirb-awg0')" ]] && echo 1)"
 check "inactive routes started" "1 0" "$(grep -c '^systemctl start geoirb-vpn-routes' "$TMP/calls") $(grep -c '^systemctl reload geoirb-vpn-routes' "$TMP/calls")"
 check "routes not stopped" "0" "$(grep -c '^systemctl stop geoirb-vpn-routes' "$TMP/calls")"
 check "routes before the tunnels" "1" "$([[ "$(line '^systemctl start geoirb-vpn-routes')" -lt "$(line '^systemctl start geoirb-awg0')" ]] && echo 1)"
@@ -113,6 +114,11 @@ run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
 check "update exits 0" "0" "$?"
 check "update: active routes reloaded, not started" "1 0" "$(grep -c '^systemctl reload geoirb-vpn-routes' "$TMP/calls") $(grep -c '^systemctl start geoirb-vpn-routes' "$TMP/calls")"
 check "update: active awg0 left alone" "0" "$(grep -c '^systemctl start geoirb-awg0' "$TMP/calls")"
+# A bot release must not cut foreign traffic or DNS: nothing of theirs changed.
+check "update: same tunnel conf, tunnel not stopped, only made sure it runs" "0 1" \
+  "$(grep -c '^systemctl stop geoirb-awg-exit' "$TMP/calls") $(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
+check "update: same unbound files, unbound not restarted, only made sure it runs" "0 1" \
+  "$(grep -c '^systemctl restart unbound' "$TMP/calls") $(grep -c '^systemctl start unbound' "$TMP/calls")"
 check "update: networkd conf unchanged, not restarted" "0" "$(grep -c '^systemctl restart systemd-networkd' "$TMP/calls")"
 check "update: backup of the old state" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service .*bot=OLDBOT' "$TMP/calls")"
 check "update: one backup" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service' "$TMP/calls")"
@@ -134,6 +140,14 @@ systemctl start geoirb-vpn-bot-backup.service" "$(sed 's/ conf=.*//' "$TMP/calls
 rm "$R/etc/geoirb-vpn-bot/env" # as on a host with a binary but no env: no early backup, the deploy goes on
 run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
 check "after the failed one: a deploy passes" "0 NEWBOT" "$? $(cat "$OPT/bot")"
+
+# A changed unbound file or tunnel conf does restart its service.
+echo "# old" >>"$R/etc/unbound/unbound.conf.d/geoirb.conf"
+echo "[Interface] OLD" >"$R/etc/geoirb-vpn/awg-exit.conf"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
+check "changed unbound conf: restarted" "1" "$(grep -c '^systemctl restart unbound' "$TMP/calls")"
+check "changed tunnel conf: stopped with the old conf, then started" "1 1" \
+  "$(grep -c '^systemctl stop geoirb-awg-exit.service conf=\[Interface\] OLD' "$TMP/calls") $([[ "$(line '^systemctl stop geoirb-awg-exit')" -lt "$(line '^systemctl start geoirb-awg-exit')" ]] && echo 1)"
 
 # A host that does not run systemd-networkd: the file is installed, nothing is restarted.
 rm -f "$R/etc/systemd/networkd.conf.d/geoirb.conf"

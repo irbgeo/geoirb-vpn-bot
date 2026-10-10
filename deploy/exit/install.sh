@@ -10,11 +10,14 @@ ROOT="${ROOT:-}"
 modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
 bash "$S/awg-tools.sh"
 
-# Stop first: `down` must run the OLD conf's PostDown, before the conf is replaced.
-systemctl stop geoirb-awg-exit.service 2>/dev/null || true
-
-install -d -m 700 "$ROOT/etc/geoirb-vpn"
-install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+# The tunnel is restarted only when its conf changed (a run that changes
+# nothing must not cut foreign traffic). Stop first: `down` must run the OLD
+# conf's PostDown, before the conf is replaced.
+if ! cmp -s "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"; then
+  systemctl stop geoirb-awg-exit.service 2>/dev/null || true
+  install -d -m 700 "$ROOT/etc/geoirb-vpn"
+  install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+fi
 install -d "$ROOT/etc/systemd/system" "$ROOT/etc/sysctl.d" "$ROOT/etc/modules-load.d" "$ROOT/etc/modprobe.d"
 install -m 644 "$S/geoirb-awg-exit.service" "$ROOT/etc/systemd/system/"
 install -m 644 "$S/99-geoirb-vpn.conf" "$ROOT/etc/sysctl.d/"

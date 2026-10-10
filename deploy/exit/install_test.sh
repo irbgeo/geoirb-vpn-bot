@@ -56,6 +56,8 @@ check "stop saw the old conf" "1" "$(grep -c '^systemctl stop geoirb-awg-exit.se
 check "awg-tools skipped on pinned tag" "0" "$(grep -c '^\(make\|git\|apt-get\)' "$TMP/calls")"
 
 run "amneziawg-tools v0.0.1"
+check "same conf again: tunnel not stopped, only made sure it runs" "0 1" \
+  "$(grep -c '^systemctl stop geoirb-awg-exit' "$TMP/calls") $(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
 check "awg-tools built on other version" "1" "$(grep -c '^make .*install' "$TMP/calls")"
 check "build uses WITH_WGQUICK" "1" "$(grep -c 'WITH_WGQUICK=yes' "$TMP/calls")"
 check "build deps installed" "1" "$(grep -c '^apt-get install.*build-essential git' "$TMP/calls")"

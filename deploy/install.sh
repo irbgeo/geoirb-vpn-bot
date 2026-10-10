@@ -60,6 +60,11 @@ rm -f "$SD"/geoirb-vpn-conntrack.* "$OPT/awg-conntrack.sh" "$OPT/awg-container.s
 install -d "$SD/unbound.service.d" "$ROOT/etc/unbound/unbound.conf.d" "$ROOT/etc/sysctl.d" \
   "$ROOT/etc/modules-load.d" "$ROOT/etc/modprobe.d"
 install -m 644 "$S"/*.service "$S"/*.timer "$SD/"
+# unbound is restarted (below) only when one of its two files changed: a bot
+# release must not cut the clients' DNS.
+unbound_new=0
+cmp -s "$S/unbound-after-awg0.conf" "$SD/unbound.service.d/geoirb.conf" || unbound_new=1
+cmp -s "$S/unbound-geoirb.conf" "$ROOT/etc/unbound/unbound.conf.d/geoirb.conf" || unbound_new=1
 install -m 644 "$S/unbound-after-awg0.conf" "$SD/unbound.service.d/geoirb.conf"
 install -m 644 "$S/unbound-geoirb.conf" "$ROOT/etc/unbound/unbound.conf.d/geoirb.conf"
 install -d -m 700 "$ROOT/etc/geoirb-vpn"
@@ -102,12 +107,18 @@ else
 fi
 # and re-assert the rule and routes every minute, whatever drops them
 systemctl enable --quiet --now geoirb-vpn-routes-check.timer
-# Stop first: `down` must run with the OLD tunnel conf, before it is replaced.
-systemctl stop geoirb-awg-exit.service 2>/dev/null || true
-install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+# The tunnel is restarted only when its conf changed: a bot release must not
+# cut foreign traffic. Stop first: `down` must run with the OLD tunnel conf,
+# before it is replaced.
+if ! cmp -s "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"; then
+  systemctl stop geoirb-awg-exit.service 2>/dev/null || true
+  install -m 600 "$S/awg-exit.conf" "$ROOT/etc/geoirb-vpn/awg-exit.conf"
+fi
+# The tunnel first (`start` leaves an active unit alone): a failure here
+# stops the deploy before anything else is started.
+systemctl start geoirb-awg-exit.service
 # start, never restart awg0: that would drop every connected client
 systemctl is-active --quiet geoirb-awg0.service || systemctl start geoirb-awg0.service
-systemctl start geoirb-awg-exit.service
 
 # ufw (server-infra) drops forwarded and incoming traffic by default.
 if command -v ufw >/dev/null && ufw status | grep '^Status: active' >/dev/null; then
@@ -119,7 +130,11 @@ fi
 # this unbound does not listen.
 systemctl disable --quiet --now unbound-resolvconf.service 2>/dev/null || true
 systemctl enable --quiet unbound.service
-systemctl restart unbound.service
+if [[ "$unbound_new" == 1 ]]; then
+  systemctl restart unbound.service
+else
+  systemctl start unbound.service
+fi
 systemctl enable --quiet --now geoirb-vpn-mss.service
 systemctl enable --quiet --now geoirb-ru-nets.timer
 # fill the RU set now; a failed download must not stop the deploy (it retries)
