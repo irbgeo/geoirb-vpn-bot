@@ -33,7 +33,9 @@ type hostNet struct {
 
 // NewHostNet runs `awg show <iface> latest-handshakes` and `ip rule` for the
 // bot's uid, through cfg.AWGExec if set.
-func NewHostNet(cfg *config.Config) *hostNet {
+func NewHostNet(
+	cfg *config.Config,
+) *hostNet {
 	run := hostexec.New(cfg)
 	return &hostNet{
 		iface: cfg.ExitIface,

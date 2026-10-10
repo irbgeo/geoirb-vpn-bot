@@ -22,7 +22,9 @@ type Runner struct {
 }
 
 // New creates a Runner from cfg.AWGExec and cfg.AWGTimeout.
-func New(cfg *config.Config) *Runner {
+func New(
+	cfg *config.Config,
+) *Runner {
 	return &Runner{
 		wrapper: cfg.AWGExec,
 		timeout: cfg.AWGTimeout,

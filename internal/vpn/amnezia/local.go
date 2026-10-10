@@ -14,7 +14,9 @@ type localRunner struct {
 }
 
 // NewLocalRunner runs commands on this host (or through cfg.AWGExec).
-func NewLocalRunner(cfg *config.Config) *localRunner {
+func NewLocalRunner(
+	cfg *config.Config,
+) *localRunner {
 	run := hostexec.New(cfg)
 	return &localRunner{
 		run: run,
