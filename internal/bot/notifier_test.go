@@ -1,10 +1,13 @@
 package bot
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -529,4 +532,18 @@ func TestWatchTunnelSendsAnUndeliveredAlertAtTheNextCheck(t *testing.T) {
 		synctest.Wait()
 		require.Len(t, s.sentTo(1), 1, "told once")
 	})
+}
+
+// With no admins an alert is only logged. A user's text in it (a review)
+// must stay on one log line, or anyone could forge journal lines.
+func TestAlertLoggedWithoutAdminsStaysOnOneLine(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	r, _ := newRouter(&fakeService{})
+
+	r.notify.NotifyAdmins(context.Background(), "отзыв\n2026/10/10 bot: fake line")
+
+	require.Equal(t, 1, strings.Count(buf.String(), "\n"), buf.String())
+	require.Contains(t, buf.String(), `отзыв\n2026`)
 }

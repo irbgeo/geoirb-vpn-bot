@@ -186,7 +186,7 @@ func (s *notifier) NotifyAdmins(ctx context.Context, text string) bool {
 		return false
 	}
 	if len(admins) == 0 {
-		log.Printf("bot: no admins in the DB, alert only logged: %s", text)
+		log.Printf("bot: no admins in the DB, alert only logged: %q", text) // %q: user text stays on one line
 		return true
 	}
 	delivered := false
