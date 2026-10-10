@@ -6,6 +6,7 @@ lint:
 # Go tests (store tests need Mongo on localhost:27017) and the script tests.
 test:
 	go test -cover ./...
+	./scripts/lib_test.sh
 	./scripts/server-env_test.sh
 	./scripts/tunnel-keys_test.sh
 	./deploy/exit/install_test.sh
