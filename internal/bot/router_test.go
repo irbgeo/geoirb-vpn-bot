@@ -12,7 +12,6 @@ import (
 	tgbot "github.com/irbgeo/go-tgbot"
 	"github.com/stretchr/testify/require"
 
-	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
@@ -27,6 +26,7 @@ type fakeSender struct {
 	edits     []editMessage
 	sent      []outMessage
 	files     []outFile
+	videos    []outVideo
 	answered  []string
 	fail      map[int64]bool
 }
@@ -77,6 +77,13 @@ func (s *fakeSender) SendPhoto(_ context.Context, m outFile) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.files = append(s.files, m)
+	return nil
+}
+
+func (s *fakeSender) SendVideo(_ context.Context, m outVideo) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.videos = append(s.videos, m)
 	return nil
 }
 
@@ -337,26 +344,6 @@ func (s *fakeService) Admins(context.Context) ([]*service.User, error) {
 	return s.admins, nil
 }
 
-type fakeBypass struct {
-	err error
-}
-
-func (s *fakeBypass) Files(context.Context) ([]bypass.File, error) {
-	if s.err != nil {
-		return nil, s.err
-	}
-	return []bypass.File{
-		{
-			Name: bypass.ComputerList,
-			Data: []byte("[]"),
-		},
-		{
-			Name: bypass.PhoneList,
-			Data: []byte("[]"),
-		},
-	}, nil
-}
-
 func newRouter(svc *fakeService) (*router, *fakeSender) {
 	s := &fakeSender{
 		fail: map[int64]bool{},
@@ -376,7 +363,6 @@ func newRouter(svc *fakeService) (*router, *fakeSender) {
 				nil,
 				"",
 			),
-			Bypass: &fakeBypass{},
 			Config: &config.Config{
 				SupportContact: "@help_me",
 			},
@@ -425,9 +411,8 @@ func TestStartRegistersAndGreets(t *testing.T) {
 	require.Equal(t, "key:create", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData)
 	require.Equal(t, "my", s.sent[0].Keyboard.InlineKeyboard[1][0].CallbackData)
 	require.Equal(t, "buy", s.sent[0].Keyboard.InlineKeyboard[2][0].CallbackData, "plain users can buy")
-	require.Equal(t, "bypass", s.sent[0].Keyboard.InlineKeyboard[3][0].CallbackData)
-	require.Equal(t, "support", s.sent[0].Keyboard.InlineKeyboard[4][0].CallbackData)
-	require.Equal(t, "terms", s.sent[0].Keyboard.InlineKeyboard[4][1].CallbackData)
+	require.Equal(t, "support", s.sent[0].Keyboard.InlineKeyboard[3][0].CallbackData)
+	require.Equal(t, "terms", s.sent[0].Keyboard.InlineKeyboard[3][1].CallbackData)
 }
 
 func TestMenuCommandShowsTheSameMenuAsStart(t *testing.T) {
@@ -527,7 +512,7 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
 	require.NoError(t, r.Handle(context.Background(), press("key:noname")))
 
-	require.Len(t, s.files, 2, "config and QR; the lists come in step 3")
+	require.Len(t, s.files, 2, "config and QR")
 	conf, qr := s.files[0], s.files[1]
 	require.Equal(t, "key_bob_2.conf", conf.Name)
 	require.Equal(t, "[Interface]\nPrivateKey = PUB=\n", string(conf.Data))
@@ -537,7 +522,7 @@ func TestCreateKeyStepTwoSendsKeyAndHowToImport(t *testing.T) {
 	require.Len(t, s.sent, 2, "the name question, then the steps")
 	require.Contains(t, s.sent[1].Text, "QR")
 	require.Contains(t, s.sent[1].Text, "Подключиться")
-	require.Equal(t, "bypass", s.sent[1].Keyboard.InlineKeyboard[0][0].CallbackData, "next step")
+	require.True(t, hasMenuButton(s.sent[1].Keyboard), "the last step leads back to the menu")
 }
 
 func TestCreateKeyAsksForANameFirst(t *testing.T) {
@@ -636,28 +621,14 @@ func TestCreateKeyNameIgnoresMessagesWithoutText(t *testing.T) {
 	require.Equal(t, "key:noname", s.sent[len(s.sent)-1].Keyboard.InlineKeyboard[0][0].CallbackData)
 }
 
-func TestCreateKeyStepThreeTunnelingThenFiles(t *testing.T) {
+// The split-tunneling step is gone (the server routes Russian addresses
+// directly); its button in old messages does nothing.
+func TestOldBypassButtonDoesNothing(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 
 	require.NoError(t, r.Handle(context.Background(), press("bypass")))
-	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "Адреса из списка НЕ должны использовать VPN")
-	require.Len(t, s.files, 2)
-	require.Equal(t, bypass.ComputerList, s.files[0].Name)
-	require.Contains(t, s.files[0].Caption, "только для компьютера")
-	require.Equal(t, bypass.PhoneList, s.files[1].Name)
-	require.Contains(t, s.files[1].Caption, "для телефона")
-}
-
-func TestBypassDownFallsBackToNote(t *testing.T) {
-	r, s := newRouter(&fakeService{})
-	r.bypass = &fakeBypass{
-		err: errors.New("github down"),
-	}
-
-	require.NoError(t, r.Handle(context.Background(), press("bypass")))
+	require.Empty(t, s.sent)
 	require.Empty(t, s.files)
-	require.Contains(t, s.sent[len(s.sent)-1].Text, "недоступен")
 }
 
 func TestCreateKeyForeverCaption(t *testing.T) {
@@ -797,7 +768,7 @@ func TestConfigAgainSendsOwnKeyOnly(t *testing.T) {
 		svc.askedKey,
 		"asks for the presser's own key",
 	)
-	require.Len(t, s.files, 2, "config and QR, no bypass lists again")
+	require.Len(t, s.files, 2, "config and QR")
 	require.Equal(t, "key_bob.conf", s.files[0].Name)
 
 	require.NoError(t, r.Handle(context.Background(), press("cfg:OTHER=")))

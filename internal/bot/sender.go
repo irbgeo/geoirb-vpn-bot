@@ -18,6 +18,7 @@ type Sender interface {
 	Edit(ctx context.Context, m editMessage) error
 	SendDocument(ctx context.Context, f outFile) error
 	SendPhoto(ctx context.Context, f outFile) error
+	SendVideo(ctx context.Context, v outVideo) error
 	Answer(ctx context.Context, callbackID string) error
 	SendInvoice(ctx context.Context, inv *outInvoice) error
 	AnswerPreCheckout(ctx context.Context, a preCheckoutAnswer) error
@@ -96,6 +97,18 @@ func (s *telegramSender) SendPhoto(ctx context.Context, f outFile) error {
 		Caption: f.Caption,
 	}
 	_, err := s.client.SendPhoto(ctx, f.ChatID, inputFile(f), &sendPhotoOptions)
+	return err
+}
+
+// SendVideo sends a video Telegram already has, by its file ID.
+func (s *telegramSender) SendVideo(ctx context.Context, v outVideo) error {
+	inputFile := tgbot.InputFile{
+		FileID: v.FileID,
+	}
+	sendVideoOptions := tgbot.SendVideoOptions{
+		Caption: v.Caption,
+	}
+	_, err := s.client.SendVideo(ctx, v.ChatID, inputFile, &sendVideoOptions)
 	return err
 }
 

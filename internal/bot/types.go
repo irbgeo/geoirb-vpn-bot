@@ -248,6 +248,13 @@ type outFile struct {
 	Caption string
 }
 
+// outVideo is a video sent again by its Telegram file ID (no upload).
+type outVideo struct {
+	ChatID  int64
+	FileID  string
+	Caption string
+}
+
 // Deps is everything New needs.
 type Deps struct {
 	Users    Users
@@ -256,7 +263,6 @@ type Deps struct {
 	Ops      Ops
 	Feedback Feedback
 	Sender   Sender
-	Bypass   Bypass
 	Notifier *notifier
 	// Config gives SupportContact (e.g. "@geoirb") and MaintenanceFlag (a
 	// file that exists while maintenance is on, so the state survives a
@@ -288,6 +294,7 @@ type menuScreen struct {
 type menuView struct {
 	Role        service.Role
 	Maintenance bool // admins see "end maintenance" instead of "maintenance"
+	SplitVideo  bool // there is a video on app split tunneling to offer
 }
 
 // command is a /command a user sent (or a button standing in for one).

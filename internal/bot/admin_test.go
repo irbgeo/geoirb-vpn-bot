@@ -685,7 +685,6 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 			nil,
 			"",
 		),
-		Bypass: &fakeBypass{},
 		Config: &config.Config{
 			MaintenanceFlag: flag,
 		},

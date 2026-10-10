@@ -10,7 +10,6 @@ import (
 	tgbot "github.com/irbgeo/go-tgbot"
 	qrcode "github.com/skip2/go-qrcode"
 
-	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
@@ -81,11 +80,6 @@ type tunnelChecker interface {
 	Check(ctx context.Context) (tunnel.State, bool, error)
 }
 
-// Bypass provides the split-tunneling lists sent with every key.
-type Bypass interface {
-	Files(ctx context.Context) ([]bypass.File, error)
-}
-
 // Callback data of inline buttons (Telegram allows up to 64 bytes).
 const (
 	cbMenu       = "menu"       // back to the main menu, in the same message
@@ -94,7 +88,6 @@ const (
 	cbIssueKey   = "key:issue"  // step 2: ask for the key's name
 	cbKeyNoName  = "key:noname" // skip the name: the key and how to add it
 	cbMyAccess   = "my"
-	cbBypass     = "bypass"
 	cbSupport    = "support"
 	cbTerms      = "terms"
 	cbBuy        = "buy"   // tariffs for "my key"
@@ -105,6 +98,9 @@ const (
 	cbReissue    = "kr:"   // + public key: reissue it
 	cbDeleteAsk  = "kd?:"  // + public key: confirm deleting the key
 	cbDelete     = "kd:"   // + public key: delete it
+	cbSplitAsk   = "split:ask"
+	cbSplitVideo = "split:video"
+	cbSplitNone  = "split:none"
 )
 
 // router turns Telegram updates into service calls and replies. Its own
@@ -117,8 +113,9 @@ type router struct {
 	feedback Feedback
 	send     Sender
 	notify   *notifier
-	bypass   Bypass
 	support  string // support contact
+	// splitVideo: Telegram ID of the app split-tunneling video; empty = no step 3.
+	splitVideo string
 
 	// dialogs: what each chat's next input is (a broadcast text, a key
 	// name). In memory only: after a restart the button is pressed again.
@@ -141,20 +138,20 @@ func New(
 	maint := newMaintFlag(d.Config.MaintenanceFlag)
 	refunds := newInFlight()
 	return &router{
-		users:    d.Users,
-		keys:     d.Keys,
-		billing:  d.Billing,
-		ops:      d.Ops,
-		feedback: d.Feedback,
-		send:     d.Sender,
-		bypass:   d.Bypass,
-		support:  d.Config.SupportContact,
-		notify:   d.Notifier,
-		dialogs:  dialogs,
-		jobs:     jobs,
-		maint:    maint,
-		refunds:  refunds,
-		pause:    50 * time.Millisecond,
+		users:      d.Users,
+		keys:       d.Keys,
+		billing:    d.Billing,
+		ops:        d.Ops,
+		feedback:   d.Feedback,
+		send:       d.Sender,
+		support:    d.Config.SupportContact,
+		splitVideo: d.Config.SplitVideoFileID,
+		notify:     d.Notifier,
+		dialogs:    dialogs,
+		jobs:       jobs,
+		maint:      maint,
+		refunds:    refunds,
+		pause:      50 * time.Millisecond,
 	}
 }
 
@@ -191,6 +188,12 @@ func (s *router) Handle(ctx context.Context, upd tgbot.Update) error {
 			Text:   s.commandText(command),
 		}
 		return s.send.Send(ctx, outMessage)
+	}
+	if upd.Message.Video != nil {
+		handled, err := s.adminVideo(ctx, upd.Message)
+		if handled || err != nil {
+			return err
+		}
 	}
 	p, ok := s.dialogs.peek(upd.Message.Chat.ID)
 	if ok {
@@ -273,8 +276,12 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.skipKeyName(ctx, cq)
 	case cq.Data == cbMyAccess:
 		return s.myAccess(ctx, cq)
-	case cq.Data == cbBypass:
-		return s.sendBypass(ctx, cq.ChatID())
+	case cq.Data == cbSplitAsk:
+		return s.askDevice(ctx, cq.ChatID())
+	case cq.Data == cbSplitVideo:
+		return s.sendSplitVideo(ctx, cq.ChatID())
+	case cq.Data == cbSplitNone:
+		return s.splitNone(ctx, cq.ChatID())
 	case cq.Data == cbSupport, cq.Data == cbTerms:
 		command := command{
 			Name:   cq.Data,
@@ -342,6 +349,7 @@ func (s *router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, e
 	menuView := menuView{
 		Role:        u.Role,
 		Maintenance: u.Role == service.RoleAdmin && s.maint.on(),
+		SplitVideo:  s.splitVideo != "",
 	}
 	return &menuScreen{
 		Text:     greeting(u),
@@ -488,7 +496,7 @@ func (s *router) issueKey(ctx context.Context, k keyRequest) error {
 }
 
 // deliverKey sends a new key (step 2): config, QR code and how to add it
-// to the app, with "next" to the split-tunneling step.
+// to the app; then step 3 (askDevice) while there is a video for it.
 func (s *router) deliverKey(ctx context.Context, d keyDelivery) error {
 	conf, err := s.keys.ClientConfig(ctx, d.Peer.PublicKey)
 	if err != nil {
@@ -506,11 +514,18 @@ func (s *router) deliverKey(ctx context.Context, d keyDelivery) error {
 		return err
 	}
 	outMessage := outMessage{
-		ChatID:   d.ChatID,
-		Text:     importText,
-		Keyboard: bypassNextKeyboard(),
+		ChatID: d.ChatID,
+		Text:   importText,
 	}
-	return s.send.Send(ctx, outMessage)
+	if s.splitVideo == "" {
+		outMessage.Keyboard = menuKeyboard()
+		return s.send.Send(ctx, outMessage)
+	}
+	err = s.send.Send(ctx, outMessage)
+	if err != nil {
+		return err
+	}
+	return s.askDevice(ctx, d.ChatID)
 }
 
 // sendConfig sends the .conf file and its QR code. A config too long for a
@@ -582,43 +597,6 @@ func (s *router) myAccess(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		Keyboard: accessKeyboard(accessView),
 	}
 	return s.send.Send(ctx, outMessage)
-}
-
-// sendBypass is the split-tunneling step: how to set it up in AmneziaVPN,
-// then the lists of Russian sites/networks that must not use the VPN. If
-// the lists can't be downloaded the user gets a note instead.
-func (s *router) sendBypass(ctx context.Context, chatID int64) error {
-	files, err := s.bypass.Files(ctx)
-	if err != nil {
-		log.Printf("bot: bypass lists: %v", err)
-		outMessage := outMessage{
-			ChatID: chatID,
-			Text:   bypassDownText,
-		}
-		return s.send.Send(ctx, outMessage)
-	}
-	outMessage := outMessage{
-		ChatID:   chatID,
-		Text:     bypassHowToText,
-		Keyboard: menuKeyboard(),
-	}
-	err = s.send.Send(ctx, outMessage)
-	if err != nil {
-		return err
-	}
-	for _, f := range files {
-		outFile := outFile{
-			ChatID:  chatID,
-			Name:    f.Name,
-			Data:    f.Data,
-			Caption: bypassCaption(f.Name),
-		}
-		err = s.send.SendDocument(ctx, outFile)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // commandText answers /terms, /support, /paysupport (Telegram requires the

@@ -12,7 +12,6 @@ import (
 	tgbot "github.com/irbgeo/go-tgbot"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/bot"
-	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/store"
@@ -96,7 +95,6 @@ func main() {
 		load,
 		cfg.RUNetsStamp,
 	)
-	lists := bypass.New()
 	deps := bot.Deps{
 		Users:    svc,
 		Keys:     svc,
@@ -105,7 +103,6 @@ func main() {
 		Feedback: svc,
 		Sender:   sender,
 		Notifier: notifier,
-		Bypass:   lists,
 		Config:   cfg,
 	}
 	router := bot.New(&deps)

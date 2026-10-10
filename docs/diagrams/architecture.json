@@ -138,25 +138,6 @@
       ]
     },
     {
-      "id": "bypass",
-      "type": "backend",
-      "label": "bypass",
-      "sublabel": "embedded lists",
-      "pos": [
-        355,
-        450
-      ],
-      "size": [
-        150,
-        64
-      ],
-      "sources": [
-        {
-          "path": "internal/bypass/bypass.go"
-        }
-      ]
-    },
-    {
       "id": "worker",
       "type": "backend",
       "label": "worker",
@@ -211,20 +192,6 @@
         {
           "path": "deploy/geoirb-vpn.nft"
         }
-      ]
-    },
-    {
-      "id": "lists",
-      "type": "external",
-      "label": "Site lists",
-      "sublabel": "ru-sites-*.json",
-      "pos": [
-        355,
-        660
-      ],
-      "size": [
-        150,
-        64
       ]
     },
     {
@@ -323,7 +290,6 @@
         "service",
         "store",
         "mongo",
-        "bypass",
         "worker",
         "amnezia",
         "awg",
@@ -340,7 +306,6 @@
         "router",
         "service",
         "store",
-        "bypass",
         "worker",
         "amnezia",
         "tunnel"
@@ -402,26 +367,6 @@
       "from": "worker",
       "to": "service",
       "label": "Maintain"
-    },
-    {
-      "from": "router",
-      "to": "bypass",
-      "label": "files",
-      "variant": "dashed",
-      "labelDy": 24
-    },
-    {
-      "from": "bypass",
-      "to": "lists",
-      "label": "files in Telegram",
-      "variant": "dashed",
-      "labelDy": 24
-    },
-    {
-      "from": "lists",
-      "to": "clients",
-      "label": "import into the app",
-      "variant": "dashed"
     },
     {
       "from": "clients",

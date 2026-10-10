@@ -98,11 +98,6 @@ func TestScreensHaveTheMenuButton(t *testing.T) {
 			press: cbCreateKey,
 			edit:  false,
 		},
-		{
-			name:  "step 3: lists",
-			press: cbBypass,
-			edit:  false,
-		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			svc := adminService()

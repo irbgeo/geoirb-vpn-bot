@@ -9,7 +9,6 @@ import (
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
-	"github.com/irbgeo/geoirb-vpn-bot/internal/bypass"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
@@ -20,9 +19,8 @@ import (
 // Step 1 and 2 of getting a key.
 const (
 	appsText = "🔑 Шаг 1. Установите приложение для подключения\n\n" +
-		"⭐ AmneziaVPN — рекомендуем: iPhone, iPad, Android, Windows, macOS, Linux. " +
-		"Только в нём можно настроить, чтобы российские сайты открывались напрямую.\n" +
-		"• AmneziaWG — проще, без этой настройки: iPhone, iPad, Android.\n" +
+		"⭐ AmneziaVPN — рекомендуем: iPhone, iPad, Android, Windows, macOS, Linux.\n" +
+		"• AmneziaWG — проще: iPhone, iPad, Android.\n" +
 		"• DefaultVPN — iPhone, iPad (iOS 16+), тоже от Amnezia.\n" +
 		"• WG Tunnel — Android, Windows, Linux (сайт wgtunnel.com).\n" +
 		"• Роутер Keenetic — AWG Manager (ставится через Entware); другой роутер — напишите в /support.\n\n" +
@@ -96,10 +94,40 @@ func appsKeyboard() *tgbot.InlineKeyboardMarkup {
 	)
 }
 
-func bypassNextKeyboard() *tgbot.InlineKeyboardMarkup {
+// The last step of getting a key, also a menu button (splitvideo.go). "VPN"
+// is avoided in our own wording, as everywhere else; the app's menu names
+// are quoted as they are.
+const (
+	splitAskText = "📱 Приложения банков и Госуслуг\n\n" +
+		"Некоторые приложения могут не работать, пока подключение включено. " +
+		"На Android и Windows их можно пустить напрямую, мимо подключения.\n\n" +
+		"Какое у вас устройство?"
+	splitHowToText = "В приложении AmneziaVPN: Настройки ⚙️ → Подключение → Раздельное туннелирование приложений.\n" +
+		"Включите его, выберите режим, в котором приложения из списка идут напрямую, " +
+		"и добавьте в список банк, Госуслуги и другие нужные приложения.\n\n" +
+		"Все шаги — в видео ниже."
+	splitVideoCaption = "Видео снято на Android. На Windows шаги те же."
+	splitNoneText     = "На iPhone, iPad, Mac и Linux в приложении такой настройки нет.\n\n" +
+		"Российские сайты и так открываются напрямую — об этом заботится сервер. " +
+		"Если приложение банка не работает, выключите подключение на время."
+)
+
+func splitAskKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
-		tgbot.Row(tgbot.Button("➡️ Дальше: российские сайты напрямую", cbBypass)),
+		tgbot.Row(
+			tgbot.Button("🤖 Android", cbSplitVideo),
+			tgbot.Button("💻 Windows", cbSplitVideo),
+		),
+		tgbot.Row(tgbot.Button("🍏 iPhone, iPad, Mac, Linux", cbSplitNone)),
+		menuRow(),
 	)
+}
+
+// videoIDText tells an admin how to make a video they sent the step-3 video.
+func videoIDText(fileID string) string {
+	return "ID этого видео:\n" + fileID + "\n\n" +
+		"Чтобы бот показывал его на шаге 3 (Android и Windows), впишите в .env:\n" +
+		"SPLIT_VIDEO_FILE_ID=" + fileID + "\nи сделайте make deploy."
 }
 
 // msk: dates are shown in Moscow time (fixed zone, no tzdata needed).
@@ -126,14 +154,6 @@ const (
 	staleInvoiceText       = "Счёт устарел. Откройте «Купить / продлить» и оплатите новый — деньги не списаны."
 	refundedText           = "Не получилось применить оплату, звёзды возвращены. Попробуйте позже."
 	refundFailedText       = "Не получилось применить оплату. Мы вернём звёзды вручную — напишите в /paysupport."
-	bypassDownText         = "Список российских сайтов для прямого подключения сейчас недоступен. Попробуйте получить ключ позже или настройте обход вручную."
-	bypassHowToText        = "🇷🇺 Шаг 3. Российские сайты напрямую\n\n" +
-		"Банки, Госуслуги и маркетплейсы лучше открывать напрямую. Настройте это один раз в AmneziaVPN:\n" +
-		"1. Настройки ⚙️ → Подключение → Раздельное туннелирование сайтов.\n" +
-		"2. Включите и выберите «Адреса из списка НЕ должны использовать VPN».\n" +
-		"3. ⋮ (три точки) → Импорт → выберите файл ниже.\n\n" +
-		"📱 Телефон: ru-sites-phone.json.\n💻 Компьютер: ru-sites-computer.json (или ru-sites-phone.json).\n" +
-		"В приложении AmneziaWG такой настройки нет — там весь трафик идёт через сервер."
 )
 
 func greeting(u *service.User) string {
@@ -158,9 +178,11 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 	if role == service.RoleUser {
 		rows = append(rows, tgbot.Row(tgbot.Button("💳 Купить / продлить", cbBuy)))
 	}
+	if v.SplitVideo {
+		rows = append(rows, tgbot.Row(tgbot.Button("📱 Банки и Госуслуги", cbSplitAsk)))
+	}
 	rows = append(
 		rows,
-		tgbot.Row(tgbot.Button("🇷🇺 Сайты напрямую", cbBypass)),
 		tgbot.Row(tgbot.Button("💬 Поддержка", cbSupport), tgbot.Button("📄 Условия", cbTerms)),
 		tgbot.Row(tgbot.Button("💡 Отзывы и предложения", cbFeedback)),
 	)
@@ -1064,15 +1086,4 @@ func mskTime(t time.Time) string {
 
 func reconcileFailedText(err error) string {
 	return "⚠️ Сверка базы и сервера не удалась: " + err.Error()
-}
-
-// bypassCaption describes a known list; unknown ones get a generic line.
-func bypassCaption(name string) string {
-	switch name {
-	case bypass.ComputerList:
-		return "💻 Российские сайты напрямую (домены и сети) — только для компьютера."
-	case bypass.PhoneList:
-		return "📱 Российские сети напрямую — для телефона (на компьютере тоже работает)."
-	}
-	return "Список адресов для прямого подключения."
 }

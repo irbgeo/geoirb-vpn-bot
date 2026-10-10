@@ -3,7 +3,7 @@ module github.com/irbgeo/geoirb-vpn-bot
 go 1.27
 
 require (
-	github.com/irbgeo/go-tgbot v0.0.0-20260927140016-157675148816
+	github.com/irbgeo/go-tgbot v0.0.0-20261010100427-6a4769909350
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stretchr/testify v1.11.1
