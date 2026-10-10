@@ -5554,8 +5554,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Fail closed</h3>
         </div>
         <ul>
-          <li>&bull; Table 100: default dev awg-exit</li>
-          <li>&bull; Fallback route: unreachable default</li>
+          <li>&bull; Table 100: default dev awg-exit, fallback unreachable</li>
+          <li>&bull; nft drops a marked packet not leaving via awg-exit</li>
           <li>&bull; Tunnel down: foreign traffic stops, it never leaves from the RU address</li>
         </ul>
       </div>
@@ -5567,7 +5567,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>&bull; networkd leaves foreign rules alone</li>
-          <li>&bull; A timer re-adds rule 110 every minute</li>
+          <li>&bull; A timer re-adds rule 110 and the nft table every minute</li>
           <li>&bull; The bot re-adds rules 100/101 every minute</li>
         </ul>
       </div>

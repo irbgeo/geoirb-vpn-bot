@@ -296,8 +296,8 @@
       "dot": "emerald",
       "title": "Fail closed",
       "items": [
-        "Table 100: default dev awg-exit",
-        "Fallback route: unreachable default",
+        "Table 100: default dev awg-exit, fallback unreachable",
+        "nft drops a marked packet not leaving via awg-exit",
         "Tunnel down: foreign traffic stops, it never leaves from the RU address"
       ]
     },
@@ -306,7 +306,7 @@
       "title": "Rule guards",
       "items": [
         "networkd leaves foreign rules alone",
-        "A timer re-adds rule 110 every minute",
+        "A timer re-adds rule 110 and the nft table every minute",
         "The bot re-adds rules 100/101 every minute"
       ]
     },
