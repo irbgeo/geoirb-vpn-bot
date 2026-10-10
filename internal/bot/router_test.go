@@ -396,6 +396,17 @@ func (s *fakeService) Admins(context.Context) ([]*service.User, error) {
 }
 
 func newRouter(svc *fakeService) (*router, *fakeSender) {
+	return newRouterWith(
+		svc,
+		&config.Config{
+			SupportContact: "@help_me",
+		},
+	)
+}
+
+// newRouterWith builds the notifier and the router from cfg, as main does
+// (stamp files, the maintenance flag), with no load monitor.
+func newRouterWith(svc *fakeService, cfg *config.Config) (*router, *fakeSender) {
 	s := &fakeSender{
 		fail: map[int64]bool{},
 	}
@@ -410,13 +421,10 @@ func newRouter(svc *fakeService) (*router, *fakeSender) {
 			Notifier: NewNotifier(
 				svc,
 				s,
-				"",
+				cfg,
 				nil,
-				"",
 			),
-			Config: &config.Config{
-				SupportContact: "@help_me",
-			},
+			Config: cfg,
 		},
 	)
 	return r, s

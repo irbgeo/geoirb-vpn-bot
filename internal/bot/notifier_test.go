@@ -16,6 +16,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/sysload"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
@@ -144,8 +145,12 @@ func TestBackupAlertWhenTheLastBackupIsOld(t *testing.T) {
 			},
 		},
 	}
-	r, s := newRouter(svc)
-	r.notify.backup.path = stamp
+	r, s := newRouterWith(
+		svc,
+		&config.Config{
+			BackupStamp: stamp,
+		},
+	)
 	ctx := context.Background()
 
 	r.notify.DeliverMaintenance(ctx, maintenance())
@@ -188,14 +193,15 @@ func (s *fakeLoad) Check() ([]sysload.Alert, error) {
 }
 
 func TestServerLoadAlertsGoToAdmins(t *testing.T) {
-	r, s := newRouter(&fakeService{
+	svc := &fakeService{
 		admins: []*service.User{
 			{
 				ID: 1,
 			},
 		},
-	})
-	r.notify.load = &fakeLoad{
+	}
+	s := &fakeSender{}
+	load := &fakeLoad{
 		alerts: []sysload.Alert{
 			{
 				Metric:  sysload.Conntrack,
@@ -211,8 +217,14 @@ func TestServerLoadAlertsGoToAdmins(t *testing.T) {
 		},
 		err: errors.New("no disk"), // logged; the alerts still go out
 	}
+	n := NewNotifier(
+		svc,
+		s,
+		&config.Config{},
+		load,
+	)
 
-	r.notify.CheckServerLoad(context.Background())
+	n.CheckServerLoad(context.Background())
 
 	require.Len(t, s.sent, 2)
 	require.Equal(t, int64(1), s.sent[0].ChatID)
@@ -239,9 +251,8 @@ func TestWatchServerLoadChecksEveryMinute(t *testing.T) {
 		n := NewNotifier(
 			&fakeService{},
 			&fakeSender{},
-			"",
+			&config.Config{},
 			load,
-			"",
 		)
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -411,14 +422,18 @@ func TestWatchTunnelUnknownThenUpIsQuiet(t *testing.T) {
 func TestRUNetsAlertWhenTheListIsOld(t *testing.T) {
 	stamp := filepath.Join(t.TempDir(), "ru-nets")
 	require.NoError(t, os.WriteFile(stamp, nil, 0o600))
-	r, s := newRouter(&fakeService{
-		admins: []*service.User{
-			{
-				ID: 1,
+	r, s := newRouterWith(
+		&fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
 			},
 		},
-	})
-	r.notify.ruNets.path = stamp
+		&config.Config{
+			RUNetsStamp: stamp,
+		},
+	)
 	ctx := context.Background()
 
 	old := time.Now().Add(-7 * 24 * time.Hour)
@@ -448,14 +463,18 @@ func TestUndeliveredAlertsAreSentAgain(t *testing.T) {
 	old := time.Now().Add(-30 * time.Hour)
 	require.NoError(t, os.WriteFile(stamp, nil, 0o600))
 	require.NoError(t, os.Chtimes(stamp, old, old))
-	r, s := newRouter(&fakeService{
-		admins: []*service.User{
-			{
-				ID: 1,
+	r, s := newRouterWith(
+		&fakeService{
+			admins: []*service.User{
+				{
+					ID: 1,
+				},
 			},
 		},
-	})
-	r.notify.backup.path = stamp
+		&config.Config{
+			BackupStamp: stamp,
+		},
+	)
 	ctx := context.Background()
 	m := &service.Maintenance{
 		SubnetUsed:  250,

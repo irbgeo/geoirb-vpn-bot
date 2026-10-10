@@ -677,28 +677,10 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 	svc.recipients = []int64{
 		7,
 	}
-	s := &fakeSender{
-		fail: map[int64]bool{},
+	cfg := &config.Config{
+		MaintenanceFlag: flag,
 	}
-	deps := &Deps{
-		Users:    svc,
-		Keys:     svc,
-		Billing:  svc,
-		Ops:      svc,
-		Feedback: svc,
-		Sender:   s,
-		Notifier: NewNotifier(
-			svc,
-			s,
-			"",
-			nil,
-			"",
-		),
-		Config: &config.Config{
-			MaintenanceFlag: flag,
-		},
-	}
-	r := New(deps)
+	r, s := newRouterWith(svc, cfg)
 	r.pause = 0
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
@@ -706,7 +688,8 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 	r.Wait()
 	require.FileExists(t, flag)
 
-	require.True(t, New(deps).maint.on(), "a new process reads the flag file")
+	restarted, _ := newRouterWith(svc, cfg)
+	require.True(t, restarted.maint.on(), "a new process reads the flag file")
 }
 
 // sentTo returns the messages sent to one chat.

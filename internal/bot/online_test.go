@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -87,9 +88,8 @@ func onlineNotifier() (*fakeSender, func(n int)) {
 	n := NewNotifier(
 		svc,
 		s,
-		"",
+		&config.Config{},
 		nil,
-		"",
 	)
 	deliver := func(online int) {
 		m := maintenance()

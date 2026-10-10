@@ -96,9 +96,8 @@ func main() {
 	notifier := bot.NewNotifier(
 		svc,
 		sender,
-		cfg.BackupStamp,
+		cfg,
 		load,
-		cfg.RUNetsStamp,
 	)
 	splitVideo := data.SplitTunnel()
 	deps := bot.Deps{

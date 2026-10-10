@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/tunnel"
 )
@@ -39,33 +40,34 @@ type notifier struct {
 	// subnetAlerted: an alert went out and the subnet is still full; it
 	// alerts again only after it cleared and came back.
 	subnetAlerted latch
-	backup        stampWatch
-	ruNets        stampWatch
+	backup        *stampWatch
+	ruNets        *stampWatch
 	online        onlineWatch
 }
 
-// NewNotifier creates a notifier. backupStamp / ruNetsStamp are the files
-// touched by each good backup / RU networks update ("" = no check); load
-// nil = no server load alerts.
+// NewNotifier creates a notifier. From cfg it takes BackupStamp and
+// RUNetsStamp: the files touched by each good backup / RU networks update
+// ("" = no check). load nil = no server load alerts.
 func NewNotifier(
 	users Users,
 	sender Sender,
-	backupStamp string,
+	cfg *config.Config,
 	load ServerLoad,
-	ruNetsStamp string,
 ) *notifier {
+	backup := newStampWatch(
+		cfg.BackupStamp,
+		backupMaxAge,
+	)
+	ruNets := newStampWatch(
+		cfg.RUNetsStamp,
+		ruNetsMaxAge,
+	)
 	return &notifier{
-		users: users,
-		send:  sender,
-		load:  load,
-		backup: stampWatch{
-			path:   backupStamp,
-			maxAge: backupMaxAge,
-		},
-		ruNets: stampWatch{
-			path:   ruNetsStamp,
-			maxAge: ruNetsMaxAge,
-		},
+		users:  users,
+		send:   sender,
+		load:   load,
+		backup: backup,
+		ruNets: ruNets,
 	}
 }
 

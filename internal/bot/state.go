@@ -232,6 +232,16 @@ type stampWatch struct {
 	alerted latch
 }
 
+func newStampWatch(
+	path string,
+	maxAge time.Duration,
+) *stampWatch {
+	return &stampWatch{
+		path:   path,
+		maxAge: maxAge,
+	}
+}
+
 // check returns the last good run (zero = none) and whether to alert now.
 func (s *stampWatch) check() (last time.Time, alert bool) {
 	if s.path == "" {
