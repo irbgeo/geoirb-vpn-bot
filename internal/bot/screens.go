@@ -215,7 +215,7 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 		rows = append(rows, tgbot.Row(tgbot.Button("💳 Купить / продлить", cbBuy)))
 	}
 	if v.SplitVideo {
-		rows = append(rows, tgbot.Row(tgbot.Button("📱 Банки и Госуслуги", cbSplitAsk)))
+		rows = append(rows, tgbot.Row(tgbot.Button("📱 РФ приложения", cbSplitAsk)))
 	}
 	rows = append(
 		rows,
