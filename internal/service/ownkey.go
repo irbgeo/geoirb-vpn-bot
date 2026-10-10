@@ -39,7 +39,9 @@ func (s *service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 	return p.public(), nil
 }
 
-// DeleteOwnKey deletes one of the user's own keys for good.
+// DeleteOwnKey deletes one of the user's own keys for good. A key an admin
+// disabled is ErrBlocked: the block lives on the key, so deleting it would
+// let the user start over with a new one. Admins delete it with Delete.
 func (s *service) DeleteOwnKey(ctx context.Context, k UserKey) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -47,6 +49,9 @@ func (s *service) DeleteOwnKey(ctx context.Context, k UserKey) error {
 	p, err := s.ownPeer(ctx, k)
 	if err != nil {
 		return err
+	}
+	if p.Blocked {
+		return ErrBlocked
 	}
 	err = s.deletePeer(ctx, p)
 	if err != nil {

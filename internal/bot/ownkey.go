@@ -106,6 +106,8 @@ func (s *router) ownKeyFailed(ctx context.Context, in ownKeyFailedInput) error {
 	text, known := keyNotFoundText, errors.Is(in.Err, service.ErrNotFound)
 	if errors.Is(in.Err, service.ErrUnreadable) {
 		text, known = keyUnreadableText, true
+	} else if errors.Is(in.Err, service.ErrBlocked) {
+		text, known = blockedKeyDeleteText, true
 	} else if !known {
 		text = ownKeyFailedText
 	}

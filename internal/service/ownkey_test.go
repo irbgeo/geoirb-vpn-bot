@@ -156,6 +156,28 @@ func TestDeleteOwnKeyKeepsTheKeyWhenTheServerFails(t *testing.T) {
 	})
 }
 
+func TestDeleteOwnKeyRefusesABlockedKey(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		old := ownKey(t, e)
+		ctx := context.Background()
+		require.NoError(t, e.svc.Disable(ctx, old.PublicKey))
+
+		err := e.svc.DeleteOwnKey(
+			ctx,
+			UserKey{
+				UserID:    42,
+				PublicKey: old.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrBlocked)
+		require.True(t, e.peers.m[old.PublicKey].Blocked, "the block can't be deleted away")
+		require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 42), ErrHasKey)
+
+		require.NoError(t, e.svc.Delete(ctx, old.PublicKey), "an admin still deletes it")
+	})
+}
+
 // ownKey registers user 42 (plain) with a paid-looking key that ends in 10 days.
 func ownKey(t *testing.T, e *env) *Peer {
 	t.Helper()
