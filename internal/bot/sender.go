@@ -51,7 +51,7 @@ func NewTelegramClient(
 	if cfg.TelegramTestEnv {
 		log.Println("telegram: TEST environment")
 	}
-	return tgbot.NewClient(cfg.BotToken, clientOptions(cfg)...)
+	return tgbot.NewClient(cfg.BotToken, clientOptions(cfg.TelegramTestEnv)...)
 }
 
 // NewUploadClient is NewTelegramClient with uploadTimeout instead of
@@ -62,7 +62,7 @@ func NewUploadClient(
 	httpClient := http.Client{
 		Timeout: uploadTimeout,
 	}
-	opts := append(clientOptions(cfg), tgbot.WithHTTPClient(&httpClient))
+	opts := append(clientOptions(cfg.TelegramTestEnv), tgbot.WithHTTPClient(&httpClient))
 	return tgbot.NewClient(cfg.BotToken, opts...)
 }
 
@@ -220,11 +220,11 @@ func (s *telegramSender) Refund(ctx context.Context, in refundInput) (already bo
 // clientOptions are the options of both Bot API clients. RetryAfter: a 429
 // "too many requests" waits (≤10 s) and retries once instead of losing the
 // message.
-func clientOptions(cfg *config.Config) []tgbot.Option {
+func clientOptions(testEnv bool) []tgbot.Option {
 	opts := []tgbot.Option{
 		tgbot.WithRetryAfter(10 * time.Second),
 	}
-	if cfg.TelegramTestEnv {
+	if testEnv {
 		opts = append(opts, tgbot.WithTestEnvironment())
 	}
 	return opts

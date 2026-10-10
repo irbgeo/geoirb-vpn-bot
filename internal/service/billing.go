@@ -92,7 +92,9 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 	case pay != nil && !pay.Applied && pay.RefundedAt.IsZero():
 		// A record without a result: a crash in the middle may have added
 		// the days already, so applying again could double them. Admins decide.
-		return &PayResult{NeedsReview: true}, nil
+		return &PayResult{
+			NeedsReview: true,
+		}, nil
 	case pay != nil && pay.Applied:
 		// Nothing is read or checked again: a repeat must never fail, or it
 		// would turn into a refund.

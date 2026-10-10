@@ -188,6 +188,16 @@ const (
 	readyConfigs                            // admin: "update configs" asked, waiting for "send"
 )
 
+// takeResult says what dialogs.take found.
+type takeResult int
+
+const (
+	takeNone    takeResult = iota // the chat waits for nothing
+	takeExpired                   // it waited too long and is dropped
+	takeStale                     // the button belongs to an older message; what waits now stays
+	takeOK
+)
+
 // dialogTake asks dialogs.take for a chat's entry of one kind (0 = of any
 // kind). Token is the one in the pressed button: it must be the entry's
 // ("" = an entry that is not a preview).

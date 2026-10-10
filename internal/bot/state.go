@@ -21,16 +21,6 @@ type dialogs struct {
 	m  map[int64]pendingInput
 }
 
-// takeResult says what dialogs.take found.
-type takeResult int
-
-const (
-	takeNone    takeResult = iota // the chat waits for nothing
-	takeExpired                   // it waited too long and is dropped
-	takeStale                     // the button belongs to an older message; what waits now stays
-	takeOK
-)
-
 func newDialogs() *dialogs {
 	return &dialogs{
 		m: map[int64]pendingInput{},
@@ -336,12 +326,12 @@ func (s *inFlight) end(id string) {
 // without end.
 const rateLimitKeys = 1000
 
-// rateLimit lets one key (a user, a pressed button) act at most max times
+// rateLimit lets one key (a user, a pressed button) act at most limit times
 // per window; allow counts the try when it says yes.
 // shortcut: in memory only, a restart forgets the counts; count in the DB
 // if someone floods across restarts.
 type rateLimit[K comparable] struct {
-	max    int
+	limit  int
 	window time.Duration
 	mu     sync.Mutex
 	seen   map[K][]time.Time
@@ -352,7 +342,7 @@ func newRateLimit[K comparable](
 	window time.Duration,
 ) *rateLimit[K] {
 	return &rateLimit[K]{
-		max:    limit,
+		limit:  limit,
 		window: window,
 		seen:   map[K][]time.Time{},
 	}
@@ -369,7 +359,7 @@ func (s *rateLimit[K]) full(key K) bool {
 			live++
 		}
 	}
-	return live >= s.max
+	return live >= s.limit
 }
 
 func (s *rateLimit[K]) allow(key K) bool {
@@ -386,7 +376,7 @@ func (s *rateLimit[K]) allow(key K) bool {
 	live := slices.DeleteFunc(s.seen[key], func(t time.Time) bool {
 		return now.Sub(t) >= s.window
 	})
-	if len(live) >= s.max {
+	if len(live) >= s.limit {
 		s.seen[key] = live
 		return false
 	}

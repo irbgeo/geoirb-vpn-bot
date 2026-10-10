@@ -130,18 +130,6 @@ func dropEnd(p *Peer) {
 	p.Reminded1d = false
 }
 
-// savePeer saves a key Maintain changed (a reminder mark, a dropped end
-// date); false (logged) if it failed, so a reminder is not sent and the
-// change is tried again next run.
-func (s *service) savePeer(ctx context.Context, p *Peer) bool {
-	err := s.peers.Save(ctx, p)
-	if err != nil {
-		log.Printf("service: maintain: save key %s: %v", p.IP, err)
-		return false
-	}
-	return true
-}
-
 // makeForever drops a key's end date and reminders, and puts it back on
 // the server (same keys, same IP) if it was disabled. The caller holds s.mu.
 func (s *service) makeForever(ctx context.Context, p *Peer) error {
@@ -193,6 +181,18 @@ func (s *service) maintainTerm(ctx context.Context, in maintainStep) bool {
 		}
 	}
 	return false
+}
+
+// savePeer saves a key Maintain changed (a reminder mark, a dropped end
+// date); false (logged) if it failed, so a reminder is not sent and the
+// change is tried again next run.
+func (s *service) savePeer(ctx context.Context, p *Peer) bool {
+	err := s.peers.Save(ctx, p)
+	if err != nil {
+		log.Printf("service: maintain: save key %s: %v", p.IP, err)
+		return false
+	}
+	return true
 }
 
 // subnetUsage counts taken client IPs: peers on the server plus the IPs
