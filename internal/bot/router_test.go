@@ -1074,3 +1074,44 @@ func TestConfigTooLongForAQRCodeGetsANote(t *testing.T) {
 	require.Empty(t, s.files, "no picture")
 	require.Equal(t, qrTooLongText, s.sent[0].Text)
 }
+
+func TestGroupChatsAreIgnored(t *testing.T) {
+	svc := adminService()
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, inGroup(startUpdate("/menu"))))
+	require.NoError(t, r.Handle(ctx, inGroup(press("my"))))
+	require.NoError(t, r.Handle(ctx, inGroup(press("a:user:7"))))
+	require.Empty(t, s.sent, "nothing is posted to a group")
+	require.Empty(t, s.edits)
+	require.Empty(t, s.files)
+	require.Empty(t, svc.registered)
+}
+
+func TestKeyCreatedButNotDeliveredTellsTheUser(t *testing.T) {
+	svc := &fakeService{
+		created: &service.Peer{
+			PublicKey: "PUB=",
+		},
+		configErr: errors.New("awg down"),
+	}
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press("key:issue")))
+	err := r.Handle(context.Background(), press("key:noname"))
+	require.Error(t, err)
+	last := s.sent[len(s.sent)-1]
+	require.Contains(t, last.Text, "Мой доступ")
+	require.Equal(t, cbMyAccess, last.Keyboard.InlineKeyboard[0][0].CallbackData)
+}
+
+func inGroup(u tgbot.Update) tgbot.Update {
+	if u.Message != nil {
+		u.Message.Chat.Type = "group"
+	}
+	if u.CallbackQuery != nil {
+		u.CallbackQuery.Message.Chat.Type = "supergroup"
+	}
+	return u
+}

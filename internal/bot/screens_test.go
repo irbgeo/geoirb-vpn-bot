@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -107,4 +108,25 @@ func TestTariffLabel(t *testing.T) {
 	for days, want := range cases {
 		require.Equal(t, want, tariffLabel(days))
 	}
+}
+
+func TestKeyTextsPointToTheMenu(t *testing.T) {
+	require.Contains(t, hasKeyText, "Мой доступ")
+	require.NotContains(t, hasKeyText, "скоро")
+	require.Contains(t, trialUsedText, "Купить")
+	require.NotContains(t, trialUsedText, "скоро")
+}
+
+func TestKeyLimitTextsFollowTheConstant(t *testing.T) {
+	n := fmt.Sprint(service.MaxUnlimitedKeys)
+	require.Contains(t, keyLimitText, n)
+	require.Contains(
+		t,
+		greeting(
+			&service.User{
+				Role: service.RoleUnlimited,
+			},
+		),
+		n,
+	)
 }

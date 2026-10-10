@@ -1115,3 +1115,242 @@ func TestAdminIssueBadButton(t *testing.T) {
 		require.Empty(t, svc.issued, data)
 	}
 }
+
+func TestAdminConfigOfImportedKeyExplains(t *testing.T) {
+	svc := adminService()
+	svc.configErr = service.ErrNoPrivateKey
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press("a:cfg:PUB1=")))
+	require.Empty(t, s.files)
+	require.Contains(t, s.sent[0].Text, "только на устройстве")
+}
+
+func TestExpiredKeyHasNoEnableButton(t *testing.T) {
+	svc := adminService()
+	p := svc.access[0].Peer
+	p.Enabled = false
+	p.ExpiresAt = time.Now().Add(-time.Hour)
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press("a:user:7")))
+	b := buttons(s.edits[0])
+	require.NotContains(t, b, "a:en:PUB1=", "enabling it would be undone within a minute")
+	require.Contains(t, b, "a:ext:PUB1=")
+}
+
+func TestAdminErrorsAreExplained(t *testing.T) {
+	svc := adminService()
+	svc.enableErr = service.ErrExpired
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press("a:en:PUB1=")), "expected: not logged as an error")
+	require.Contains(t, s.sent[0].Text, "30 дней", "tells the admin what to do")
+	require.NotContains(t, s.sent[0].Text, "service:", "no raw internal error")
+}
+
+func TestPendingBroadcastExpiresAndCanBeCancelled(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+	previews := func() int {
+		n := 0
+		for _, m := range s.sent {
+			if m.Keyboard != nil && len(m.Keyboard.InlineKeyboard) > 0 && strings.HasPrefix(m.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:") {
+				n++
+			}
+		}
+		return n
+	}
+
+	r.dialogs.set(
+		pendingInput{
+			ChatID: 42,
+			Kind:   pendingBroadcast,
+			At:     time.Now().Add(-time.Hour),
+		},
+	)
+	require.NoError(t, r.Handle(ctx, startUpdate("hello days later")))
+	require.Zero(t, previews(), "an old prompt doesn't turn a later text into a broadcast")
+
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.Contains(t, buttons(editMessage{Keyboard: s.sent[len(s.sent)-1].Keyboard}), "a:cancel", "the prompt can be cancelled")
+	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, startUpdate("text")))
+	require.Zero(t, previews(), "cancelled")
+
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, startUpdate("/start")))
+	require.NoError(t, r.Handle(ctx, startUpdate("text")))
+	require.Zero(t, previews(), "/start drops the prompt too")
+}
+
+func TestExpiredPreviewIsNotSent(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+	p, ok := r.dialogs.peek(42)
+	require.True(t, ok)
+	p.At = time.Now().Add(-pendingTTL - time.Minute)
+	r.dialogs.set(p)
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Empty(t, s.sentTo(7))
+	require.False(t, r.maint.on())
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "устарел")
+}
+
+func TestMaintenancePreviewAlreadyDoneIsNotSentAgain(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:mnt"))) // preview "started"
+	require.NoError(t, r.maint.set(true))             // someone else turned it on meanwhile
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "users are not told again")
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже")
+}
+
+func TestBroadcastKeptWhenRecipientsFail(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
+
+	svc.recipientsErr = errors.New("mongo down")
+	require.Error(t, r.Handle(ctx, pressSend(s)))
+	svc.recipientsErr = nil
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, "hello", s.sentTo(7)[0].Text, "a second press sends it")
+}
+
+func TestPreviewErrorIsShownToTheAdmin(t *testing.T) {
+	svc := adminService()
+	svc.recipientsErr = errors.New("mongo down")
+	r, s := newRouter(svc)
+
+	err := r.Handle(context.Background(), press("a:mnt"))
+	require.ErrorContains(t, err, "mongo down")
+	require.NotEmpty(t, s.sentTo(42), "the admin sees that it failed")
+}
+
+func TestCustomTextAtAMaintenancePreviewStillFlips(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+	require.NoError(t, r.Handle(ctx, startUpdate("Работы до 20:00")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+
+	require.Equal(t, "Работы до 20:00", s.sentTo(7)[0].Text)
+	require.True(t, r.maint.on(), "own wording, same switch")
+}
+
+func TestFailedMaintenanceFlipStopsTheBroadcast(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.maint = newMaintFlag("/nonexistent-dir/maintenance")
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:mnt")))
+
+	require.Error(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "users are not told about maintenance that is not recorded")
+}
+
+func TestOnlyOneMassSendAtATime(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+	require.True(t, r.jobs.reserve()) // "Обновить конфиги" is running
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	require.Empty(t, s.sentTo(7))
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже идёт")
+
+	r.jobs.release()
+	r.pause = 0
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, "hello", s.sentTo(7)[0].Text, "the preview waited for the free slot")
+}
+
+func TestAdminKeyActionUnknownNameIsAnError(t *testing.T) {
+	r, _ := newRouter(adminService())
+	err := r.adminKeyAction(
+		context.Background(),
+		adminAction{
+			ChatID: 42,
+			Name:   "nope",
+			Arg:    "PUB=",
+		},
+	)
+	require.Error(t, err)
+}
+
+func TestCardShowsOnlyRecentPayments(t *testing.T) {
+	var ps []*service.Payment
+	for i := range 25 {
+		ps = append(
+			ps,
+			&service.Payment{
+				ChargeID:  fmt.Sprintf("c%d", i),
+				Stars:     150,
+				Days:      30,
+				CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+			},
+		)
+	}
+	text := paymentsText(ps)
+	require.Equal(t, cardPaymentsLimit, strings.Count(text, "• "))
+	require.Contains(t, text, "ещё 15")
+	kb := userCardKeyboard(
+		cardView{
+			UserID:   7,
+			Payments: ps,
+		},
+	)
+	refunds := 0
+	for _, row := range kb.InlineKeyboard {
+		for _, b := range row {
+			if strings.HasPrefix(b.CallbackData, cbAdminRef) {
+				refunds++
+			}
+		}
+	}
+	require.Equal(t, cardPaymentsLimit, refunds)
+}

@@ -485,3 +485,39 @@ func TestPreCheckoutDeclineSaysWhy(t *testing.T) {
 		require.Equal(t, want, s.answers[0].Error)
 	}
 }
+
+func TestPaidButDeliveryFailedStillTellsTheUser(t *testing.T) {
+	svc := adminService()
+	svc.admins = []*service.User{
+		{
+			ID: 1,
+		},
+	}
+	svc.payRes = &service.PayResult{
+		Peer: &service.Peer{
+			PublicKey: "PUB1=",
+			Name:      "tg:bob",
+		},
+		NewKey: true,
+		Days:   30,
+	}
+	svc.configErr = errors.New("awg timeout")
+	r, s := newRouter(svc)
+
+	require.Error(t, r.Handle(context.Background(), paid()))
+	require.Equal(t, int64(42), s.sent[0].ChatID)
+	require.Contains(t, s.sent[0].Text, "Оплата получена")
+	require.Contains(t, s.sent[0].Text, "Мой доступ")
+	require.Contains(t, s.sent[1].Text, "awg timeout", "admins see why")
+}
+
+func TestInvoiceFailureSaysInvoice(t *testing.T) {
+	r, s := newRouter(
+		&fakeService{
+			invoiceErr: errors.New("db down"),
+		},
+	)
+
+	require.Error(t, r.Handle(context.Background(), press("buy:30")))
+	require.Contains(t, s.sent[0].Text, "счёт")
+}
