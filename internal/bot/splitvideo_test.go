@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
@@ -165,33 +166,111 @@ func TestVideoUploadRunsOnceInTheBackground(t *testing.T) {
 	require.ElementsMatch(t, []int64{42, 43}, []int64{videos[0].ChatID, videos[1].ChatID})
 }
 
-func TestFailedVideoUploadTellsTheUserAndIsTriedAgain(t *testing.T) {
-	r, s := newRouter(&fakeService{})
-	withVideo(r)
-	s.videoErr = func(*outVideo) error {
-		return errors.New("timeout")
+// failedTexts counts the "video did not come" messages sent so far.
+func (s *fakeSender) failedTexts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, m := range s.sent {
+		if m.Text == splitVideoFailedText {
+			n++
+		}
 	}
-	ctx := context.Background()
+	return n
+}
 
-	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
-	r.Wait()
-	require.Equal(t, splitVideoFailedText, s.sent[len(s.sent)-1].Text)
-	require.Empty(t, r.splitVideo.fileID())
+func TestFailedVideoUploadTellsTheUserAndIsTriedAgainAfterACoolDown(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, s := newRouter(&fakeService{})
+		withVideo(r)
+		s.videoErr = func(*outVideo) error {
+			return errors.New("timeout")
+		}
+		ctx := context.Background()
 
-	s.videoErr = nil
-	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
-	r.Wait()
-	require.NotEmpty(t, s.videos[1].Data, "uploaded again")
-	require.Equal(t, "VID1", r.splitVideo.fileID())
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		r.Wait()
+		require.Equal(t, splitVideoFailedText, s.sent[len(s.sent)-1].Text)
+		require.Empty(t, r.splitVideo.fileID())
+
+		s.videoErr = nil
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		r.Wait()
+		require.Len(t, s.videos, 1, "no upload right after a failed one")
+		require.Equal(t, 2, s.failedTexts(), "the text comes at once")
+
+		time.Sleep(videoCoolDown)
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		r.Wait()
+		require.Len(t, s.videos, 2)
+		require.NotEmpty(t, s.videos[1].Data, "uploaded again")
+		require.Equal(t, "VID1", r.splitVideo.fileID())
+	})
+}
+
+// Presses that come while an upload runs wait for its result: when it
+// fails they get the text, and none of them uploads the file again.
+func TestPressesDuringAFailingUploadDoNotUploadAgain(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, s := newRouter(&fakeService{})
+		withVideo(r)
+		s.videoHold = make(chan struct{})
+		s.videoErr = func(*outVideo) error {
+			return errors.New("timeout")
+		}
+		ctx := context.Background()
+
+		for chat := int64(42); chat < 47; chat++ {
+			require.NoError(t, r.Handle(ctx, pressFrom(chat, cbSplitVideo)))
+		}
+		synctest.Wait()
+		require.Len(t, s.sentVideos(), 1, "one upload, the others wait")
+		require.Zero(t, s.failedTexts())
+
+		close(s.videoHold)
+		r.Wait()
+		require.Len(t, s.videos, 1, "nobody uploaded after the failure")
+		require.Equal(t, 5, s.failedTexts(), "everyone is told")
+	})
+}
+
+// On shutdown the upload is cut and everyone who waited for it stops at
+// once, without one more Telegram call each.
+func TestShutdownEndsVideoWaitersWithoutMessages(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, s := newRouter(&fakeService{})
+		withVideo(r)
+		s.videoHold = make(chan struct{})
+		ctx := context.Background()
+		for chat := int64(100); chat < 150; chat++ {
+			require.NoError(t, r.Handle(ctx, pressFrom(chat, cbSplitVideo)))
+		}
+		synctest.Wait()
+		began := time.Now()
+
+		r.Close()
+
+		require.Zero(t, time.Since(began), "nobody waited for anything")
+		require.Len(t, s.videos, 1, "only the upload that was cut")
+		require.Zero(t, s.failedTexts())
+		require.Len(t, s.sent, 50, "only the 50 how-to texts")
+	})
+}
+
+func refusedID() error {
+	return &tgbot.APIError{
+		Code:        400,
+		Description: "Bad Request: wrong file identifier/HTTP URL specified",
+	}
 }
 
 func TestVideoIDTelegramNoLongerTakesIsUploadedAgain(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	withVideo(r)
-	r.splitVideo.remember("OLD")
+	r.splitVideo.id = "OLD"
 	s.videoErr = func(v *outVideo) error {
 		if v.FileID == "OLD" {
-			return errors.New("wrong file identifier")
+			return refusedID()
 		}
 		return nil
 	}
@@ -204,10 +283,63 @@ func TestVideoIDTelegramNoLongerTakesIsUploadedAgain(t *testing.T) {
 	require.Equal(t, "VID1", r.splitVideo.fileID())
 }
 
+// Telegram may file the soundless mp4 as an animation and then refuse its
+// ID in sendVideo: one re-upload, then the text for the cool-down, not an
+// upload on every press.
+func TestVideoIDRefusedAgainAfterAReuploadStopsUploading(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r, s := newRouter(&fakeService{})
+		withVideo(r)
+		r.splitVideo.id = "OLD"
+		s.videoErr = func(v *outVideo) error {
+			if v.FileID != "" {
+				return refusedID()
+			}
+			return nil
+		}
+		ctx := context.Background()
+
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		r.Wait()
+		require.Len(t, s.videos, 2, "refused, so uploaded again")
+		require.Zero(t, s.failedTexts(), "the upload itself brought the video")
+
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		r.Wait()
+		require.Len(t, s.videos, 3, "the new ID is refused too: no more uploads for now")
+		require.Equal(t, "VID1", s.videos[2].FileID)
+		require.Equal(t, 2, s.failedTexts())
+
+		time.Sleep(videoCoolDown)
+		require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+		r.Wait()
+		require.Len(t, s.videos, 4)
+		require.NotEmpty(t, s.videos[3].Data, "after the cool-down one upload again")
+	})
+}
+
+// A send by ID that fails for another reason (a timeout) says nothing about
+// the ID: it is kept and the file is not uploaded.
+func TestVideoByIDTimeoutKeepsTheID(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	withVideo(r)
+	r.splitVideo.id = "VID1"
+	s.videoErr = func(*outVideo) error {
+		return errors.New("timeout")
+	}
+
+	require.ErrorContains(t, r.Handle(context.Background(), press(cbSplitVideo)), "timeout")
+	r.Wait()
+	require.Len(t, s.videos, 1, "no upload")
+	require.Equal(t, "VID1", r.splitVideo.fileID())
+	require.Equal(t, 1, s.failedTexts())
+}
+
 func TestVideoToAUserWhoBlockedTheBotKeepsTheID(t *testing.T) {
 	r, s := newRouter(&fakeService{})
 	withVideo(r)
-	r.splitVideo.remember("VID1")
+	r.splitVideo.id = "VID1"
 	s.videoErr = func(*outVideo) error {
 		return &tgbot.APIError{
 			Code:        403,

@@ -277,6 +277,15 @@ type outVideo struct {
 	Caption string
 }
 
+// videoTurn is what videoFile.start tells a request without a file ID.
+type videoTurn int
+
+const (
+	videoUpload videoTurn = iota // upload the file, then call finish
+	videoWait                    // an upload runs: wait for its ID
+	videoLater                   // an upload just failed: none for videoCoolDown
+)
+
 // splitVideoName is the file name users see for the uploaded video.
 const splitVideoName = "split-tunnel.mp4"
 

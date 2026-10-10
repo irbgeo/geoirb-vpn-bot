@@ -381,14 +381,27 @@ func (s *rateLimit[K]) allow(key K) bool {
 
 // videoFile is a video shipped in the binary. The first send uploads it;
 // the file ID Telegram returns is reused afterwards. In memory only: one
-// upload after every restart. uploading is held for a whole upload, so
-// users who ask meanwhile wait for its ID instead of uploading too.
+// upload after every restart. One upload runs at a time: users who ask
+// meanwhile wait for its ID (start, wait), and after a failed one nothing
+// is uploaded for videoCoolDown.
 type videoFile struct {
-	data      []byte // never changed after newVideoFile
-	uploading sync.Mutex
-	mu        sync.Mutex
-	id        string
+	data []byte // never changed after newVideoFile
+	mu   sync.Mutex
+	id   string
+	// upload is closed when the upload in flight ends; nil = none runs.
+	upload chan struct{}
+	// failedAt: when the cool-down began (a failed upload, or the ID of a
+	// re-upload refused too).
+	failedAt time.Time
+	// refused: Telegram refused an ID before, so the next refusal is of a
+	// re-uploaded one. It is not cleared by a good send: a refusal long
+	// after the first only costs one cool-down.
+	refused bool
 }
+
+// videoCoolDown: after a failed upload no new one starts for this long, so
+// presses can't line up megabytes of uploads to a Telegram that is down.
+const videoCoolDown = time.Minute
 
 func newVideoFile(
 	data []byte,
@@ -409,21 +422,63 @@ func (s *videoFile) fileID() string {
 	return s.id
 }
 
-// forget drops id when it is still the remembered one: Telegram refused it.
-func (s *videoFile) forget(id string) {
+// refuse drops id when it is still the remembered one: Telegram did not
+// take it. The first time the file is simply uploaded again; when the ID of
+// that upload is refused too, the cool-down begins.
+func (s *videoFile) refuse(id string) {
 	s.mu.Lock()
-	if s.id == id {
-		s.id = ""
-	}
-	s.mu.Unlock()
-}
-
-// remember keeps the ID of a sent video; an empty one changes nothing.
-func (s *videoFile) remember(id string) {
-	if id == "" {
+	defer s.mu.Unlock()
+	if s.id != id {
 		return
 	}
+	s.id = ""
+	if s.refused {
+		s.failedAt = time.Now()
+	}
+	s.refused = !s.refused
+}
+
+// start says what a request without a file ID does: upload the file itself
+// (then it must call finish), wait for the upload that runs, or nothing
+// during the cool-down.
+func (s *videoFile) start() videoTurn {
 	s.mu.Lock()
-	s.id = id
+	defer s.mu.Unlock()
+	switch {
+	case s.id != "" || s.upload != nil: // an ID came in between: wait returns it at once
+		return videoWait
+	case time.Since(s.failedAt) < videoCoolDown:
+		return videoLater
+	}
+	s.upload = make(chan struct{})
+	return videoUpload
+}
+
+// wait blocks until the running upload ends or ctx does, and returns the
+// file ID there is then; "" = the upload failed (or ctx ended).
+func (s *videoFile) wait(ctx context.Context) string {
+	s.mu.Lock()
+	upload := s.upload
 	s.mu.Unlock()
+	if upload != nil {
+		select {
+		case <-upload:
+		case <-ctx.Done():
+			return ""
+		}
+	}
+	return s.fileID()
+}
+
+// finish ends the upload begun by start: id is the uploaded file's, "" = it
+// failed and the cool-down begins. Everyone in wait goes on.
+func (s *videoFile) finish(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.id = id
+	if id == "" {
+		s.failedAt = time.Now()
+	}
+	close(s.upload)
+	s.upload = nil
 }
