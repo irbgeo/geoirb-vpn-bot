@@ -73,6 +73,9 @@ func (s *peerRepo) Delete(ctx context.Context, publicKey string) error {
 // Replace removes in.Old and stores in.New as one ordered bulk write: the
 // old row goes first because both hold the same server+IP (unique index).
 // It is one request, so stopping the bot can't leave the swap half done.
+// It is not a transaction: when the second write fails on the server, the
+// old row is already gone. The caller (service.unswap) then runs Replace
+// the other way round, which stores the old row again.
 func (s *peerRepo) Replace(ctx context.Context, in service.PeerSwap) error {
 	if in.New.PSK == "" {
 		return fmt.Errorf("store: replace peer %s: the new key has no secrets", in.New.IP)

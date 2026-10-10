@@ -9,7 +9,7 @@ import (
 )
 
 // maintainLimit and deliverLimit bound one pass. Each step gets its own
-// limit, so slow docker can't leave the notices a dead context (their
+// limit, so a slow awg command can't leave the notices a dead context (their
 // "sent" marks are already saved, so they would be lost). Together they
 // stay under the service's TimeoutStopSec (60 s).
 const (
@@ -55,7 +55,7 @@ func (s *worker) Run(ctx context.Context) {
 }
 
 // once runs one pass. It is not cancelled with ctx (see Run), but each
-// step has a time limit, so a hung docker can't hold it past systemd's
+// step has a time limit, so a hung awg command can't hold it past systemd's
 // stop timeout.
 func (s *worker) once(ctx context.Context) {
 	base := context.WithoutCancel(ctx)

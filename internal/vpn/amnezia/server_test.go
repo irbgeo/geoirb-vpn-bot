@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeRunner answers container commands from a handler and records calls.
+// fakeRunner answers host commands from a handler and records calls.
 type fakeRunner struct {
 	mu      sync.Mutex
 	calls   []execInput
@@ -24,7 +24,7 @@ func (s *fakeRunner) Exec(ctx context.Context, in execInput) (string, error) {
 	s.mu.Unlock()
 	err := ctx.Err()
 	if err != nil {
-		return "", err // like docker: a cancelled call does not run
+		return "", err // like hostexec: a cancelled call does not run
 	}
 	return s.handler(in)
 }
@@ -37,8 +37,8 @@ func (s *fakeRunner) cmds() []string {
 	return out
 }
 
-// awgContainer fakes a container with awg0.conf and the awg tool.
-func awgContainer(conf *string) *fakeRunner {
+// awgHost fakes a host with awg0.conf and the awg tool.
+func awgHost(conf *string) *fakeRunner {
 	return &fakeRunner{handler: func(in execInput) (string, error) {
 		cmd := strings.Join(in.Args, " ")
 		switch {
@@ -56,7 +56,7 @@ func awgContainer(conf *string) *fakeRunner {
 
 func TestOpenDetectsLayout(t *testing.T) {
 	conf := serverConfText
-	s, err := Open(context.Background(), awgContainer(&conf), confFile)
+	s, err := Open(context.Background(), awgHost(&conf), confFile)
 	require.NoError(t, err)
 	require.Equal(t, "awg0", s.iface)
 	require.Equal(t, "/etc/amnezia/amneziawg/awg0.conf", s.confPath)
@@ -89,7 +89,7 @@ func TestOpenFailsWithoutConf(t *testing.T) {
 
 func TestOpenFailsOnAConfItCannotRead(t *testing.T) {
 	conf := "stray = 1\n" + serverConfText
-	_, err := Open(context.Background(), awgContainer(&conf), confFile)
+	_, err := Open(context.Background(), awgHost(&conf), confFile)
 	require.ErrorContains(t, err, "outside a section", "better at start than on the first key")
 }
 
@@ -126,7 +126,7 @@ func TestGenKeys(t *testing.T) {
 
 func TestUpdateSyncsThenPersists(t *testing.T) {
 	conf := serverConfText
-	r := awgContainer(&conf)
+	r := awgHost(&conf)
 	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 	r.calls = nil
@@ -162,7 +162,7 @@ func TestUpdateSyncsThenPersists(t *testing.T) {
 
 func TestUpdateCallbackErrorWritesNothing(t *testing.T) {
 	conf := serverConfText
-	r := awgContainer(&conf)
+	r := awgHost(&conf)
 	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 	r.calls = nil
@@ -174,7 +174,7 @@ func TestUpdateCallbackErrorWritesNothing(t *testing.T) {
 
 func TestUpdateSyncFailureKeepsFile(t *testing.T) {
 	conf := serverConfText
-	r := awgContainer(&conf)
+	r := awgHost(&conf)
 	inner := r.handler
 	r.handler = func(in execInput) (string, error) {
 		if strings.Contains(strings.Join(in.Args, " "), "syncconf") {
@@ -249,7 +249,7 @@ func TestServerPublicKey(t *testing.T) {
 // both steps are pinned to the file that was read.
 func TestUpdatePinsBothStepsToTheFileRead(t *testing.T) {
 	conf := serverConfText
-	r := awgContainer(&conf)
+	r := awgHost(&conf)
 	s, err := Open(context.Background(), r, confFile)
 	require.NoError(t, err)
 	r.calls = nil

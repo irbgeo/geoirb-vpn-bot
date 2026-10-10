@@ -22,7 +22,7 @@ type fakeJob struct {
 func (s *fakeJob) Maintain(context.Context) (*service.Maintenance, error) {
 	s.runs.Add(1)
 	if s.fail {
-		return nil, errors.New("docker down")
+		return nil, errors.New("awg down")
 	}
 	return &service.Maintenance{}, nil
 }
@@ -131,7 +131,7 @@ func TestRunHasATimeLimit(t *testing.T) {
 	cancel()
 	w.Run(ctx)
 
-	require.True(t, job.hasDeadline.Load(), "a hung docker can't hold a run past the stop timeout")
+	require.True(t, job.hasDeadline.Load(), "a hung awg command can't hold a run past the stop timeout")
 }
 
 // limitJob uses its whole time limit, then still returns what it found.

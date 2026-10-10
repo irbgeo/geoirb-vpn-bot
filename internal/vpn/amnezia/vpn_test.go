@@ -22,15 +22,15 @@ var errBoom = errors.New("boom")
 // persistPath picks the target file out of the atomic-save command.
 var persistPath = regexp.MustCompile(`f="([^"]+)"`)
 
-// box fakes the whole container for VPN: the config file,
-// the live interface (syncconf calls) and the ways docker can fail.
+// box fakes the whole host for VPN: the config file,
+// the live interface (syncconf calls) and the ways a command can fail.
 type box struct {
 	files   map[string]string
 	syncs   int
 	syncErr error
 	onSync  func()
 	// confErr fails the next write of the config; with confWritten the
-	// file is written first (a docker timeout after the command ran).
+	// file is written first (a command timeout after the command ran).
 	confErr     error
 	confWritten bool
 	dump        string

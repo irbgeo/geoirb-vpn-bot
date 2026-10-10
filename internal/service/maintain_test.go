@@ -384,7 +384,7 @@ func TestMaintainStopsAtTheFirstServerError(t *testing.T) {
 		m, err := e.svc.Maintain(context.Background())
 		require.NoError(t, err)
 		require.Empty(t, m.Expired)
-		require.Equal(t, 1, e.vpn.changes, "no more docker calls after the first failure; the next run retries")
+		require.Equal(t, 1, e.vpn.changes, "no more awg calls after the first failure; the next run retries")
 	})
 }
 

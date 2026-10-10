@@ -10,7 +10,9 @@ EnvironmentFile=/etc/geoirb-vpn-bot/env
 ExecStart=/opt/geoirb-vpn-bot/bot
 Restart=always
 RestartSec=5
-# Shutdown waits for in-flight payments, a broadcast and a maintenance run.
+# On stop the bot gives handlers in flight (payments) 15 s to finish, cuts a
+# running broadcast (it reports what went out) and lets a running
+# maintenance pass finish; its steps have their own limits, under this one.
 TimeoutStopSec=60
 
 # Last-backup mark, maintenance flag, RU networks stamp.

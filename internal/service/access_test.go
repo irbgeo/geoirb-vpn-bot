@@ -97,7 +97,7 @@ func TestAccessWhenStatsFailReturnsKeysFlagged(t *testing.T) {
 		ctx := context.Background()
 		_, err := e.svc.CreateKey(ctx, CreateKeyInput{UserID: 42})
 		require.NoError(t, err)
-		e.vpn.statsErr = errors.New("docker down")
+		e.vpn.statsErr = errors.New("awg down")
 
 		keys, err := e.svc.Access(ctx, 42)
 

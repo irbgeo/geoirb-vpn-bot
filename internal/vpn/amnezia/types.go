@@ -46,7 +46,7 @@ type clientConf struct {
 	Endpoint        string
 }
 
-// execInput is one command to run inside the container.
+// execInput is one command to run on the host.
 type execInput struct {
 	Args []string
 	// Stdin carries secrets (keys, configs) so they never show up in argv.
@@ -71,7 +71,7 @@ type peerStat struct {
 	TX              int64
 }
 
-// persistInput is a file to save atomically inside the container.
+// persistInput is a file to save atomically on the host.
 type persistInput struct {
 	Path    string
 	Content string

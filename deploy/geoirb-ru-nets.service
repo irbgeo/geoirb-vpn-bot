@@ -7,6 +7,8 @@ After=network-online.target geoirb-vpn-routes.service
 [Service]
 Type=oneshot
 ExecStart=/opt/geoirb-vpn-bot/ru-nets.sh
-# a failed download (no network yet at boot) must not wait a week
+# A failed download (RIPE down, or no network yet when a missed weekly run
+# starts right after boot: the timer is Persistent) is tried again in 10
+# minutes, not in a week. The old set stays in use meanwhile.
 Restart=on-failure
 RestartSec=10min
