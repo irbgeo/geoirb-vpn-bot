@@ -1014,3 +1014,16 @@ func TestAdminUsersErrorIsExplained(t *testing.T) {
 	require.Contains(t, s.sentTo(42)[0].Text, "Не получилось")
 	require.NotContains(t, s.sentTo(42)[0].Text, "mongo")
 }
+
+func TestMaintenanceFlagFileTurnsOff(t *testing.T) {
+	flag := newMaintFlag(filepath.Join(t.TempDir(), "maintenance"))
+
+	require.NoError(t, flag.set(true))
+	require.True(t, flag.on())
+	require.NoError(t, flag.set(false))
+	require.False(t, flag.on())
+	require.NoError(t, flag.set(false), "already off: nothing to remove is fine")
+
+	gone := newMaintFlag(filepath.Join(t.TempDir(), "no-such-dir", "maintenance"))
+	require.Error(t, gone.set(true))
+}

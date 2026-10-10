@@ -1040,3 +1040,18 @@ func TestCreateKeyErrorsAtTheCreateStep(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigTooLongForAQRCodeGetsANote(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+
+	err := r.sendQR(
+		context.Background(),
+		outFile{
+			ChatID: 42,
+			Data:   []byte(strings.Repeat("x", 4000)), // a QR code holds under 3000 bytes
+		},
+	)
+	require.NoError(t, err)
+	require.Empty(t, s.files, "no picture")
+	require.Equal(t, qrTooLongText, s.sent[0].Text)
+}

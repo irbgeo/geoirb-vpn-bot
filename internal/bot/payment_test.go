@@ -433,3 +433,42 @@ func TestPaymentRefundNotRecordedIsToldToAdmins(t *testing.T) {
 	require.Contains(t, alert, "mongo down")
 	require.Contains(t, s.sentTo(42)[0].Text, "звёзды возвращены", "for the user it is a plain refund")
 }
+
+func TestInvoiceErrorsExplained(t *testing.T) {
+	cases := map[error]string{
+		service.ErrNoTariff:   noTariffText,
+		service.ErrNotFound:   keyNotFoundText,
+		service.ErrNotForSale: notForSaleText,
+	}
+	for cause, want := range cases {
+		r, s := newRouter(
+			&fakeService{
+				invoiceErr: cause,
+			},
+		)
+
+		require.NoError(t, r.Handle(context.Background(), press("buy:30")), "expected: not logged")
+		require.Equal(t, want, s.sent[0].Text)
+		require.Empty(t, s.invoices)
+	}
+}
+
+func TestPreCheckoutDeclineSaysWhy(t *testing.T) {
+	cases := map[error]string{
+		service.ErrNotForSale: notForSaleText,
+		service.ErrBlocked:    blockedKeyText,
+		service.ErrUnreadable: unreadableKeyBuyText,
+		service.ErrNotFound:   staleInvoiceText,
+	}
+	for cause, want := range cases {
+		r, s := newRouter(
+			&fakeService{
+				checkErr: cause,
+			},
+		)
+
+		require.NoError(t, r.Handle(context.Background(), preCheckout()))
+		require.False(t, s.answers[0].OK)
+		require.Equal(t, want, s.answers[0].Error)
+	}
+}
