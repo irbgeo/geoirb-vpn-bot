@@ -91,3 +91,31 @@ func TestPayExistingUnappliedRecordNotReapplied(t *testing.T) {
 		require.False(t, e.payments.m["c1"].Applied)
 	})
 }
+
+func TestAdminDisabledKeyCannotBeBoughtBack(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		buy := PurchaseInput{
+			UserID:    42,
+			Days:      30,
+			PublicKey: p.PublicKey,
+		}
+
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+		_, err = e.svc.Invoice(ctx, buy)
+		require.ErrorIs(t, err, ErrBlocked)
+
+		require.NoError(t, e.svc.Enable(ctx, p.PublicKey))
+		_, err = e.svc.Invoice(ctx, buy)
+		require.NoError(t, err, "enabled by the admin again: can be bought")
+	})
+}

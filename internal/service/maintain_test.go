@@ -371,3 +371,122 @@ func TestMaintainLogsSkippedKeyOnce(t *testing.T) {
 		require.Equal(t, 1, strings.Count(buf.String(), "forever"), buf.String())
 	})
 }
+
+func TestMaintainStopsAtTheFirstServerError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.seed(t, now.Add(-time.Hour))
+		e.seed(t, now.Add(-time.Hour))
+		e.seed(t, now.Add(-time.Hour))
+		e.vpn.err = errBoom
+		e.vpn.changes = 0
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, m.Expired)
+		require.Equal(t, 1, e.vpn.changes, "no more docker calls after the first failure; the next run retries")
+	})
+}
+
+func TestMaintainSkipsAKeyWhoseIPIsTakenAndGoesOn(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.users().m[7] = User{
+			ID:   7,
+			Role: RoleUnlimited,
+		}
+		// the manual peer MANUAL1 holds 10.8.1.1 on the server
+		e.peers.m["STUCK="] = Peer{
+			PublicKey: "STUCK=",
+			ServerID:  "srv",
+			UserID:    7,
+			IP:        "10.8.1.1",
+			PSK:       "PSK=",
+			ExpiresAt: now.AddDate(0, 0, 3),
+		}
+		expired := e.seed(t, now.Add(-time.Minute))
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, []string{expired.PublicKey}, keysOf(m.Expired), "keys after the stuck one still expire")
+		require.Empty(t, m.MadeForever)
+	})
+}
+
+func TestExpiredKeyIsNotBlocked(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := expiredKey(t, e)
+		require.False(t, e.peers.m[p.PublicKey].Blocked, "expiry is not an admin block: the user may pay")
+	})
+}
+
+func TestMaintainExpiresAKeyWhoseSecretsAreUnreadable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := e.seed(t, now.Add(-time.Minute))
+		stored := e.peers.m[p.PublicKey]
+		stored.PrivateKey, stored.PSK = "", "" // secrets that could not be read
+		e.peers.m[p.PublicKey] = stored
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, []string{p.PublicKey}, keysOf(m.Expired))
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+	})
+}
+
+func TestUnreadableKeyIsNotPutBackOnTheServer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.users().m[7] = User{
+			ID:   7,
+			Role: RoleUnlimited,
+		}
+		e.peers.m["SEALED="] = Peer{
+			PublicKey: "SEALED=",
+			ServerID:  "srv",
+			UserID:    7,
+			IP:        "10.8.1.2",
+			ExpiresAt: now.AddDate(0, 0, 3), // no PSK: secrets could not be read
+		}
+		expired := e.seed(t, now.Add(-time.Minute))
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.False(t, e.vpn.hasPeer("SEALED="), "no PSK to put it back with")
+		require.Equal(t, []string{expired.PublicKey}, keysOf(m.Expired), "the rest go on")
+	})
+}
+
+func TestForeverKeepsAnAdminBlock(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.users().m[42] = User{
+			ID:   42,
+			Role: RoleUnlimited,
+		}
+		p := e.seed(t, now.AddDate(0, 0, 3))
+		ctx := context.Background()
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		got := e.peers.m[p.PublicKey]
+		require.True(t, got.ExpiresAt.IsZero(), "the end date goes")
+		require.False(t, got.Enabled, "but the block stays")
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+		require.Empty(t, m.MadeForever, "a blocked user is not told their access is forever")
+	})
+}
+
+// expiredKey issues a key and lets Maintain disable it: a disabled key
+// whose term ended, ready to be extended.
+func expiredKey(t *testing.T, e *env) *Peer {
+	t.Helper()
+	p := e.seed(t, now.Add(-time.Minute))
+	_, err := e.svc.Maintain(context.Background())
+	require.NoError(t, err)
+	require.False(t, e.vpn.hasPeer(p.PublicKey))
+	return p
+}

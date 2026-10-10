@@ -535,3 +535,161 @@ func (s *env) pay(t *testing.T, charge string) *PayResult {
 	require.NoError(t, err)
 	return res
 }
+
+func TestPayRepeatIgnoresKeyLookupError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		e.pay(t, "c1")
+		e.peers.getErr = errBoom // the DB hiccups on the repeat
+
+		payload := e.invoice(
+			t,
+			PurchaseInput{
+				UserID: 42,
+				Days:   30,
+			},
+		)
+		e.peers.getErr = errBoom
+		res, err := e.svc.Pay(
+			context.Background(),
+			PaymentInput{
+				ChargeID: "c1",
+				PayerID:  42,
+				Payload:  payload,
+				Stars:    150,
+			},
+		)
+		require.NoError(t, err, "a repeat must never become a refund")
+		require.True(t, res.Repeat)
+	})
+}
+
+func TestPayRetriesTheAppliedMark(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		e.payments.saveFails = 1
+
+		e.pay(t, "c1")
+		require.True(t, e.payments.m["c1"].Applied, "the second try saved it")
+	})
+}
+
+func TestForeverKeyIsNotForSale(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		forever, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+
+		_, err = e.svc.Invoice(
+			ctx,
+			PurchaseInput{
+				UserID:    42,
+				Days:      30,
+				PublicKey: forever.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrNotForSale, "that key never ends")
+
+		_, err = e.svc.Invoice(
+			ctx,
+			PurchaseInput{
+				UserID: 42,
+				Days:   30,
+			},
+		)
+		require.ErrorIs(t, err, ErrNotForSale, "all their keys are forever")
+	})
+}
+
+func TestPayExtendsTheTimedKeyNotTheForeverOne(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		_, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+			},
+		) // .2, forever
+		require.NoError(t, err)
+		timed, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+				Days:   5,
+			},
+		) // .3
+		require.NoError(t, err)
+
+		res := e.pay(t, "c1")
+		require.Equal(t, timed.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, now.AddDate(0, 0, 5+30), res.Peer.ExpiresAt)
+	})
+}
+
+func TestRefundDuringPayIsNotLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		// the admin refunds while Pay is applying the days
+		e.vpn.onChange = func() {
+			require.NoError(t, e.svc.MarkRefunded(context.Background(), "c1"))
+		}
+
+		e.pay(t, "c1")
+		got := e.payments.m["c1"]
+		require.True(t, got.Applied)
+		require.False(t, got.RefundedAt.IsZero(), "Pay's own mark does not wipe the refund")
+	})
+}
+
+func TestPayRecordsTheKeyItExtendsBeforeApplying(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		trial, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		stored := e.peers.m[trial.PublicKey]
+		stored.ExpiresAt = now.Add(-time.Minute)
+		e.peers.m[trial.PublicKey] = stored
+		_, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		payload := e.invoice(
+			t,
+			PurchaseInput{
+				UserID: 42,
+				Days:   30,
+			},
+		)
+		e.vpn.err = errBoom
+
+		_, err = e.svc.Pay(
+			ctx,
+			PaymentInput{
+				ChargeID: "c1",
+				PayerID:  42,
+				Payload:  payload,
+				Stars:    150,
+			},
+		)
+		require.Error(t, err)
+		require.Equal(t, trial.PublicKey, e.payments.m["c1"].PeerKey, "admins see which key to check")
+		require.False(t, e.payments.m["c1"].Applied)
+	})
+}

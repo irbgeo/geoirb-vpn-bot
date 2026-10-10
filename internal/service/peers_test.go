@@ -410,3 +410,105 @@ func TestIssueKeepsTrialOfUnlimitedUser(t *testing.T) {
 		require.False(t, e.users().m[42].TrialUsed)
 	})
 }
+
+func TestExtendRollsBackServerWhenSaveFails(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		p := e.issue(t, 30)
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+		e.peers.saveErr = errBoom
+
+		_, err := e.svc.Extend(
+			ctx,
+			ExtendInput{
+				PublicKey: p.PublicKey,
+				Days:      30,
+			},
+		)
+		require.ErrorIs(t, err, errBoom)
+		require.False(t, e.vpn.hasPeer(p.PublicKey), "not left live while the DB says disabled")
+	})
+}
+
+func TestEnableRollsBackServerWhenSaveFails(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		p := e.issue(t, 30)
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+		e.peers.saveErr = errBoom
+
+		require.ErrorIs(t, e.svc.Enable(ctx, p.PublicKey), errBoom)
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+	})
+}
+
+func TestEnableExpiredKeyNeedsExtend(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		p := e.seed(t, now.Add(-time.Hour))
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+
+		require.ErrorIs(t, e.svc.Enable(ctx, p.PublicKey), ErrExpired)
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+	})
+}
+
+func TestExtendFailureOnTheServerKeepsTheKeyDisabled(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := expiredKey(t, e)
+		e.vpn.err = errBoom
+
+		_, err := e.svc.Extend(
+			context.Background(),
+			ExtendInput{
+				PublicKey: p.PublicKey,
+				Days:      30,
+			},
+		)
+		require.Error(t, err)
+		require.False(t, e.vpn.hasPeer(p.PublicKey), "the DB says disabled, so the server must not run it")
+		require.False(t, e.peers.m[p.PublicKey].Enabled)
+	})
+}
+
+func TestExtendSaveFailureTakesTheKeyOff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := expiredKey(t, e)
+		e.peers.saveErr = errBoom
+
+		_, err := e.svc.Extend(
+			context.Background(),
+			ExtendInput{
+				PublicKey: p.PublicKey,
+				Days:      30,
+			},
+		)
+		require.Error(t, err)
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+	})
+}
+
+func TestAdminExtendUnblocks(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := e.issue(t, 30)
+		ctx := context.Background()
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+		require.True(t, e.peers.m[p.PublicKey].Blocked)
+
+		_, err := e.svc.Extend(
+			ctx,
+			ExtendInput{
+				PublicKey: p.PublicKey,
+				Days:      30,
+			},
+		)
+		require.NoError(t, err)
+		require.False(t, e.peers.m[p.PublicKey].Blocked, "the admin chose to give access again")
+	})
+}
