@@ -133,6 +133,9 @@ type router struct {
 	feedbackLimit *rateLimit[int64]
 	// keyActions: reissues, deletes and config resends of one user per minute.
 	keyActions *rateLimit[int64]
+	// adminRepeats: admin buttons that add something on every press, by
+	// button data: one press per repeatPressGap.
+	adminRepeats *rateLimit[string]
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
 }
@@ -154,7 +157,12 @@ func New(
 		keyActionsPerMinute,
 		time.Minute,
 	)
+	adminRepeats := newRateLimit[string](
+		1,
+		repeatPressGap,
+	)
 	return &router{
+		adminRepeats:  adminRepeats,
 		keyActions:    keyActions,
 		users:         d.Users,
 		keys:          d.Keys,

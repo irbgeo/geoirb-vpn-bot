@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -962,4 +963,29 @@ func TestConfigsSendButtonWorksOnceAndOnlyUnderItsOwnQuestion(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Len(t, s.sentTo(7), 1, "cancelled")
+}
+
+// Updates of one chat are handled in order, so a double press is two full
+// runs: without a guard "+30 days" adds 60 and "issue" makes two keys.
+func TestAdminDoublePressExtendsAndIssuesOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		svc := adminService()
+		r, s := newRouter(svc)
+		ctx := context.Background()
+
+		require.NoError(t, r.Handle(ctx, press("a:ext:PUB1=")))
+		require.NoError(t, r.Handle(ctx, press("a:ext:PUB1=")))
+		require.Equal(t, []string{"extend PUB1= 30"}, svc.calls)
+		require.Equal(t, repeatedPressText, s.sent[len(s.sent)-1].Text)
+
+		require.NoError(t, r.Handle(ctx, press("a:issd:7:30")))
+		require.NoError(t, r.Handle(ctx, press("a:issd:7:30")))
+		require.Len(t, svc.issued, 1)
+		require.NoError(t, r.Handle(ctx, press("a:issd:7:90")))
+		require.Len(t, svc.issued, 2, "another term is another action")
+
+		time.Sleep(repeatPressGap)
+		require.NoError(t, r.Handle(ctx, press("a:ext:PUB1=")))
+		require.Len(t, svc.calls, 2, "on purpose, a little later: fine")
+	})
 }

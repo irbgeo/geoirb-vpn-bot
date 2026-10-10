@@ -9,6 +9,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
@@ -67,6 +68,11 @@ const (
 	adminExtendDays = 30
 )
 
+// repeatPressGap: "+30 days" and "issue a key" add something on every
+// press, and the updates of one chat run one after another, so a double
+// press would do it twice. The same button within this time is skipped.
+const repeatPressGap = 10 * time.Second
+
 // errPaymentNotFound: a refund button points at a payment that is gone.
 var errPaymentNotFound = errors.New("bot: payment not found")
 
@@ -87,6 +93,13 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		MessageID: cq.MessageID(),
 		Name:      name,
 		Arg:       arg,
+	}
+	if (name == actExtend || name == actIssueDays) && !s.adminRepeats.allow(cq.Data) {
+		outMessage := outMessage{
+			ChatID: a.ChatID,
+			Text:   repeatedPressText,
+		}
+		return s.send.Send(ctx, outMessage)
 	}
 	switch name {
 	case actUsers:
