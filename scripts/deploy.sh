@@ -18,6 +18,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib.sh"
 
+# The tunnel keys are created once, by `make deploy-exit`, and never here: a
+# new file would give this side keys the exit server does not know, and all
+# foreign traffic would stay dead until the next `make deploy-exit`.
+TUNNEL="${TUNNEL_FILE:-$ROOT/secret/tunnel.yaml}"
+if [[ ! -s "$TUNNEL" ]]; then
+  echo "error: $TUNNEL is missing or empty. It holds the keys of the tunnel to the exit server: restore your copy. Only for a brand-new tunnel: run \`make deploy-exit\` first (it creates the file)." >&2
+  exit 1
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -m 700 "$TMP/pkg"
@@ -32,7 +41,6 @@ cp "$ROOT"/deploy/*.sh "$ROOT"/deploy/*.service "$ROOT"/deploy/*.timer "$ROOT"/d
 rm "$TMP/pkg"/*_test.sh
 
 echo "▶ Rendering the exit tunnel conf"
-"$ROOT/scripts/tunnel-keys.sh"
 EXIT_HOST="$(export ACCESS_FILE="$ROOT/secret/exit-access.yaml" && source "$ROOT/scripts/lib.sh" && echo "$SERVER_HOST")"
 [[ -n "$EXIT_HOST" ]] || { echo "error: no host in secret/exit-access.yaml" >&2; exit 1; }
 (umask 077 && "$ROOT/scripts/render-tunnel.sh" ru "$EXIT_HOST" >"$TMP/pkg/awg-exit.conf")

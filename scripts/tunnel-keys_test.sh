@@ -19,7 +19,19 @@ pub_of() {
     openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64
 }
 
-"$DIR/tunnel-keys.sh" >/dev/null
+# `make deploy` (RU side) must never create the tunnel keys: it stops before
+# the build, with no ssh. The access file is a fake, ssh and make are fakes.
+mkdir "$TMP/fake"
+for c in make ssh sshpass; do printf '#!/bin/sh\necho "%s $*" >>"%s"\n' "$c" "$TMP/fake/calls" >"$TMP/fake/$c"; done
+chmod +x "$TMP/fake"/*
+printf 'host: ru.example\nuser: u\n' >"$TMP/access.yaml"
+err="$(PATH="$TMP/fake:$PATH" ACCESS_FILE="$TMP/access.yaml" bash "$DIR/deploy.sh" 2>&1 >/dev/null)"
+check "deploy without tunnel.yaml fails" "1" "$?"
+check "deploy without tunnel.yaml says why" "1" "$(grep -c "error: $TUNNEL_FILE is missing" <<<"$err")"
+check "deploy without tunnel.yaml creates no keys, builds nothing, no ssh" "0 0" "$([[ -e "$TUNNEL_FILE" ]] && echo 1 || echo 0) $([[ -e "$TMP/fake/calls" ]] && echo 1 || echo 0)"
+
+out="$("$DIR/tunnel-keys.sh")"
+check "a new file is announced" "1" "$(grep -c "^created $TUNNEL_FILE" <<<"$out")"
 check "file mode" "600" "$(mode "$TUNNEL_FILE")"
 for k in ru_private ru_public exit_private exit_public psk; do
   check "$k is 32 bytes" "32" "$(bytes "$(val "$k")")"
@@ -43,8 +55,8 @@ check "h1..h4 distinct" "4" "$(echo "$hs" | sort -u | wc -l | tr -d ' ')"
 check "h1..h4 > 4" "0" "$(echo "$hs" | awk '$1 <= 4 || $1 > 4294967295' | wc -l | tr -d ' ')"
 
 before="$(cat "$TUNNEL_FILE")"
-"$DIR/tunnel-keys.sh" >/dev/null
-check "second run leaves the file untouched" "$before" "$(cat "$TUNNEL_FILE")"
+out="$("$DIR/tunnel-keys.sh")"
+check "second run leaves the file untouched, says nothing" "$before|" "$(cat "$TUNNEL_FILE")|$out"
 
 ru="$("$DIR/render-tunnel.sh" ru 1.2.3.4)"
 ex="$("$DIR/render-tunnel.sh" exit 1.2.3.4)"

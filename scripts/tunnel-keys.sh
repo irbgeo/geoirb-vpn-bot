@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Creates secret/tunnel.yaml (keys, PSK, port, obfuscation) for the RU <-> exit
 # tunnel. An existing file is never touched. TUNNEL_FILE overrides the path.
+# Called by scripts/deploy-exit.sh only: `make deploy` refuses to run without
+# the file instead of making new keys the exit server does not know.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FILE="${TUNNEL_FILE:-$ROOT/secret/tunnel.yaml}"
@@ -50,3 +52,4 @@ trap 'rm -f "$FILE.tmp"' EXIT
 } >"$FILE.tmp"
 chmod 600 "$FILE.tmp"
 mv "$FILE.tmp" "$FILE" # a failure above never leaves a partial tunnel.yaml
+echo "created $FILE: NEW tunnel keys. Keep a copy; both servers must be deployed with this file."
