@@ -46,10 +46,20 @@ check "conntrack loaded at boot, hash size set" "nf_conntrack options nf_conntra
   "$(grep -v '^#' "$TMP/root/etc/modules-load.d/nf_conntrack.conf" "$TMP/root/etc/modprobe.d/nf_conntrack.conf" 2>&1 | cut -d: -f2- | tr '\n' ' ' | sed 's/ $//')"
 check "conntrack loaded before sysctl" "1" "$([[ "$(grep -n '^modprobe nf_conntrack' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^sysctl ' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"
 check "enable called" "1" "$(grep -c '^systemctl enable.* geoirb-awg-exit' "$TMP/calls")"
+# The modprobe file alone waits for the next load of the module (a reboot):
+# the running kernel gets the hash size too. The run above had no such file
+# (module not loaded) and still exited 0.
+HS="$TMP/root/sys/module/nf_conntrack/parameters/hashsize"
+check "no live hash size file: not created" "0" "$([[ -e "$HS" ]] && echo 1 || echo 0)"
 check "start called" "1" "$(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
 check "stop before start" "1" "$([[ "$(grep -n '^systemctl stop geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^systemctl start geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"
 check "stop saw the old conf" "1" "$(grep -c '^systemctl stop geoirb-awg-exit.service conf=OLD' "$TMP/calls")"
 check "awg-tools skipped on pinned tag" "0" "$(grep -c '^\(make\|git\|apt-get\)' "$TMP/calls")"
+
+mkdir -p "$(dirname "$HS")"; echo 7680 >"$HS"
+run "amneziawg-tools $TAG"
+check "install with the module loaded exits 0" "0" "$?"
+check "live hash size follows the shipped file" "16384" "$(cat "$HS")"
 
 run "amneziawg-tools v0.0.1"
 check "same conf again: tunnel not stopped, only made sure it runs" "0 1" \

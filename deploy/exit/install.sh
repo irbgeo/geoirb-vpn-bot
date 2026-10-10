@@ -32,6 +32,14 @@ install -m 644 "$S/99-geoirb-vpn.conf" "$ROOT/etc/sysctl.d/"
 install -m 644 "$S/nf_conntrack-modules.conf" "$ROOT/etc/modules-load.d/nf_conntrack.conf"
 install -m 644 "$S/nf_conntrack-modprobe.conf" "$ROOT/etc/modprobe.d/nf_conntrack.conf"
 modprobe nf_conntrack || echo "warning: module nf_conntrack not loaded" >&2
+# the live value follows the shipped file, so nobody waits for a reboot (the
+# RU install does the same); the kernel rehashes in place, no connection drops
+HS="$ROOT/sys/module/nf_conntrack/parameters/hashsize"
+if [[ -w "$HS" ]]; then
+  sed -n 's/.*hashsize=//p' "$S/nf_conntrack-modprobe.conf" >"$HS" || echo "warning: conntrack hash size not applied" >&2
+else
+  echo "warning: conntrack hash size not applied (module not loaded)" >&2
+fi
 sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf" || echo "warning: sysctl settings not applied" >&2
 
 systemctl daemon-reload
