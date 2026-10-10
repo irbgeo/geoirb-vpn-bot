@@ -82,6 +82,7 @@ check "vpn_forward chain flushed on reload" "1" "$(grep -cx 'flush chain inet ge
 check "vpn_forward hook" "1" "$(grep -c 'type filter hook forward priority filter;' "$NFT")"
 check "loopback is never masqueraded" "1" "$(grep -c 'oifname != "lo"' "$NFT")"
 check "client to client dropped" "1" "$(grep -cx $'\t\tiifname "awg0" oifname "awg0" drop' "$NFT")"
+check "marked traffic not leaving through the tunnel is dropped" "1" "$(grep -cx $'\t\tiifname "awg0" meta mark 0x1 oifname != "awg-exit" drop' "$NFT")"
 check "private ranges dropped" "1" "$(grep -cx $'\t\tiifname "awg0" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop' "$NFT")"
 
 echo

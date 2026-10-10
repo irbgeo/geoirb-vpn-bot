@@ -6,6 +6,9 @@
 # Clients may not reach each other or private/link-local networks (VPC,
 # cloud metadata 169.254.169.254): chain vpn_forward. DNS on 10.8.0.1 is the host
 # itself, so it goes through the input hook and is not touched by vpn_forward.
+# vpn_forward is also the second lock of "fail closed": a marked packet that
+# is not leaving through awg-exit (the ip rule or table 100 is gone, so the
+# main table took it) is dropped instead of leaving from the RU address.
 # Safe to load again: the set is declared, never flushed here, so the RU
 # networks deploy/ru-nets.sh put into it stay; only the chains are rebuilt.
 table inet geoirb {
@@ -37,6 +40,7 @@ table inet geoirb {
 		ip saddr 10.8.0.0/22 oifname != "awg-exit" oifname != "awg0" oifname != "lo" masquerade
 	}
 	chain vpn_forward {
+		iifname "awg0" meta mark 0x1 oifname != "awg-exit" drop
 		iifname "awg0" oifname "awg0" drop
 		iifname "awg0" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop
 	}
