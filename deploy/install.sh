@@ -3,7 +3,7 @@
 # deploy.sh uploads it). Installs or updates the bot, the host AmneziaWG
 # (awg0 for clients, awg-exit tunnel), split routing, DNS for clients, the
 # backup timer and the host tuning. Order matters: a backup of the current
-# state is taken before the new binary can touch Mongo or awg0.conf.
+# state is taken first, before anything on the host changes.
 # Env: LOCAL_HASH (hash of BOT_TOKEN/DB_SECRET_KEY in the package), FORCE=1
 # to replace them anyway. ROOT is a path prefix for tests.
 set -euo pipefail
@@ -22,6 +22,19 @@ if [[ -f "$E" ]]; then
     echo "error: BOT_TOKEN or DB_SECRET_KEY in .env differs from the server. A new DB_SECRET_KEY makes every stored client key unreadable. If you really mean it: FORCE=1 make deploy" >&2
     exit 1
   fi
+fi
+
+# A backup of the state the running version left, before anything changes
+# (only backup.sh and its unit are new by then, and it still reads the old
+# env): a failed backup stops the deploy with the old bot, env, units and
+# tunnels as they were. On the first deploy there is nothing to back up yet.
+first=0
+[[ -x "$OPT/bot" && -f "$E" ]] || first=1
+if [[ "$first" == 0 ]]; then
+  install -m 750 "$S/backup.sh" "$OPT/"
+  install -m 644 "$S/geoirb-vpn-bot-backup.service" "$SD/"
+  systemctl daemon-reload
+  systemctl start geoirb-vpn-bot-backup.service
 fi
 
 # The module comes from ppa:amnezia/ppa (amneziawg-dkms), installed by hand.
@@ -113,13 +126,6 @@ systemctl enable --quiet --now geoirb-ru-nets.timer
 # fill the RU set now; a failed download must not stop the deploy (it retries)
 systemctl start geoirb-ru-nets.service || echo "warning: RU networks not loaded yet, see journalctl -u geoirb-ru-nets" >&2
 systemctl enable --quiet --now geoirb-vpn-bot-backup.timer
-
-# A backup of the state the running version left, before the new one
-# starts; a failed backup stops the deploy with the old bot still running.
-# On the first deploy there is nothing to back up yet.
-first=0
-[[ -x "$OPT/bot" ]] || first=1
-[[ "$first" == 1 ]] || systemctl start geoirb-vpn-bot-backup.service
 
 install -m 755 "$S/bot" "$OPT/bot"
 systemctl enable --quiet geoirb-vpn-bot.service

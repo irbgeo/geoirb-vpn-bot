@@ -30,7 +30,7 @@ printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/id"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" == genkey ]] && echo KEY || echo "amneziawg-tools %s"\n' "$TAG" >"$TMP/bin/awg"
 printf '#!/usr/bin/env bash\necho "ufw $*" >>"$CALLS"\n[[ "$1" != status ]] || echo "Status: $UFW"\n' >"$TMP/bin/ufw"
 # systemctl also logs the awg-exit conf and the bot binary it sees, to prove the order.
-printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\ncase "$*" in\n  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;\n  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;\n  *is-active*systemd-networkd*) [[ -z "${NO_NETWORKD:-}" ]] ;;\nesac\n' >"$TMP/bin/systemctl"
+printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\ncase "$*" in\n  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;\n  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;\n  *is-active*systemd-networkd*) [[ -z "${NO_NETWORKD:-}" ]] ;;\n  *start*geoirb-vpn-bot-backup*) [[ -z "${BACKUP_FAIL:-}" ]] ;;\nesac\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
 run() { # run <ufw state> [env...]: installs a fresh copy of the package as deploy.sh lays it out.
@@ -115,9 +115,24 @@ check "update: active awg0 left alone" "0" "$(grep -c '^systemctl start geoirb-a
 check "update: networkd conf unchanged, not restarted" "0" "$(grep -c '^systemctl restart systemd-networkd' "$TMP/calls")"
 check "update: backup of the old state" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service .*bot=OLDBOT' "$TMP/calls")"
 check "update: one backup" "1" "$(grep -c '^systemctl start geoirb-vpn-bot-backup.service' "$TMP/calls")"
+check "update: the backup comes before any other change" "2" "$(line '^systemctl start geoirb-vpn-bot-backup.service')"
 check "update: awg0.conf kept" "1" "$(cmp -s "$R/etc/amnezia/amneziawg/awg0.conf" "$TMP/awg0.first" && echo 1)"
 check "ufw inactive: no rules" "0" "$(grep -c '^ufw .*allow' "$TMP/calls")"
 check "packages present: no apt-get" "0" "$(grep -c '^apt-get' "$TMP/calls")"
+
+# A failed backup stops the deploy with everything as the old version left it.
+echo OLDBOT >"$OPT/bot"
+printf 'BOT_TOKEN=1:a\nDB_SECRET_KEY=k\nOLD_ENV=1\n' >"$R/etc/geoirb-vpn-bot/env"
+echo "# old unit" >"$SD/geoirb-vpn-bot.service"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 BACKUP_FAIL=1
+check "failed backup: the deploy fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "failed backup: old binary, env and bot unit kept" "OLDBOT OLD_ENV=1 # old unit" \
+  "$(cat "$OPT/bot") $(tail -1 "$R/etc/geoirb-vpn-bot/env") $(cat "$SD/geoirb-vpn-bot.service")"
+check "failed backup: nothing after it ran (no bot restart, no tunnel stop)" "systemctl daemon-reload
+systemctl start geoirb-vpn-bot-backup.service" "$(sed 's/ conf=.*//' "$TMP/calls")"
+rm "$R/etc/geoirb-vpn-bot/env" # as on a host with a binary but no env: no early backup, the deploy goes on
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
+check "after the failed one: a deploy passes" "0 NEWBOT" "$? $(cat "$OPT/bot")"
 
 # A host that does not run systemd-networkd: the file is installed, nothing is restarted.
 rm -f "$R/etc/systemd/networkd.conf.d/geoirb.conf"
