@@ -81,7 +81,8 @@ func TestAndroidAndWindowsGetTheVideo(t *testing.T) {
 	r.Wait() // the upload runs in the background
 
 	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "Раздельное туннелирование")
+	require.Contains(t, s.sent[0].Text, "Отключите соединение", "the setting is reachable only while disconnected")
+	require.Contains(t, s.sent[0].Text, "«Раздельное туннелирование приложений»")
 	require.True(t, hasMenuButton(s.sent[0].Keyboard))
 	require.Len(t, s.videos, 1)
 	require.Equal(t, int64(42), s.videos[0].ChatID)
