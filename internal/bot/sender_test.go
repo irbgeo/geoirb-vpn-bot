@@ -253,3 +253,28 @@ func TestNewUploadClient(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, client)
 }
+
+func TestRefund(t *testing.T) {
+	s, api := newTelegramSender(t)
+	ctx := context.Background()
+	in := refundInput{
+		UserID:   7,
+		ChargeID: "charge1",
+	}
+
+	already, err := s.Refund(ctx, in)
+	require.NoError(t, err)
+	require.False(t, already)
+	require.Equal(t, "refundStarPayment", api.calls[0].Method)
+	require.InDelta(t, 7, api.calls[0].Fields["user_id"], 0)
+	require.Equal(t, "charge1", api.calls[0].Fields["telegram_payment_charge_id"])
+
+	api.replies["refundStarPayment"] = `{"ok":false,"error_code":400,"description":"Bad Request: CHARGE_ALREADY_REFUNDED"}`
+	already, err = s.Refund(ctx, in)
+	require.NoError(t, err, "the Stars are with the user: done")
+	require.True(t, already)
+
+	api.replies["refundStarPayment"] = `{"ok":false,"error_code":400,"description":"Bad Request: CHARGE_NOT_FOUND"}`
+	_, err = s.Refund(ctx, in)
+	require.ErrorContains(t, err, "CHARGE_NOT_FOUND")
+}

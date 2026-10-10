@@ -23,10 +23,12 @@ type fakeSender struct {
 	answers   []preCheckoutAnswer
 	refunds   []refundInput
 	refundErr error
-	edits     []editMessage
-	sent      []outMessage
-	files     []outFile
-	videos    []outVideo
+	// refundAlready: Telegram says the charge was refunded before.
+	refundAlready bool
+	edits         []editMessage
+	sent          []outMessage
+	files         []outFile
+	videos        []outVideo
 	// videoHold: an upload waits until it is closed (or its ctx ends).
 	videoHold chan struct{}
 	// videoErr decides whether a video send fails; nil = all work.
@@ -49,15 +51,15 @@ func (s *fakeSender) AnswerPreCheckout(_ context.Context, a preCheckoutAnswer) e
 	return nil
 }
 
-func (s *fakeSender) Refund(ctx context.Context, in refundInput) error {
+func (s *fakeSender) Refund(ctx context.Context, in refundInput) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	err := ctx.Err()
 	if err != nil {
-		return err // like a real API call on a cancelled context
+		return false, err // like a real API call on a cancelled context
 	}
 	s.refunds = append(s.refunds, in)
-	return s.refundErr
+	return s.refundAlready, s.refundErr
 }
 
 func (s *fakeSender) Edit(_ context.Context, m editMessage) error {

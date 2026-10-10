@@ -127,6 +127,13 @@ type refundAlert struct {
 	UserID    int64
 	Cause     error // why it was not applied
 	RefundErr error // nil = the Stars went back
+	RecordErr error // the Stars went back, but the DB does not say so
+}
+
+// starsReturn is how returnStars went once the Stars are back.
+type starsReturn struct {
+	Already   bool  // Telegram had returned them before this call
+	RecordErr error // the refund could not be recorded in the DB
 }
 
 // paymentReviewInput is a payment that was not applied because its record

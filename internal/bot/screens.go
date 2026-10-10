@@ -290,6 +290,16 @@ func refundAlertText(a refundAlert) string {
 			a.RefundErr,
 		)
 	}
+	if a.RecordErr != nil {
+		return fmt.Sprintf(
+			"⚠️ Оплата %s от id %d не применена (%v), звёзды возвращены, но возврат не записан в базе (%v). "+
+				"В карточке пользователя останется кнопка возврата: нажмите её, чтобы записать — второй раз Telegram не вернёт.",
+			a.ChargeID,
+			a.UserID,
+			a.Cause,
+			a.RecordErr,
+		)
+	}
 	return fmt.Sprintf("⚠️ Оплата %s от id %d не применена (%v), звёзды возвращены.", a.ChargeID, a.UserID, a.Cause)
 }
 

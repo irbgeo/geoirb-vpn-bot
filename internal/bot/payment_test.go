@@ -409,3 +409,27 @@ func paid() tgbot.Update {
 		},
 	}
 }
+
+// The automatic refund and the admin button are one sequence: when the
+// Stars went back but the record failed, the admins hear that too.
+func TestPaymentRefundNotRecordedIsToldToAdmins(t *testing.T) {
+	svc := &fakeService{
+		payErr:        errors.New("awg down"),
+		refundMarkErr: errors.New("mongo down"),
+		admins: []*service.User{
+			{
+				ID: 1,
+			},
+		},
+	}
+	r, s := newRouter(svc)
+
+	require.Error(t, r.Handle(context.Background(), paid()))
+
+	require.Len(t, s.refunds, 1)
+	alert := s.sentTo(1)[0].Text
+	require.Contains(t, alert, "звёзды возвращены")
+	require.Contains(t, alert, "не записан")
+	require.Contains(t, alert, "mongo down")
+	require.Contains(t, s.sentTo(42)[0].Text, "звёзды возвращены", "for the user it is a plain refund")
+}

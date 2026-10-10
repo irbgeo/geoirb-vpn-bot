@@ -25,7 +25,9 @@ type Sender interface {
 	Answer(ctx context.Context, callbackID string) error
 	SendInvoice(ctx context.Context, inv *outInvoice) error
 	AnswerPreCheckout(ctx context.Context, a preCheckoutAnswer) error
-	Refund(ctx context.Context, in refundInput) error
+	// Refund returns the Stars of a charge; already = Telegram says they
+	// were returned before (not an error: the user has them).
+	Refund(ctx context.Context, in refundInput) (already bool, err error)
 }
 
 // uploadTimeout is the whole-request limit of the upload client: the video
@@ -206,13 +208,13 @@ func (s *telegramSender) AnswerPreCheckout(ctx context.Context, a preCheckoutAns
 }
 
 // Refund returns the Stars of a payment to the user. A charge that is
-// already refunded counts as done.
-func (s *telegramSender) Refund(ctx context.Context, in refundInput) error {
-	_, err := s.client.RefundStarPayment(ctx, in.UserID, in.ChargeID)
+// already refunded counts as done, and is reported as such.
+func (s *telegramSender) Refund(ctx context.Context, in refundInput) (already bool, err error) {
+	_, err = s.client.RefundStarPayment(ctx, in.UserID, in.ChargeID)
 	if tgbot.IsChargeAlreadyRefunded(err) {
-		return nil
+		return true, nil
 	}
-	return err
+	return false, err
 }
 
 // clientOptions are the options of both Bot API clients. RetryAfter: a 429

@@ -859,3 +859,21 @@ func TestAdminRefundThatTelegramRefusesChangesNothing(t *testing.T) {
 	require.Contains(t, admin[0].Text, "Не получилось")
 	require.Len(t, s.edits, 2, "the card is not redrawn as if it worked")
 }
+
+// The Stars went back earlier (the user was told then) but the record
+// failed, so the button stayed. Pressing it again records the refund and
+// does not tell the user a second time.
+func TestAdminRefundOfAnAlreadyReturnedChargeDoesNotTellTheUserAgain(t *testing.T) {
+	svc := withPayments(adminService())
+	r, s := newRouter(svc)
+	s.refundAlready = true
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:user:7")))
+	require.NoError(t, r.Handle(ctx, press(refundButton(s.edits[0]))))
+
+	require.NoError(t, r.Handle(ctx, press(buttons(s.edits[1])[0])))
+
+	require.Len(t, svc.refunded, 1, "now it is recorded")
+	require.Empty(t, s.sentTo(7), "the user heard about it the first time")
+	require.Contains(t, s.edits[2].Text, "↩️ возвращено")
+}

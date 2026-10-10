@@ -473,7 +473,9 @@ func payRef(chargeID string) string {
 
 // adminRefund returns the Stars, records it, tells the user and redraws
 // the card. The key is left as is: the admin disables it separately if
-// needed. An already refunded payment is not refunded again.
+// needed. An already refunded payment is not refunded again; when only its
+// record was missing (Telegram says "already returned"), the record is
+// written and the user, who was told the first time, is not told again.
 func (s *router) adminRefund(ctx context.Context, a adminAction) error {
 	ref, err := parsePaymentRef(a.Arg)
 	if err != nil {
@@ -497,29 +499,29 @@ func (s *router) adminRefund(ctx context.Context, a adminAction) error {
 		UserID:   p.UserID,
 		ChargeID: p.ChargeID,
 	}
-	err = s.send.Refund(ctx, refundInput)
+	res, err := s.returnStars(ctx, refundInput)
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
 	}
-	err = s.billing.MarkRefunded(ctx, p.ChargeID)
-	if err != nil {
-		log.Printf("bot: stars returned but not recorded for %s: %v", p.ChargeID, err)
+	if res.RecordErr != nil {
 		outMessage := outMessage{
 			ChatID: a.ChatID,
 			Text:   refundNotRecordedText(p),
 		}
-		sendErr := s.send.Send(ctx, outMessage)
-		if sendErr != nil {
-			log.Printf("bot: %v", sendErr)
+		err = s.send.Send(ctx, outMessage)
+		if err != nil {
+			log.Printf("bot: %v", err)
 		}
 	}
-	outMessage := outMessage{
-		ChatID: p.UserID,
-		Text:   refundedToUserText(p),
-	}
-	err = s.send.Send(ctx, outMessage)
-	if err != nil {
-		log.Printf("bot: tell user %d about refund: %v", p.UserID, err)
+	if !res.Already {
+		outMessage := outMessage{
+			ChatID: p.UserID,
+			Text:   refundedToUserText(p),
+		}
+		err = s.send.Send(ctx, outMessage)
+		if err != nil {
+			log.Printf("bot: tell user %d about refund: %v", p.UserID, err)
+		}
 	}
 	return s.adminUser(ctx, a)
 }
