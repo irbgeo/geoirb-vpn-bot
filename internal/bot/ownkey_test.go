@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -221,4 +222,37 @@ func TestOwnKeyActionsAreLimitedPerUser(t *testing.T) {
 		require.NoError(t, r.Handle(ctx, press(cbDelete+"PUB1=")))
 		require.Len(t, svc.deletedOwn, 1, "a minute later it works again")
 	})
+}
+
+func TestOwnKeyErrorText(t *testing.T) {
+	cases := map[string]struct {
+		err   error
+		text  string
+		known bool
+	}{
+		"unreadable": {
+			err:   service.ErrUnreadable,
+			text:  keyUnreadableText,
+			known: true,
+		},
+		"blocked": {
+			err:   service.ErrBlocked,
+			text:  blockedKeyDeleteText,
+			known: true,
+		},
+		"gone": {
+			err:   service.ErrNotFound,
+			text:  keyNotFoundText,
+			known: true,
+		},
+		"unexpected": {
+			err:  errors.New("awg down"),
+			text: ownKeyFailedText,
+		},
+	}
+	for name, c := range cases {
+		text, known := ownKeyErrorText(c.err)
+		require.Equal(t, c.text, text, name)
+		require.Equal(t, c.known, known, name)
+	}
 }
