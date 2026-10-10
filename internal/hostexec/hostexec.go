@@ -52,12 +52,14 @@ func (s *Runner) Run(ctx context.Context, in Input) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	start := time.Now()
 	err := cmd.Run()
 	name := strings.Join(in.Args, " ")
 	// On timeout the group is killed, possibly half-way through a script, so
 	// callers treat the result as unknown.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return "", fmt.Errorf("%s: timed out after %s", name, s.timeout)
+		// The real time: the deadline may be the caller's, shorter than s.timeout.
+		return "", fmt.Errorf("%s: timed out after %s", name, time.Since(start).Round(time.Millisecond))
 	}
 	if err != nil {
 		return "", fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(stderr.String()))

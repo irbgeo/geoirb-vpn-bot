@@ -96,3 +96,16 @@ func TestRunTimeoutKillsGrandchildren(t *testing.T) {
 	require.ErrorContains(t, err, "timed out")
 	require.Less(t, time.Since(start), time.Second)
 }
+
+func TestRunTimeoutMessageHasTheRealTime(t *testing.T) {
+	cfg := &config.Config{AWGTimeout: time.Hour}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := New(cfg).Run(
+		ctx,
+		Input{Args: []string{"sleep", "5"}},
+	)
+	require.ErrorContains(t, err, "timed out after")
+	require.NotContains(t, err.Error(), "1h0m0s", "the caller's deadline ended, not the command limit")
+}
