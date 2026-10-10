@@ -48,6 +48,7 @@ check "archive is root only" "600" "$(mode "$D/$new")"
 check "the newest KEEP archives stay, older ones go" "geoirb-vpn-20200103-000000.tar.gz $new" "$(archives)"
 check "URI reaches mongodump on stdin, never argv" "uri: mongodb://u:s3cret@127.0.0.1/db?a=b|0" "$(cat "$TMP/calls.stdin")|$(grep -c s3cret "$TMP/calls")"
 check "stamp touched" "1" "$([[ -f "$STAMP" ]] && echo 1)"
+check "the bot user can read the stamp (like ru-nets.stamp)" "644" "$(mode "$STAMP")"
 
 # A failed dump: no archive, no .part, nothing deleted, the stamp stays old.
 touch -t 200001010000 "$STAMP"

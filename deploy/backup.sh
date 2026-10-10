@@ -46,5 +46,6 @@ ls -1t "$DEST"/geoirb-vpn-*.tar.gz | tail -n +"$((KEEP + 1))" | xargs -r rm --
 if [[ -n "$STAMP" ]]; then
   install -d "$(dirname "$STAMP")"
   s="$(mktemp "$STAMP.XXXXXX")"
+  chmod 644 "$s" # mktemp makes it 600; the same mode as ru-nets.stamp
   mv -f "$s" "$STAMP"
 fi
