@@ -14,6 +14,7 @@ test-sh:
 	./scripts/server-env_test.sh
 	./scripts/tunnel-keys_test.sh
 	./deploy/exit/install_test.sh
+	./deploy/exit/exit-fw_test.sh
 	./deploy/install_test.sh
 	./deploy/awg0-init_test.sh
 	./deploy/import-peers_test.sh

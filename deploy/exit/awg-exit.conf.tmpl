@@ -14,9 +14,11 @@ H1 = @H1@
 H2 = @H2@
 H3 = @H3@
 H4 = @H4@
-# Second guard: tunnel traffic may not reach private/link-local networks.
-PostUp = sysctl -w net.ipv4.ip_forward=1; IF=$(ip -4 route show default | awk '{print $5; exit}'); iptables -t nat -A POSTROUTING -s 10.255.255.1 -o $IF -j MASQUERADE; iptables -I FORWARD -i %i -d 10.0.0.0/8 -j DROP; iptables -I FORWARD -i %i -d 172.16.0.0/12 -j DROP; iptables -I FORWARD -i %i -d 192.168.0.0/16 -j DROP; iptables -I FORWARD -i %i -d 169.254.0.0/16 -j DROP; iptables -I FORWARD -i %i -d 100.64.0.0/10 -j DROP; iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t mangle -A FORWARD -o %i -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
-PostDown = IF=$(ip -4 route show default | awk '{print $5; exit}'); iptables -t nat -D POSTROUTING -s 10.255.255.1 -o $IF -j MASQUERADE; iptables -D FORWARD -i %i -d 10.0.0.0/8 -j DROP; iptables -D FORWARD -i %i -d 172.16.0.0/12 -j DROP; iptables -D FORWARD -i %i -d 192.168.0.0/16 -j DROP; iptables -D FORWARD -i %i -d 169.254.0.0/16 -j DROP; iptables -D FORWARD -i %i -d 100.64.0.0/10 -j DROP; iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -m state --state RELATED,ESTABLISHED -j ACCEPT; iptables -t mangle -D FORWARD -o %i -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+# Forwarding, NAT for the RU server only and the second guard (the tunnel may
+# not reach private/link-local networks): deploy/exit/exit-fw.sh, installed
+# by deploy/exit/install.sh.
+PostUp = /usr/local/sbin/geoirb-exit-fw.sh up %i
+PostDown = /usr/local/sbin/geoirb-exit-fw.sh down %i
 
 [Peer]
 PublicKey = @RU_PUBLIC@

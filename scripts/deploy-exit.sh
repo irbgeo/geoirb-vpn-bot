@@ -13,7 +13,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -m 700 "$TMP/pkg"
 (umask 077 && "$ROOT/scripts/render-tunnel.sh" exit "$SERVER_HOST" >"$TMP/pkg/awg-exit.conf")
-cp "$ROOT/deploy/exit/install.sh" "$ROOT/deploy/exit/geoirb-awg-exit.service" \
+cp "$ROOT/deploy/exit/install.sh" "$ROOT/deploy/exit/geoirb-awg-exit.service" "$ROOT/deploy/exit/exit-fw.sh" \
   "$ROOT/deploy/awg-tools.sh" "$ROOT/deploy/99-geoirb-vpn.conf" \
   "$ROOT/deploy/nf_conntrack-modules.conf" "$ROOT/deploy/nf_conntrack-modprobe.conf" "$TMP/pkg/"
 

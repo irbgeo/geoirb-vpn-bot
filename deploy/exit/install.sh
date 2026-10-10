@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs as root on the exit server from the unpacked package (scripts/deploy-exit.sh).
-# Installs awg tools, the tunnel conf (its PostUp does forwarding/NAT) and the
+# Installs awg tools, the tunnel conf (its PostUp runs exit-fw.sh: forwarding/NAT) and the
 # geoirb-awg-exit service. Never touches docker or other services. ROOT is a
 # path prefix for tests.
 set -euo pipefail
@@ -9,6 +9,10 @@ ROOT="${ROOT:-}"
 
 modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
 bash "$S/awg-tools.sh"
+
+# The conf's PostUp/PostDown call it; in place before the tunnel starts.
+install -d "$ROOT/usr/local/sbin"
+install -m 755 "$S/exit-fw.sh" "$ROOT/usr/local/sbin/geoirb-exit-fw.sh"
 
 # The tunnel is restarted only when its conf changed (a run that changes
 # nothing must not cut foreign traffic). Stop first: `down` must run the OLD

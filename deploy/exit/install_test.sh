@@ -44,6 +44,10 @@ CONF="$TMP/root/etc/geoirb-vpn/awg-exit.conf"
 check "conf content" "[Interface]" "$(cat "$CONF")"
 check "conf mode" "600" "$(mode "$CONF")"
 check "unit installed" "1" "$([[ -f "$TMP/root/etc/systemd/system/geoirb-awg-exit.service" ]] && echo 1)"
+FWS=/usr/local/sbin/geoirb-exit-fw.sh
+check "firewall script installed, runnable" "755" "$(mode "$TMP/root$FWS")"
+check "the conf template calls it at that path" "PostUp = $FWS up %i
+PostDown = $FWS down %i" "$(grep -E '^Post(Up|Down)' "$DIR/awg-exit.conf.tmpl")"
 check "sysctl file installed" "1" "$([[ -f "$TMP/root/etc/sysctl.d/99-geoirb-vpn.conf" ]] && echo 1)"
 # After a reboot the conntrack settings need the module loaded before systemd-sysctl.
 check "conntrack loaded at boot, hash size set" "nf_conntrack options nf_conntrack hashsize=16384" \
