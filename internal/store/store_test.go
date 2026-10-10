@@ -10,13 +10,17 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// testStore connects to MONGO_URI (default localhost), wipes the test
-// database and skips the test when Mongo is not reachable.
+// testStore connects to MONGO_URI (default localhost) and wipes the test
+// database. Only a Mongo that does not answer a ping skips the test (and
+// with REQUIRE_MONGO=1 even that fails it): any other Connect error is a
+// bug in the store and must fail.
 func testStore(t *testing.T) *store {
 	t.Helper()
 	uri := os.Getenv("MONGO_URI")
@@ -26,6 +30,13 @@ func testStore(t *testing.T) *store {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
+	err := pingMongo(ctx, uri)
+	if err != nil && os.Getenv("REQUIRE_MONGO") == "1" {
+		t.Fatalf("mongo not reachable at %s: %v", uri, err)
+	}
+	if err != nil {
+		t.Skipf("mongo not reachable at %s: %v", uri, err)
+	}
 	s, err := Connect(
 		ctx,
 		&config.Config{
@@ -34,13 +45,21 @@ func testStore(t *testing.T) *store {
 			SecretKey: testKey,
 		},
 	)
-	if err != nil {
-		t.Skipf("mongo not reachable at %s: %v", uri, err)
-	}
+	require.NoError(t, err)
 	require.NoError(t, s.db.Drop(ctx))
 	require.NoError(t, s.ensureIndexes(ctx))
 	t.Cleanup(func() { _ = s.Disconnect(context.Background()) })
 	return s
+}
+
+// pingMongo reports whether a Mongo answers at uri.
+func pingMongo(ctx context.Context, uri string) error {
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	if err != nil {
+		return err
+	}
+	defer client.Disconnect(context.Background()) //nolint:errcheck
+	return client.Ping(ctx, nil)
 }
 
 // ts is a Mongo-friendly timestamp: UTC, millisecond precision.
