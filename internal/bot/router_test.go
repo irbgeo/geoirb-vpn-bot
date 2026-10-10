@@ -27,8 +27,12 @@ type fakeSender struct {
 	sent      []outMessage
 	files     []outFile
 	videos    []outVideo
-	answered  []string
-	fail      map[int64]bool
+	// videoHold: an upload waits until it is closed (or its ctx ends).
+	videoHold chan struct{}
+	// videoErr decides whether a video send fails; nil = all work.
+	videoErr func(v *outVideo) error
+	answered []string
+	fail     map[int64]bool
 }
 
 func (s *fakeSender) SendInvoice(_ context.Context, m *outInvoice) error {
@@ -80,11 +84,32 @@ func (s *fakeSender) SendPhoto(_ context.Context, m outFile) error {
 	return nil
 }
 
-func (s *fakeSender) SendVideo(_ context.Context, m *outVideo) (string, error) {
+func (s *fakeSender) SendVideo(ctx context.Context, m *outVideo) (string, error) {
+	s.mu.Lock()
+	s.videos = append(s.videos, *m)
+	hold, fail := s.videoHold, s.videoErr
+	s.mu.Unlock()
+	if m.FileID == "" && hold != nil {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+		}
+	}
+	err := ctx.Err() // like a real API call on a cancelled context
+	if err == nil && fail != nil {
+		err = fail(m)
+	}
+	if err != nil {
+		return "", err
+	}
+	return "VID1", nil
+}
+
+// sentVideos is a copy of the video sends so far.
+func (s *fakeSender) sentVideos() []outVideo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.videos = append(s.videos, *m)
-	return "VID1", nil
+	return append([]outVideo(nil), s.videos...)
 }
 
 func (s *fakeSender) Answer(_ context.Context, callbackID string) error {

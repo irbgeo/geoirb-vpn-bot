@@ -86,7 +86,9 @@ func newTelegramSender(t *testing.T) (*telegramSender, *telegramAPI) {
 	t.Cleanup(srv.Close)
 	client, err := tgbot.NewClient("123:abc", tgbot.WithBaseURL(srv.URL))
 	require.NoError(t, err)
-	return NewTelegramSender(client), api
+	uploads, err := tgbot.NewClient("123:abc", tgbot.WithBaseURL(srv.URL))
+	require.NoError(t, err)
+	return NewTelegramSender(client, uploads), api
 }
 
 func TestNewTelegramClient(t *testing.T) {
@@ -189,4 +191,65 @@ func TestEditPutsTheRestOfALongTextIntoNewMessages(t *testing.T) {
 		"the old buttons go, the new ones are under the last part",
 	)
 	require.Contains(t, rest, "reply_markup")
+}
+
+func TestSendVideoUploadsThenSendsByFileID(t *testing.T) {
+	s, api := newTelegramSender(t)
+	api.replies["sendVideo"] = `{"ok":true,"result":{"message_id":1,"video":{"file_id":"VID9"}}}`
+	ctx := context.Background()
+
+	id, err := s.SendVideo(
+		ctx,
+		&outVideo{
+			ChatID:  42,
+			Name:    splitVideoName,
+			Data:    []byte("mp4"),
+			Caption: "how to",
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "VID9", id)
+	require.Equal(t, splitVideoName+":mp4", api.calls[0].Fields["video"], "the file itself")
+	require.Equal(t, "how to", api.calls[0].Fields["caption"])
+
+	_, err = s.SendVideo(
+		ctx,
+		&outVideo{
+			ChatID: 42,
+			FileID: id,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "VID9", api.calls[1].Fields["video"], "by ID: no second upload")
+}
+
+// A video without sound may come back as an animation: no "video" in the
+// reply, the file is in "document".
+func TestSendVideoFindsTheFileIDOfAnAnimation(t *testing.T) {
+	s, api := newTelegramSender(t)
+	api.replies["sendVideo"] = `{"ok":true,"result":{"message_id":1,"animation":{"file_id":"ANIM"},"document":{"file_id":"ANIM"}}}`
+
+	id, err := s.SendVideo(
+		context.Background(),
+		&outVideo{
+			ChatID: 42,
+			Name:   splitVideoName,
+			Data:   []byte("mp4"),
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "ANIM", id)
+}
+
+func TestNewUploadClient(t *testing.T) {
+	_, err := NewUploadClient(&config.Config{})
+	require.ErrorContains(t, err, "token is required")
+
+	client, err := NewUploadClient(
+		&config.Config{
+			BotToken: "123:abc",
+		},
+	)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 }

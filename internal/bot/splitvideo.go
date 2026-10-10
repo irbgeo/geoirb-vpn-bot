@@ -2,6 +2,9 @@ package bot
 
 import (
 	"context"
+	"log"
+
+	tgbot "github.com/irbgeo/go-tgbot"
 )
 
 // The last step of getting a key, also a menu button: apps that refuse to
@@ -21,8 +24,11 @@ func (s *router) askDevice(ctx context.Context, chatID int64) error {
 }
 
 // sendSplitVideo answers "Android" and "Windows": the steps in words, then
-// the video. The first send uploads the file; later ones reuse the ID
-// Telegram gave it.
+// the video. Telegram has the file after the first upload and gives it an
+// ID: with an ID the video is sent right here. Without one (the first
+// request after a start, or Telegram no longer takes the ID) the upload
+// goes to the background, so a slow one can't hold this request or be cut
+// with it.
 func (s *router) sendSplitVideo(ctx context.Context, chatID int64) error {
 	if s.splitVideo.empty() {
 		return nil
@@ -36,6 +42,32 @@ func (s *router) sendSplitVideo(ctx context.Context, chatID int64) error {
 	if err != nil {
 		return err
 	}
+	id := s.splitVideo.fileID()
+	if id != "" {
+		outVideo := outVideo{
+			ChatID:  chatID,
+			FileID:  id,
+			Caption: splitVideoCaption,
+		}
+		_, err = s.send.SendVideo(ctx, &outVideo)
+		if err == nil || tgbot.IsForbidden(err) {
+			return err // sent, or the user blocked the bot: the ID is fine
+		}
+		log.Printf("bot: split video by file ID: %v", err)
+		s.splitVideo.forget(id)
+	}
+	s.jobs.spawn(func(life context.Context) {
+		s.uploadSplitVideo(life, chatID)
+	})
+	return nil
+}
+
+// uploadSplitVideo sends the video to a chat when there was no file ID:
+// one upload at a time. Whoever waited for a running upload sends by the
+// ID it brought. A failure is told to the user, who can press again.
+func (s *router) uploadSplitVideo(ctx context.Context, chatID int64) {
+	s.splitVideo.uploading.Lock()
+	defer s.splitVideo.uploading.Unlock()
 	outVideo := outVideo{
 		ChatID:  chatID,
 		FileID:  s.splitVideo.fileID(),
@@ -46,11 +78,20 @@ func (s *router) sendSplitVideo(ctx context.Context, chatID int64) error {
 		outVideo.Data = s.splitVideo.data
 	}
 	id, err := s.send.SendVideo(ctx, &outVideo)
-	if err != nil {
-		return err
+	if err == nil {
+		s.splitVideo.remember(id)
+		return
 	}
-	s.splitVideo.remember(id)
-	return nil
+	log.Printf("bot: split video to %d: %v", chatID, err)
+	outMessage := outMessage{
+		ChatID:   chatID,
+		Text:     splitVideoFailedText,
+		Keyboard: menuKeyboard(),
+	}
+	err = s.send.Send(context.WithoutCancel(ctx), outMessage)
+	if err != nil {
+		log.Printf("bot: %v", err)
+	}
 }
 
 // splitNone answers every other device: the app has no such setting there.

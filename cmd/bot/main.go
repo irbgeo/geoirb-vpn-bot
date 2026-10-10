@@ -78,7 +78,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("fatal: %v", err)
 	}
-	sender := bot.NewTelegramSender(client)
+	uploads, err := bot.NewUploadClient(cfg)
+	if err != nil {
+		log.Fatalf("fatal: %v", err)
+	}
+	sender := bot.NewTelegramSender(client, uploads)
 
 	// Server load alerts watch this machine's limits; none off Linux, e.g.
 	// when running the bot on a laptop.

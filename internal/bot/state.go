@@ -81,7 +81,8 @@ func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
 // jobs runs the background mass sends (broadcasts, config notices), one at
 // a time: two together would go over Telegram's ~30 messages a second.
 // They run on life, not on an update's ctx: go-tgbot's Dispatcher cancels
-// that one as soon as the handler returns.
+// that one as soon as the handler returns. spawn runs other background
+// work (the video upload) on life too, outside that one slot.
 type jobs struct {
 	mu   sync.Mutex
 	busy bool
@@ -113,6 +114,14 @@ func (s *jobs) reserve() bool {
 func (s *jobs) run(fn func(ctx context.Context)) {
 	s.wg.Go(func() {
 		defer s.release()
+		fn(s.life)
+	})
+}
+
+// spawn runs fn in the background without taking the slot; close and wait
+// cover it like a mass send.
+func (s *jobs) spawn(fn func(ctx context.Context)) {
+	s.wg.Go(func() {
 		fn(s.life)
 	})
 }
@@ -343,11 +352,13 @@ func (s *rateLimit[K]) allow(key K) bool {
 
 // videoFile is a video shipped in the binary. The first send uploads it;
 // the file ID Telegram returns is reused afterwards. In memory only: one
-// upload after every restart.
+// upload after every restart. uploading is held for a whole upload, so
+// users who ask meanwhile wait for its ID instead of uploading too.
 type videoFile struct {
-	data []byte // never changed after newVideoFile
-	mu   sync.Mutex
-	id   string
+	data      []byte // never changed after newVideoFile
+	uploading sync.Mutex
+	mu        sync.Mutex
+	id        string
 }
 
 func newVideoFile(
@@ -367,6 +378,15 @@ func (s *videoFile) fileID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.id
+}
+
+// forget drops id when it is still the remembered one: Telegram refused it.
+func (s *videoFile) forget(id string) {
+	s.mu.Lock()
+	if s.id == id {
+		s.id = ""
+	}
+	s.mu.Unlock()
 }
 
 // remember keeps the ID of a sent video; an empty one changes nothing.
