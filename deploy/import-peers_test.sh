@@ -145,7 +145,7 @@ check "interface untouched" "$(printf '[Interface]\nAddress = 10.8.0.1/22\nPriva
 check "mode kept" "640" "$(mode "$CONF")"
 check "one timestamped backup" "1" "$(ls "$CONF".bak-import-* | wc -l | tr -d ' ')"
 check "backup is the old conf" "1" "$(grep -c '^\[Peer\]' "$CONF".bak-import-*)"
-check "no tmp left" "0" "$(ls "$(dirname "$CONF")" | grep -c tmp)"
+check "nothing left next to the conf but the backup" "awg0.conf awg0.conf.bak-import-" "$(ls "$(dirname "$CONF")" | sed 's/\(bak-import-\).*/\1/' | tr '\n' ' ' | sed 's/ $//')"
 check "one syncconf" "1" "$(grep -c '^awg syncconf awg0 ' "$TMP/calls")"
 check "syncconf got the conf" "5" "$(grep -c '^\[Peer\]' "$TMP/calls.synced")"
 
@@ -157,6 +157,11 @@ check "second run keeps conf" "1" "$(cmp -s "$CONF" "$TMP/after1" && echo 1)"
 check "second run no syncconf" "0" "$(grep -c '^awg syncconf' "$TMP/calls")"
 check "second run no new backup" "1" "$(ls "$CONF".bak-import-* | wc -l | tr -d ' ')"
 check "bot restarted after 0 import" "1" "$(grep -c 'systemctl start geoirb-vpn-bot' "$TMP/calls")"
+
+# The bot was not running: it is neither stopped nor started.
+: >"$TMP/calls"
+run BOT_ACTIVE= >/dev/null
+check "bot not running: exit 0, left alone" "0 0" "$? $(grep -cE 'systemctl (stop|start)' "$TMP/calls")"
 
 rm "$CONF"
 CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$DIR/import-peers.sh" "$TMP/old.conf" >/dev/null 2>&1

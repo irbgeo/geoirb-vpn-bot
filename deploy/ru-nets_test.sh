@@ -29,10 +29,11 @@ cat >"$TMP/bin/curl" <<'X'
 while [[ $# -gt 0 ]]; do [[ "$1" == -o ]] && out="$2"; shift; done
 cp "$FIXTURE" "$out"
 X
-# fake nft: logs the call and keeps a copy of its -f input.
+# fake nft: logs the call and keeps a copy of its -f input; fails with $NFT_FAIL.
 cat >"$TMP/bin/nft" <<'X'
 #!/usr/bin/env bash
 echo "nft $*" >>"$CALLS"
+[[ -z "${NFT_FAIL:-}" ]] || exit 1
 [[ "$1" == -f ]] && cp "$2" "$NFT_IN"
 X
 chmod +x "$TMP/bin"/*
@@ -83,6 +84,15 @@ check "failed download fails" "1" "$?"
 check "failed download: nft not called" "0" "$(grep -c . "$TMP/calls")"
 check "failed download: stamp kept" "1" "$([[ "$STAMP" -ot "$TMP/ripe" ]] && echo 1)"
 check "failed runs keep the saved set" "1" "$(cmp -s "$SAVED" "$TMP/saved.first" && echo 1)"
+
+# nft refuses the new set: the run fails, and neither the stamp nor the saved
+# set says otherwise.
+echo "ripencc|RU|ipv4|77.88.0.0|256|20100101|allocated" >>"$TMP/ripe"
+touch -t 200001010000 "$STAMP"
+run RU_NETS_MIN=3 NFT_FAIL=1
+check "nft failure fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "nft failure: stamp kept, saved set kept, no temp file" "1 1 " \
+  "$([[ "$STAMP" -ot "$TMP/saved.first" ]] && echo 1) $(cmp -s "$SAVED" "$TMP/saved.first" && echo 1) $(ls "$(dirname "$SAVED")" | grep -v -e '^ru4.nft$' -e '^ru-nets.stamp$')"
 
 echo
 [[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }

@@ -11,7 +11,8 @@ check() { # check <name> <expected> <actual>
 }
 
 mkdir "$TMP/bin"
-# nft: logs; fails on the saved set when $BAD_SET is set; `list chain` prints
+# nft: logs; fails on the saved set when $BAD_SET is set and on the table
+# file when $BAD_TABLE is set; `list chain` prints
 # the mark rule as real nft does when $HAS_TABLE is set, else fails (no table).
 cat >"$TMP/bin/nft" <<'EOF2'
 #!/usr/bin/env bash
@@ -22,6 +23,7 @@ if [[ "$1" == list ]]; then
   printf '\t\tiifname "awg0" ip daddr != @ru4 ip daddr != 10.8.0.0/22 meta mark set 0x00000001\n\t}\n}\n'
   exit
 fi
+[[ -z "${BAD_TABLE:-}" || "$2" != *geoirb-vpn.nft ]] || exit 1
 [[ -z "${BAD_SET:-}" || "$2" != *ru4.nft ]]
 EOF2
 # ip: logs; `rule show` prints the rule when $HAS_RULE is set.
@@ -59,6 +61,11 @@ check "rule present: not added again" "0" "$(n '^ip rule add')"
 run BAD_SET=1
 check "bad saved set tolerated" "0" "$?"
 check "bad saved set: rule and route still set" "1 1" "$(n '^ip rule add') $(n '^ip route replace unreachable')"
+
+# The table itself does not load: the unit must fail (awg0 Requires= it, so
+# clients are not served without marking and filtering).
+run BAD_TABLE=1
+check "table not loaded: fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 
 # The exit route: networkd or anything else may drop it while the tunnel is up.
 run
