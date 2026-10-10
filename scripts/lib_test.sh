@@ -2,15 +2,8 @@
 # Tests scripts/lib.sh `remote` with fake ssh/sshpass on PATH: the ssh key is
 # tried first, a password in the access file is only the fallback, and a file
 # without a password means key-only (no prompt, no sshpass). No real server.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/testlib.sh"
 
 mkdir "$TMP/bin"
 # Both fakes log their argv; sshpass also logs the password it got in the env.
@@ -38,5 +31,4 @@ check "no password in the file: key only, never a prompt, default port" \
   "ssh -o BatchMode=yes -o ConnectTimeout=15 -p 22 admin@10.0.0.2 uptime -p" "$(cat "$TMP/calls")"
 check "a commented password is not used" "0" "$(grep -c 'old-one' "$TMP/calls")"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

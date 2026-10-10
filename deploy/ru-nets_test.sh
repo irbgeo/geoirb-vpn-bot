@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/ru-nets.sh with a fixture RIPE file and fake curl/nft on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/../scripts/testlib.sh"
 
 cat >"$TMP/ripe" <<'X'
 2|ripencc|20261008|123456|19830705|20261008|+0100
@@ -94,5 +87,4 @@ check "nft failure fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 check "nft failure: stamp kept, saved set kept, no temp file" "1 1 " \
   "$([[ "$STAMP" -ot "$TMP/saved.first" ]] && echo 1) $(cmp -s "$SAVED" "$TMP/saved.first" && echo 1) $(ls "$(dirname "$SAVED")" | grep -v -e '^ru4.nft$' -e '^ru-nets.stamp$')"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

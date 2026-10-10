@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/install.sh (RU server) with ROOT=<tmp> and fake commands on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/../scripts/testlib.sh"
 has() { [[ -f "$1" ]] && echo 1 || echo 0; }
 line() { grep -n "$1" "$TMP/calls" | head -1 | cut -d: -f1; } # first call matching
 
@@ -175,5 +167,4 @@ check "FORCE=1 replaces" "0" "$?"
 
 check "never restarts routes or awg0" "0" "$(cat "$TMP"/all-calls | grep -c '^systemctl restart geoirb-\(vpn-routes\|awg0\)')"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

@@ -2,15 +2,8 @@
 # Tests deploy/exit/exit-fw.sh with fake ip/sysctl and a fake iptables that
 # keeps the rules in a file ("<table> <chain> <rule>", top rule first) and
 # fails like the real one (-C/-D of a missing rule).
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/../../scripts/testlib.sh"
 
 mkdir "$TMP/bin"
 cat >"$TMP/bin/iptables" <<'X'
@@ -94,5 +87,4 @@ check "bad action fails" "1" "$?"
 env PATH="$TMP/bin:$PATH" FW="$FW" bash "$DIR/exit-fw.sh" up >/dev/null 2>&1
 check "no interface fails" "1" "$?"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

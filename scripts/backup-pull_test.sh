@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
 # Dry test of scripts/backup-pull.sh with a fake ssh and a fake access file:
 # no real server, and BACKUP_DEST keeps it out of ./backups.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/testlib.sh"
 
 mkdir "$TMP/bin"
 # ssh: the `ls` command prints the newest archive's path (nothing with
@@ -52,5 +44,4 @@ check "archive pulled whole" "HALFDONE" "$(cat "$D/$NEW")"
 check "archive and directory are private" "600 700" "$(mode "$D/$NEW") $(mode "$D")"
 check "the newest 7 stay, no .part" "geoirb-vpn-20200103-000000.tar.gz geoirb-vpn-20200104-000000.tar.gz geoirb-vpn-20200105-000000.tar.gz geoirb-vpn-20200106-000000.tar.gz geoirb-vpn-20200107-000000.tar.gz geoirb-vpn-20200108-000000.tar.gz $NEW" "$(files)"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

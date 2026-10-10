@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
 # Tests scripts/tunnel-keys.sh and scripts/render-tunnel.sh in a temp dir.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/testlib.sh"
 export TUNNEL_FILE="$TMP/secret/tunnel.yaml"
 val() { awk -v k="$1" '$1 == k":" { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$TUNNEL_FILE"; }
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 bytes() { printf '%s' "$1" | base64 -d 2>/dev/null | wc -c | tr -d ' '; }
 # pub_of <private base64> — public key re-derived with openssl.
 pub_of() {
@@ -99,5 +91,4 @@ check "failed run leaves no files" "" "$(ls -A "$TMP/fail" 2>/dev/null)"
 "$DIR/render-tunnel.sh" bogus 1.2.3.4 >/dev/null 2>&1
 check "bad side fails" "1" "$?"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

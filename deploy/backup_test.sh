@@ -1,16 +1,8 @@
 #!/usr/bin/env bash
 # Tests deploy/backup.sh with ROOT=<tmp> (the /etc/amnezia prefix), its DEST
 # and ENV_FILE overrides and a fake docker on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/../scripts/testlib.sh"
 
 mkdir "$TMP/bin"
 # docker exec ... mongodump: logs argv and stdin (the config with the URI),
@@ -81,5 +73,4 @@ run ENV_FILE="$TMP/env.nouri"
 check "no MONGO_URI fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 check "no MONGO_URI: nothing run, nothing deleted" "0 $before" "$(grep -c . "$TMP/calls") $(archives)"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

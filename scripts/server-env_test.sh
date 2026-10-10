@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Tests scripts/server-env.sh with a fake .env and database.yaml.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/testlib.sh"
 
 cat >"$TMP/.env" <<'X'
 BOT_TOKEN=123:abc
@@ -72,5 +65,4 @@ check "server defaults to geoirb-vpn" \
 ENV_FILE="$TMP/.env" DB_SECRETS="$TMP/nope.yaml" "$DIR/server-env.sh" >/dev/null 2>&1
 check "fails without the DB password" "1" "$?"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

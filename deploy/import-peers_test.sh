@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/import-peers.sh with ROOT=<tmp> and fake awg/awg-quick on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/../scripts/testlib.sh"
 
 mkdir "$TMP/bin"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" != syncconf ]] || cat "$3" >"$CALLS.synced"\n' >"$TMP/bin/awg"
@@ -167,5 +159,4 @@ rm "$CONF"
 CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$DIR/import-peers.sh" "$TMP/old.conf" >/dev/null 2>&1
 check "missing new conf fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

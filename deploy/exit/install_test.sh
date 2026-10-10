@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/exit/install.sh with ROOT=<tmp> and fake commands on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/../../scripts/testlib.sh"
 
 TAG="$(sed -n 's/^AWG_TOOLS_TAG="${AWG_TOOLS_TAG-\([^}]*\)}".*/\1/p' "$DIR/../awg-tools.sh")"
 COMMIT="$(sed -n 's/^AWG_TOOLS_COMMIT="${AWG_TOOLS_COMMIT-\([^}]*\)}".*/\1/p' "$DIR/../awg-tools.sh")"
@@ -77,4 +69,4 @@ rm "$TMP/pkg/awg-exit.conf"
 run "amneziawg-tools $TAG"
 check "missing conf fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 
-[[ $FAILS -eq 0 ]] || { echo "$FAILS failed"; exit 1; }
+finish

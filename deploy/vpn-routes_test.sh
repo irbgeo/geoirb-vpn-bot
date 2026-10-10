@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/vpn-routes.sh with ROOT=<tmp> and fake nft/ip on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
+source "$DIR/../scripts/testlib.sh"
 
 mkdir "$TMP/bin"
 # nft: logs; fails on the saved set when $BAD_SET is set and on the table
@@ -109,5 +102,4 @@ check "client to client dropped" "1" "$(grep -cx $'\t\tiifname "awg0" oifname "a
 check "marked traffic not leaving through the tunnel is dropped" "1" "$(grep -cx $'\t\tiifname "awg0" meta mark 0x1 oifname != "awg-exit" drop' "$NFT")"
 check "private ranges dropped" "1" "$(grep -cx $'\t\tiifname "awg0" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop' "$NFT")"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish

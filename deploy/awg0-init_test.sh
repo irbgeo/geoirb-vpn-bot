@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
 # Tests deploy/awg0-init.sh with ROOT=<tmp> and fake awg/chown on PATH.
-set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-FAILS=0
-check() { # check <name> <expected> <actual>
-  if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
-    echo "FAIL $1"; echo "     expected: $2"; echo "     actual:   $3"; FAILS=$((FAILS + 1)); fi
-}
-mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+source "$DIR/../scripts/testlib.sh"
 val() { sed -n "s/^$1 = //p" "$CONF"; }
 
 mkdir "$TMP/bin"
@@ -83,5 +75,4 @@ check "second run exits 0" "0" "$?"
 check "second run says kept" "1" "$(grep -c kept <<<"$out")"
 check "second run keeps the conf" "1" "$(cmp -s "$CONF" "$TMP/first" && echo 1)"
 
-echo
-[[ "$FAILS" -eq 0 ]] && echo "all tests passed" || { echo "$FAILS failed"; exit 1; }
+finish
