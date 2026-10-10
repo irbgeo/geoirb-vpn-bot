@@ -68,6 +68,10 @@ func Load() (*Config, error) {
 		"BOT_TOKEN":     c.BotToken,
 		"DB_SECRET_KEY": c.DBSecretKey,
 		"ENDPOINT_HOST": c.EndpointHost,
+		// These have defaults, but a variable set to "" skips its default.
+		"SERVER_ID":  c.ServerID,
+		"MONGO_DB":   c.MongoDB,
+		"CLIENT_DNS": c.ClientDNS,
 	} {
 		if v == "" {
 			return nil, fmt.Errorf("config: %s is required", name)
@@ -85,6 +89,9 @@ func Load() (*Config, error) {
 	}
 	if c.ClientMTU != 0 && (c.ClientMTU < 1280 || c.ClientMTU > 1500) {
 		return nil, fmt.Errorf("config: CLIENT_MTU must be 1280..1500 or empty, got %d", c.ClientMTU)
+	}
+	if len(c.Tariffs) == 0 {
+		return nil, fmt.Errorf("config: TARIFFS is empty: nothing to sell")
 	}
 	for days, stars := range c.Tariffs {
 		if days <= 0 || stars <= 0 {

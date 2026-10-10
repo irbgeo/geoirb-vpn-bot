@@ -14,7 +14,6 @@ import (
 // store wraps a MongoDB connection and exposes repositories.
 type store struct {
 	client   *mongo.Client
-	db       *mongo.Database
 	Users    *userRepo
 	Peers    *peerRepo
 	Payments *paymentRepo
@@ -64,7 +63,6 @@ func Connect(
 	feedbacks := newFeedbackRepo(feedbackColl)
 	s := &store{
 		client:   client,
-		db:       db,
 		Users:    users,
 		Peers:    peers,
 		Payments: payments,

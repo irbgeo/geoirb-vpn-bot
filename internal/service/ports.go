@@ -27,6 +27,10 @@ type PeerRepository interface {
 	Get(ctx context.Context, publicKey string) (*Peer, error)
 	Save(ctx context.Context, p *Peer) error
 	Delete(ctx context.Context, publicKey string) error
+	// Replace puts in.New in place of in.Old (same IP) in one write: there
+	// is no moment a caller can stop at with the old record gone and the
+	// new one not saved. in.New must have its secrets.
+	Replace(ctx context.Context, in PeerSwap) error
 	ByUser(ctx context.Context, userID int64) ([]*Peer, error)
 	ByServer(ctx context.Context, serverID string) ([]*Peer, error)
 	// ServerIPs: the IP of every peer of the server, enabled or not (a

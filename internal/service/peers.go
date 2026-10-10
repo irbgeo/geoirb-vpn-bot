@@ -23,25 +23,6 @@ func (s *service) Issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	return p.public(), nil
 }
 
-// useUpTrial: a key issued by an admin counts as the plain user's free
-// trial, so deleting it does not give a new one. Best effort, like startTrial.
-func (s *service) useUpTrial(ctx context.Context, userID int64) {
-	if userID == 0 {
-		return
-	}
-	u, err := s.User(ctx, userID)
-	if errors.Is(err, ErrNotFound) {
-		return
-	}
-	if err != nil {
-		log.Printf("service: trial check for %d: %v", userID, err)
-		return
-	}
-	if u.Role == RoleUser && !u.TrialUsed {
-		s.markTrialUsed(ctx, userID)
-	}
-}
-
 // Extend adds days to a key: counted from the end date, or from now if the
 // key already expired. A disabled key is enabled again with the same keys
 // and IP. A key that never expires stays so.
@@ -141,6 +122,7 @@ func (s *service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 	if in.Days > 0 {
 		p.ExpiresAt = now.AddDate(0, 0, in.Days)
 	}
+	p.resetReminders()
 
 	addPeerInput := &AddPeerInput{
 		Peer:     p.vpnPeer(),
@@ -210,6 +192,25 @@ func (s *service) countKeys(ctx context.Context, d KeysDelta) {
 	}
 }
 
+// useUpTrial: a key issued by an admin counts as the plain user's free
+// trial, so deleting it does not give a new one. Best effort, like startTrial.
+func (s *service) useUpTrial(ctx context.Context, userID int64) {
+	if userID == 0 {
+		return
+	}
+	u, err := s.User(ctx, userID)
+	if errors.Is(err, ErrNotFound) {
+		return
+	}
+	if err != nil {
+		log.Printf("service: trial check for %d: %v", userID, err)
+		return
+	}
+	if u.Role == RoleUser && !u.TrialUsed {
+		s.markTrialUsed(ctx, userID)
+	}
+}
+
 // extend is Extend without the lock, for callers that already hold it.
 func (s *service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 	p, err := s.ourPeer(ctx, in.PublicKey)
@@ -224,8 +225,7 @@ func (s *service) extend(ctx context.Context, in ExtendInput) (*Peer, error) {
 		}
 		p.ExpiresAt = from.AddDate(0, 0, in.Days)
 	}
-	p.Reminded3d = false
-	p.Reminded1d = false
+	p.resetReminders()
 	p.Blocked = false // only admins and paying users get here; checkBuyer and chooseKey stop a blocked buyer, with or without a key named
 	err = s.enableAndSave(ctx, p)
 	if err != nil {
@@ -248,8 +248,9 @@ func (s *service) ourPeer(ctx context.Context, publicKey string) (*Peer, error) 
 
 // enableAndSave puts a disabled key back on the server and saves p. If
 // the save fails, the peer is taken off again: the server must not run a
-// key the DB calls disabled (it would never be expired). A failed add
-// undoes itself (see VPN). The caller holds s.mu.
+// key the DB calls disabled (it would never be expired). A save that
+// failed but is stored counts as done (see stored). A failed add undoes
+// itself (see VPN). The caller holds s.mu.
 func (s *service) enableAndSave(ctx context.Context, p *Peer) error {
 	wasEnabled := p.Enabled
 	if !wasEnabled {
@@ -260,6 +261,12 @@ func (s *service) enableAndSave(ctx context.Context, p *Peer) error {
 		p.Enabled = true
 	}
 	err := s.peers.Save(ctx, p)
+	if err != nil && s.stored(ctx, p) {
+		// The write went through and only its reply was lost: the change is
+		// made, so the caller must not undo it (Pay would refund paid days).
+		log.Printf("service: save of %s failed but is stored: %v", p.IP, err)
+		return nil
+	}
 	if err != nil {
 		if !wasEnabled {
 			p.Enabled = false
@@ -277,6 +284,23 @@ func (s *service) addToServer(ctx context.Context, p *Peer) error {
 		return ErrUnreadable // no PSK to put on the server
 	}
 	return s.vpn.PutPeer(ctx, p.vpnPeer())
+}
+
+// stored reports whether the DB holds p's state: after a failed save it
+// tells a write that never happened from one whose reply was lost
+// (shutdown, network cut). It reads even when ctx is cancelled; a failed
+// read is false.
+func (s *service) stored(ctx context.Context, p *Peer) bool {
+	got, err := s.peers.Get(context.WithoutCancel(ctx), p.PublicKey)
+	if err != nil || got == nil {
+		return false
+	}
+	// The DB keeps milliseconds, so the end dates are compared that coarsely.
+	return got.Enabled == p.Enabled &&
+		got.Blocked == p.Blocked &&
+		got.Reminded3d == p.Reminded3d &&
+		got.Reminded1d == p.Reminded1d &&
+		got.ExpiresAt.Sub(p.ExpiresAt).Abs() < time.Millisecond
 }
 
 // undoEnable takes a key back off when its enabled state could not be

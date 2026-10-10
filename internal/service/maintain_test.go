@@ -60,13 +60,113 @@ func TestMaintainRemindersOncePerTerm(t *testing.T) {
 			ctx,
 			ExtendInput{
 				PublicKey: in12h.PublicKey,
+				Days:      4,
+			},
+		)
+		require.NoError(t, err)
+		time.Sleep(36 * time.Hour) // 3 days left on it now
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Contains(t, keysOf(m.Remind3d), in12h.PublicKey, "extension resets reminders")
+	})
+}
+
+// A term that starts inside a reminder window must not get that reminder
+// the minute the key is issued or extended.
+func TestShortTermGetsNoReminderAtOnce(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		e.svc.cfg.TrialDays = 3
+		ctx := context.Background()
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Empty(t, m.Remind3d, "a 3-day trial just started")
+		require.Empty(t, m.Remind1d)
+
+		time.Sleep(49 * time.Hour)
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Equal(t, []string{p.PublicKey}, keysOf(m.Remind1d), "the 1-day reminder still comes")
+
+		_, err = e.svc.Extend(
+			ctx,
+			ExtendInput{
+				PublicKey: p.PublicKey,
 				Days:      1,
 			},
 		)
 		require.NoError(t, err)
 		m, err = e.svc.Maintain(ctx)
 		require.NoError(t, err)
-		require.Equal(t, []string{in12h.PublicKey}, keysOf(m.Remind3d), "extension resets reminders")
+		require.Empty(t, m.Remind3d, "a day bought: under 2 days left is no news")
+		require.Empty(t, m.Remind1d)
+	})
+}
+
+// A reminder whose mark could not be saved is not sent (it would repeat
+// every minute) and is tried again on the next run.
+func TestMaintainHoldsAReminderWhoseMarkWasNotSaved(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		in2days := e.seed(t, now.Add(48*time.Hour))
+		in12h := e.seed(t, now.Add(12*time.Hour))
+		ctx := context.Background()
+		e.peers.saveErr = errBoom
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Empty(t, m.Remind3d)
+		require.Empty(t, m.Remind1d)
+
+		e.peers.saveErr = nil
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Equal(t, []string{in2days.PublicKey}, keysOf(m.Remind3d))
+		require.Equal(t, []string{in12h.PublicKey}, keysOf(m.Remind1d))
+	})
+}
+
+// A server error while a key is made forever is not about that key: the
+// run stops there and the next one does them all.
+func TestMaintainStopsMakingForeverAtTheFirstServerError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		a := expiredKey(t, e)
+		b := expiredKey(t, e)
+		e.setRole(roleInput{ID: 42, Role: RoleUnlimited})
+		e.vpn.err = errBoom
+		changes := e.vpn.changes
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.Empty(t, m.MadeForever)
+		require.Equal(t, changes+1, e.vpn.changes, "one failed try, not one per key")
+		require.False(t, e.peers.m[a.PublicKey].Enabled)
+
+		e.vpn.err = nil
+		m, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		require.ElementsMatch(
+			t,
+			[]string{
+				a.PublicKey,
+				b.PublicKey,
+			},
+			keysOf(m.MadeForever),
+		)
+		require.True(t, e.vpn.hasPeer(a.PublicKey))
+		require.True(t, e.vpn.hasPeer(b.PublicKey))
 	})
 }
 
@@ -270,4 +370,123 @@ func TestMaintainLogsSkippedKeyOnce(t *testing.T) {
 
 		require.Equal(t, 1, strings.Count(buf.String(), "forever"), buf.String())
 	})
+}
+
+func TestMaintainStopsAtTheFirstServerError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.seed(t, now.Add(-time.Hour))
+		e.seed(t, now.Add(-time.Hour))
+		e.seed(t, now.Add(-time.Hour))
+		e.vpn.err = errBoom
+		e.vpn.changes = 0
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, m.Expired)
+		require.Equal(t, 1, e.vpn.changes, "no more docker calls after the first failure; the next run retries")
+	})
+}
+
+func TestMaintainSkipsAKeyWhoseIPIsTakenAndGoesOn(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.users().m[7] = User{
+			ID:   7,
+			Role: RoleUnlimited,
+		}
+		// the manual peer MANUAL1 holds 10.8.1.1 on the server
+		e.peers.m["STUCK="] = Peer{
+			PublicKey: "STUCK=",
+			ServerID:  "srv",
+			UserID:    7,
+			IP:        "10.8.1.1",
+			PSK:       "PSK=",
+			ExpiresAt: now.AddDate(0, 0, 3),
+		}
+		expired := e.seed(t, now.Add(-time.Minute))
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, []string{expired.PublicKey}, keysOf(m.Expired), "keys after the stuck one still expire")
+		require.Empty(t, m.MadeForever)
+	})
+}
+
+func TestExpiredKeyIsNotBlocked(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := expiredKey(t, e)
+		require.False(t, e.peers.m[p.PublicKey].Blocked, "expiry is not an admin block: the user may pay")
+	})
+}
+
+func TestMaintainExpiresAKeyWhoseSecretsAreUnreadable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := e.seed(t, now.Add(-time.Minute))
+		stored := e.peers.m[p.PublicKey]
+		stored.PrivateKey, stored.PSK = "", "" // secrets that could not be read
+		e.peers.m[p.PublicKey] = stored
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, []string{p.PublicKey}, keysOf(m.Expired))
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+	})
+}
+
+func TestUnreadableKeyIsNotPutBackOnTheServer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.users().m[7] = User{
+			ID:   7,
+			Role: RoleUnlimited,
+		}
+		e.peers.m["SEALED="] = Peer{
+			PublicKey: "SEALED=",
+			ServerID:  "srv",
+			UserID:    7,
+			IP:        "10.8.1.2",
+			ExpiresAt: now.AddDate(0, 0, 3), // no PSK: secrets could not be read
+		}
+		expired := e.seed(t, now.Add(-time.Minute))
+
+		m, err := e.svc.Maintain(context.Background())
+		require.NoError(t, err)
+		require.False(t, e.vpn.hasPeer("SEALED="), "no PSK to put it back with")
+		require.Equal(t, []string{expired.PublicKey}, keysOf(m.Expired), "the rest go on")
+	})
+}
+
+func TestForeverKeepsAnAdminBlock(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.users().m[42] = User{
+			ID:   42,
+			Role: RoleUnlimited,
+		}
+		p := e.seed(t, now.AddDate(0, 0, 3))
+		ctx := context.Background()
+		require.NoError(t, e.svc.Disable(ctx, p.PublicKey))
+
+		m, err := e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		got := e.peers.m[p.PublicKey]
+		require.True(t, got.ExpiresAt.IsZero(), "the end date goes")
+		require.False(t, got.Enabled, "but the block stays")
+		require.False(t, e.vpn.hasPeer(p.PublicKey))
+		require.Empty(t, m.MadeForever, "a blocked user is not told their access is forever")
+	})
+}
+
+// expiredKey issues a key and lets Maintain disable it: a disabled key
+// whose term ended, ready to be extended.
+func expiredKey(t *testing.T, e *env) *Peer {
+	t.Helper()
+	p := e.seed(t, now.Add(-time.Minute))
+	_, err := e.svc.Maintain(context.Background())
+	require.NoError(t, err)
+	require.False(t, e.vpn.hasPeer(p.PublicKey))
+	return p
 }

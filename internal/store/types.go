@@ -99,6 +99,12 @@ func (s *peer) toService() *service.Peer {
 	}
 }
 
+// peerSwap is the row to remove and the document that takes its place.
+type peerSwap struct {
+	OldKey string
+	New    *peer
+}
+
 type payment struct {
 	ChargeID   string     `bson:"_id"`
 	UserID     int64      `bson:"user_id"`

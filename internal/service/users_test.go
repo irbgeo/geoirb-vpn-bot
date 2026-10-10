@@ -507,3 +507,22 @@ func TestNextKeyNumberTakesSmallestFree(t *testing.T) {
 	require.Equal(t, 1, nextKeyNumber(keyNumberInput{Names: nil, Base: "tg:u"}))
 	require.Equal(t, 1, nextKeyNumber(keyNumberInput{Names: []string{"tg:u #2", "other #1", "tg:u"}, Base: "tg:u"}))
 }
+
+func TestRegisterKeepsARoleSetByHandInBetween(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		e.register(t, RoleUnlimited)
+
+		u, err := e.svc.Register(
+			ctx,
+			RegisterInput{
+				ID:       42,
+				Username: "bob2",
+			},
+		)
+		require.NoError(t, err)
+		require.Equal(t, RoleUnlimited, u.Role)
+		require.Equal(t, "bob2", u.Username)
+	})
+}

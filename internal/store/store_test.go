@@ -4,19 +4,30 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// testStore connects to MONGO_URI (default localhost), wipes the test
-// database and skips the test when Mongo is not reachable.
+// testDB is the database the store tests use and drop.
+const testDB = "geoirb_vpn_test"
+
+// testStore wipes the test database at MONGO_URI (default localhost) and
+// connects to it. Only a Mongo that does not answer a ping skips the test
+// (and with REQUIRE_MONGO=1 even that fails it): any other error is a bug
+// in the store and must fail. The wipe comes before Connect, so rows left
+// by the last test (e.g. unreadable ones) can't fail Connect's key check.
 func testStore(t *testing.T) *store {
 	t.Helper()
 	uri := os.Getenv("MONGO_URI")
@@ -26,21 +37,41 @@ func testStore(t *testing.T) *store {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
+	client, err := dialMongo(ctx, uri)
+	if err != nil && os.Getenv("REQUIRE_MONGO") == "1" {
+		t.Fatalf("mongo not reachable at %s: %v", uri, err)
+	}
+	if err != nil {
+		t.Skipf("mongo not reachable at %s: %v", uri, err)
+	}
+	require.NoError(t, client.Database(testDB).Drop(ctx))
+	require.NoError(t, client.Disconnect(ctx))
+
 	s, err := Connect(
 		ctx,
 		&config.Config{
 			MongoURI:  uri,
-			MongoDB:   "geoirb_vpn_test",
+			MongoDB:   testDB,
 			SecretKey: testKey,
 		},
 	)
-	if err != nil {
-		t.Skipf("mongo not reachable at %s: %v", uri, err)
-	}
-	require.NoError(t, s.db.Drop(ctx))
-	require.NoError(t, s.ensureIndexes(ctx))
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Disconnect(context.Background()) })
 	return s
+}
+
+// dialMongo returns a client of a Mongo that answers a ping at uri.
+func dialMongo(ctx context.Context, uri string) (*mongo.Client, error) {
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	if err != nil {
+		return nil, err
+	}
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		_ = client.Disconnect(context.Background())
+		return nil, err
+	}
+	return client, nil
 }
 
 // ts is a Mongo-friendly timestamp: UTC, millisecond precision.
@@ -295,6 +326,49 @@ func TestPeerIPUniquePerServer(t *testing.T) {
 	require.NoError(t, s.Peers.Save(ctx, clash), "same IP on another server is fine")
 }
 
+func TestPeerReplaceSwapsTheKeyOnTheSameIP(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	old := testPeer()
+	require.NoError(t, s.Peers.Save(ctx, old))
+	fresh := testPeer()
+	fresh.PublicKey = "NEW="
+	fresh.PrivateKey = "NEWPRIV="
+	fresh.PSK = "NEWPSK="
+
+	require.NoError(
+		t,
+		s.Peers.Replace(
+			ctx,
+			service.PeerSwap{
+				Old: old,
+				New: fresh,
+			},
+		),
+		"the unique server+IP index must not stop the swap",
+	)
+	gone, err := s.Peers.Get(ctx, "PUB=")
+	require.NoError(t, err)
+	require.Nil(t, gone)
+	got, err := s.Peers.Get(ctx, "NEW=")
+	require.NoError(t, err)
+	require.Equal(t, fresh, got)
+
+	blank := testPeer()
+	blank.PSK = ""
+	err = s.Peers.Replace(
+		ctx,
+		service.PeerSwap{
+			Old: fresh,
+			New: blank,
+		},
+	)
+	require.Error(t, err, "a key without secrets can't replace a working one")
+	got, err = s.Peers.Get(ctx, "NEW=")
+	require.NoError(t, err)
+	require.NotNil(t, got, "nothing was removed")
+}
+
 func TestPeersByUserAndServer(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -510,6 +584,52 @@ func TestPeerListsKeepUnreadableRowsWithoutSecrets(t *testing.T) {
 	require.ElementsMatch(t, []string{"10.8.1.10", "10.8.1.11"}, ips, "its IP stays taken")
 }
 
+// A row without readable secrets is saved through setPeerMeta, a field
+// list kept by hand: a new peer field missing there would silently not be
+// saved for such rows.
+func TestSetPeerMetaCoversEveryPeerFieldButTheSecrets(t *testing.T) {
+	var want []string
+	typ := reflect.TypeFor[peer]()
+	for i := range typ.NumField() {
+		tag := typ.Field(i).Tag.Get("bson")
+		if tag != "_id" && tag != "private_key" && tag != "psk" {
+			want = append(want, tag)
+		}
+	}
+
+	set := setPeerMeta(&peer{})["$set"].(bson.M)
+	got := make([]string, 0, len(set))
+	for k := range set {
+		got = append(got, k)
+	}
+	require.ElementsMatch(t, want, got)
+}
+
+func TestUnreadablePeerIsLoggedOnce(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.Peers.Save(ctx, testPeer()))
+	_, err := s.Peers.coll.UpdateOne(
+		ctx,
+		byID("PUB="),
+		bson.M{
+			"$set": bson.M{
+				"psk": "v1:garbage",
+			},
+		},
+	)
+	require.NoError(t, err)
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	for range 3 { // the worker reads every key once a minute
+		_, err = s.Peers.ByServer(ctx, "geoirb-vpn")
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, strings.Count(logged.String(), "secrets unreadable"), logged.String())
+}
+
 func TestConnectAcceptsOneBadRowAmongGoodOnes(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -544,7 +664,7 @@ func TestConnectRefusesAWrongSecretKey(t *testing.T) {
 		context.Background(),
 		&config.Config{
 			MongoURI:  uri,
-			MongoDB:   "geoirb_vpn_test",
+			MongoDB:   testDB,
 			SecretKey: bytes.Repeat([]byte{9}, 32),
 		},
 	)

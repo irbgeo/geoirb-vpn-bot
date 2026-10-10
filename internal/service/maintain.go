@@ -57,61 +57,21 @@ func (s *service) maintainKeys(ctx context.Context) (*Maintenance, error) {
 		return nil, err
 	}
 	m := &Maintenance{}
-	now := time.Now()
-keys:
 	for _, p := range ps {
+		maintainStep := maintainStep{
+			Peer:   p,
+			Report: m,
+		}
+		var stop bool
 		if forever[p.UserID] && !p.ExpiresAt.IsZero() {
-			if p.Blocked { // the admin block stays: only the end date goes
-				dropEnd(p)
-				s.savePeer(ctx, p)
-				continue
-			}
-			err = s.makeForever(ctx, p)
-			if err != nil {
-				// A skip kind: only this key can't go back on, the rest go on.
-				kind := skipKind(err)
-				logKey := logKey{
-					PublicKey: p.PublicKey,
-					Kind:      kind,
-				}
-				if kind == "" || s.skipLogged.first(logKey) {
-					log.Printf("service: make %s forever: %v", p.IP, err)
-				}
-				if kind == "" {
-					break keys // the server is likely down: the next run retries
-				}
-				continue
-			}
-			m.MadeForever = append(m.MadeForever, p)
-			continue
+			stop = s.maintainForever(ctx, maintainStep)
+		} else {
+			stop = s.maintainTerm(ctx, maintainStep)
 		}
-		if !p.Enabled || p.ExpiresAt.IsZero() {
-			continue
-		}
-		left := p.ExpiresAt.Sub(now)
-		switch {
-		case left <= 0:
-			err = s.disablePeer(ctx, p)
-			if err != nil {
-				// The server is likely down: stop instead of waiting a
-				// docker timeout per key; the next run retries.
-				log.Printf("service: expire %s: %v", p.IP, err)
-				break keys
-			}
-			m.Expired = append(m.Expired, p)
-		case left <= remind1d && !p.Reminded1d:
-			p.Reminded1d, p.Reminded3d = true, true
-			if s.savePeer(ctx, p) {
-				m.Remind1d = append(m.Remind1d, p)
-			}
-		case left <= remind3d && !p.Reminded3d:
-			p.Reminded3d = true
-			if s.savePeer(ctx, p) {
-				m.Remind3d = append(m.Remind3d, p)
-			}
+		if stop {
+			break // the server is likely down: the next run retries
 		}
 	}
-
 	return m, nil
 }
 
@@ -135,11 +95,32 @@ func (s *service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
 	return ids, nil
 }
 
-// makeForever drops a key's end date and reminders, and puts it back on
-// the server (same keys, same IP) if it was disabled. The caller holds s.mu.
-func (s *service) makeForever(ctx context.Context, p *Peer) error {
-	dropEnd(p)
-	return s.enableAndSave(ctx, p)
+// maintainForever handles a timed key of an owner whose keys never
+// expire: the end date goes and the key comes back on, unless an admin
+// blocked it. It reports true when the run must stop: the error was not
+// about this one key.
+func (s *service) maintainForever(ctx context.Context, in maintainStep) bool {
+	p := in.Peer
+	if p.Blocked { // the admin block stays: only the end date goes
+		dropEnd(p)
+		s.savePeer(ctx, p)
+		return false
+	}
+	err := s.makeForever(ctx, p)
+	if err == nil {
+		in.Report.MadeForever = append(in.Report.MadeForever, p)
+		return false
+	}
+	// A skip kind: only this key can't go back on, the rest go on.
+	kind := skipKind(err)
+	logKey := logKey{
+		PublicKey: p.PublicKey,
+		Kind:      kind,
+	}
+	if kind == "" || s.skipLogged.first(logKey) {
+		log.Printf("service: make %s forever: %v", p.IP, err)
+	}
+	return kind == ""
 }
 
 // dropEnd makes a key never expire and clears its reminders.
@@ -149,25 +130,23 @@ func dropEnd(p *Peer) {
 	p.Reminded1d = false
 }
 
-// savePeer saves a reminder mark; false (logged) if it failed, so the
-// reminder is not sent and is tried again next run.
+// savePeer saves a key Maintain changed (a reminder mark, a dropped end
+// date); false (logged) if it failed, so a reminder is not sent and the
+// change is tried again next run.
 func (s *service) savePeer(ctx context.Context, p *Peer) bool {
 	err := s.peers.Save(ctx, p)
 	if err != nil {
-		log.Printf("service: save reminder for %s: %v", p.IP, err)
+		log.Printf("service: maintain: save key %s: %v", p.IP, err)
 		return false
 	}
 	return true
 }
 
-// subnetUsage counts taken client IPs: peers on the server plus the IPs
-// reserved for the bot's keys (disabled ones have no peer).
-func (s *service) subnetUsage(ctx context.Context) (used, total int, err error) {
-	reserved, err := s.reservedIPs(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	return s.vpn.SubnetUsage(ctx, reserved)
+// makeForever drops a key's end date and reminders, and puts it back on
+// the server (same keys, same IP) if it was disabled. The caller holds s.mu.
+func (s *service) makeForever(ctx context.Context, p *Peer) error {
+	dropEnd(p)
+	return s.enableAndSave(ctx, p)
 }
 
 // skipKind names an error that skips only one key in maintainKeys ("" for
@@ -181,4 +160,47 @@ func skipKind(err error) string {
 		return "unreadable"
 	}
 	return ""
+}
+
+// maintainTerm handles a key with an end date: it is disabled when the
+// term ended, or gets the reminder that is due. It reports true when the
+// run must stop.
+func (s *service) maintainTerm(ctx context.Context, in maintainStep) bool {
+	p := in.Peer
+	if !p.Enabled || p.ExpiresAt.IsZero() {
+		return false
+	}
+	left := time.Until(p.ExpiresAt)
+	switch {
+	case left <= 0:
+		err := s.disablePeer(ctx, p)
+		if err != nil {
+			// The server is likely down: stop instead of waiting a command
+			// timeout per key.
+			log.Printf("service: expire %s: %v", p.IP, err)
+			return true
+		}
+		in.Report.Expired = append(in.Report.Expired, p)
+	case left <= remind1d && !p.Reminded1d:
+		p.Reminded1d, p.Reminded3d = true, true
+		if s.savePeer(ctx, p) {
+			in.Report.Remind1d = append(in.Report.Remind1d, p)
+		}
+	case left <= remind3d && !p.Reminded3d:
+		p.Reminded3d = true
+		if s.savePeer(ctx, p) {
+			in.Report.Remind3d = append(in.Report.Remind3d, p)
+		}
+	}
+	return false
+}
+
+// subnetUsage counts taken client IPs: peers on the server plus the IPs
+// reserved for the bot's keys (disabled ones have no peer).
+func (s *service) subnetUsage(ctx context.Context) (used, total int, err error) {
+	reserved, err := s.reservedIPs(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	return s.vpn.SubnetUsage(ctx, reserved)
 }

@@ -32,8 +32,8 @@ type CreateKeyInput struct {
 	Name   string
 }
 
-// swapInput is a key and its reissued replacement (same IP, new secrets).
-type swapInput struct {
+// PeerSwap is a key and its reissued replacement (same IP, new secrets).
+type PeerSwap struct {
 	Old *Peer
 	New *Peer
 }
@@ -180,7 +180,7 @@ type PayResult struct {
 	Peer   *Peer
 	Days   int  // days bought
 	NewKey bool // true: a new key was issued (send its config)
-	Repeat bool // true: this charge was already applied, nothing changed
+	Repeat bool // true: this charge was already applied, nothing changed; no other field is set
 
 	// NeedsReview: the charge has a record that is neither applied nor
 	// refunded; nothing was done, an admin must check the key.
@@ -324,6 +324,22 @@ func (s *Peer) hasSecrets() bool {
 	return s.PSK != ""
 }
 
+// resetReminders starts the reminders of a new term: none is sent yet,
+// except those whose window the term already starts inside (a 3-day trial
+// must not get "3 days left" the minute it is issued).
+func (s *Peer) resetReminders() {
+	left := time.Until(s.ExpiresAt)
+	timed := !s.ExpiresAt.IsZero()
+	s.Reminded3d = timed && left <= remind3d
+	s.Reminded1d = timed && left <= remind1d
+}
+
+// dead: the key is off the server and has no secrets to go back with, so
+// paid days could never be used on it.
+func (s *Peer) dead() bool {
+	return !s.Enabled && !s.hasSecrets()
+}
+
 // vpnPeer is the key as the VPN server needs it.
 func (s *Peer) vpnPeer() *VPNPeer {
 	return &VPNPeer{
@@ -368,6 +384,12 @@ type joinInput struct {
 type logKey struct {
 	PublicKey string
 	Kind      string
+}
+
+// maintainStep is one key of a Maintain run and the report it adds to.
+type maintainStep struct {
+	Peer   *Peer
+	Report *Maintenance
 }
 
 // keyNumberInput is the names taken and the base name for nextKeyNumber.

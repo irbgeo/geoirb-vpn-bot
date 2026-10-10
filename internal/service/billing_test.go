@@ -186,6 +186,47 @@ func TestPayChosenKey(t *testing.T) {
 	})
 }
 
+// The owner check is the only thing between a forged button or payload and
+// another user's key (extending also lifts an admin block).
+func TestPurchaseOfAnotherUsersKeyIsNotFound(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		theirs := e.seed(t, now.AddDate(0, 0, 10)) // user 42's key
+		_, err := e.svc.Register(
+			ctx,
+			RegisterInput{
+				ID:       7,
+				Username: "eve",
+			},
+		)
+		require.NoError(t, err)
+
+		_, err = e.svc.Invoice(
+			ctx,
+			PurchaseInput{
+				UserID:    7,
+				Days:      30,
+				PublicKey: theirs.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrNotFound)
+
+		forged := PaymentInput{
+			ChargeID: "c1",
+			PayerID:  7,
+			Payload:  "v1|7|30|150|" + theirs.PublicKey,
+			Stars:    150,
+		}
+		require.ErrorIs(t, e.svc.CheckPurchase(ctx, forged), ErrNotFound)
+		_, err = e.svc.Pay(ctx, forged)
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Empty(t, e.payments.m, "nothing recorded")
+		require.Equal(t, now.AddDate(0, 0, 10), e.peers.m[theirs.PublicKey].ExpiresAt)
+	})
+}
+
 func TestPaySameChargeTwiceExtendsOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()
@@ -194,7 +235,14 @@ func TestPaySameChargeTwiceExtendsOnce(t *testing.T) {
 
 		again := e.pay(t, "c1")
 
-		require.True(t, again.Repeat)
+		require.Equal(
+			t,
+			&PayResult{
+				Repeat: true,
+			},
+			again,
+			"a repeat reads nothing that could fail",
+		)
 		require.Equal(t, first.Peer.ExpiresAt, e.peers.m[first.Peer.PublicKey].ExpiresAt, "not extended twice")
 	})
 }
@@ -275,7 +323,7 @@ func TestPayRepeatSkipsPurchaseChecks(t *testing.T) {
 		)
 		require.NoError(t, err, "a repeat must not turn into a refund")
 		require.True(t, res.Repeat)
-		require.Equal(t, first.Peer.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, first.Peer.ExpiresAt, e.peers.m[first.Peer.PublicKey].ExpiresAt)
 	})
 }
 
@@ -319,6 +367,112 @@ func TestPaySaveFailureAfterApplyIsNotAnError(t *testing.T) {
 
 		res := e.pay(t, "c1")
 		require.True(t, res.NewKey, "days were given: no refund")
+	})
+}
+
+// A write whose reply was lost (shutdown, network cut) is still stored: the
+// days are given, so Pay must not report an error that ends in a refund.
+func TestPayIsNotAnErrorWhenTheExtendWasStoredButItsReplyLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		key := e.seed(t, now.AddDate(0, 0, 10))
+		e.peers.saveLost = errBoom
+
+		res := e.pay(t, "c1")
+
+		require.Equal(t, key.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, now.AddDate(0, 0, 40), e.peers.m[key.PublicKey].ExpiresAt)
+		require.True(t, e.payments.m["c1"].Applied)
+	})
+}
+
+func TestExtendOfADisabledKeyStaysOnWhenTheSaveReplyWasLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := expiredKey(t, e)
+		e.peers.saveLost = errBoom
+
+		_, err := e.svc.Extend(
+			context.Background(),
+			ExtendInput{
+				PublicKey: p.PublicKey,
+				Days:      30,
+			},
+		)
+		require.NoError(t, err)
+		require.True(t, e.peers.m[p.PublicKey].Enabled)
+		require.True(t, e.vpn.hasPeer(p.PublicKey), "the DB says enabled, so the server runs it")
+	})
+}
+
+// A disabled key without readable secrets can't go back on the server, so
+// it must be refused before Telegram charges, not refunded after.
+func TestPurchaseForADeadUnreadableKeyIsRefusedBeforePaying(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		p := expiredKey(t, e)
+		row := e.peers.m[p.PublicKey]
+		row.PrivateKey, row.PSK = "", ""
+		e.peers.m[p.PublicKey] = row
+
+		for _, key := range []string{
+			"",
+			p.PublicKey,
+		} {
+			_, err := e.svc.Invoice(
+				ctx,
+				PurchaseInput{
+					UserID:    42,
+					Days:      30,
+					PublicKey: key,
+				},
+			)
+			require.ErrorIs(t, err, ErrUnreadable, "key %q", key)
+			err = e.svc.CheckPurchase(
+				ctx,
+				PaymentInput{
+					PayerID: 42,
+					Payload: "v1|42|30|150|" + key,
+					Stars:   150,
+				},
+			)
+			require.ErrorIs(t, err, ErrUnreadable, "key %q", key)
+		}
+	})
+}
+
+// An enabled key is already on the server: extending it needs no secrets.
+func TestPurchaseForAnEnabledUnreadableKeyWorks(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		p := e.seed(t, now.AddDate(0, 0, 10))
+		row := e.peers.m[p.PublicKey]
+		row.PrivateKey, row.PSK = "", ""
+		e.peers.m[p.PublicKey] = row
+
+		res := e.pay(t, "c1")
+		require.Equal(t, p.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, now.AddDate(0, 0, 40), e.peers.m[p.PublicKey].ExpiresAt)
+	})
+}
+
+// A charge recorded by someone else between Pay's lookup and its own
+// record must not be applied a second time.
+func TestPayDoesNotApplyAChargeSomeoneElseRecorded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		key := e.seed(t, now.AddDate(0, 0, 10))
+		e.payments.addTaken = true
+
+		res := e.pay(t, "c1")
+
+		require.True(t, res.NeedsReview)
+		require.Equal(t, now.AddDate(0, 0, 10), e.peers.m[key.PublicKey].ExpiresAt, "no days added")
 	})
 }
 
@@ -380,4 +534,162 @@ func (s *env) pay(t *testing.T, charge string) *PayResult {
 	)
 	require.NoError(t, err)
 	return res
+}
+
+func TestPayRepeatIgnoresKeyLookupError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		e.pay(t, "c1")
+		e.peers.getErr = errBoom // the DB hiccups on the repeat
+
+		payload := e.invoice(
+			t,
+			PurchaseInput{
+				UserID: 42,
+				Days:   30,
+			},
+		)
+		e.peers.getErr = errBoom
+		res, err := e.svc.Pay(
+			context.Background(),
+			PaymentInput{
+				ChargeID: "c1",
+				PayerID:  42,
+				Payload:  payload,
+				Stars:    150,
+			},
+		)
+		require.NoError(t, err, "a repeat must never become a refund")
+		require.True(t, res.Repeat)
+	})
+}
+
+func TestPayRetriesTheAppliedMark(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		e.payments.saveFails = 1
+
+		e.pay(t, "c1")
+		require.True(t, e.payments.m["c1"].Applied, "the second try saved it")
+	})
+}
+
+func TestForeverKeyIsNotForSale(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		forever, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+
+		_, err = e.svc.Invoice(
+			ctx,
+			PurchaseInput{
+				UserID:    42,
+				Days:      30,
+				PublicKey: forever.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrNotForSale, "that key never ends")
+
+		_, err = e.svc.Invoice(
+			ctx,
+			PurchaseInput{
+				UserID: 42,
+				Days:   30,
+			},
+		)
+		require.ErrorIs(t, err, ErrNotForSale, "all their keys are forever")
+	})
+}
+
+func TestPayExtendsTheTimedKeyNotTheForeverOne(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		_, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+			},
+		) // .2, forever
+		require.NoError(t, err)
+		timed, err := e.svc.Issue(
+			ctx,
+			IssueInput{
+				UserID: 42,
+				Days:   5,
+			},
+		) // .3
+		require.NoError(t, err)
+
+		res := e.pay(t, "c1")
+		require.Equal(t, timed.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, now.AddDate(0, 0, 5+30), res.Peer.ExpiresAt)
+	})
+}
+
+func TestRefundDuringPayIsNotLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		// the admin refunds while Pay is applying the days
+		e.vpn.onChange = func() {
+			require.NoError(t, e.svc.MarkRefunded(context.Background(), "c1"))
+		}
+
+		e.pay(t, "c1")
+		got := e.payments.m["c1"]
+		require.True(t, got.Applied)
+		require.False(t, got.RefundedAt.IsZero(), "Pay's own mark does not wipe the refund")
+	})
+}
+
+func TestPayRecordsTheKeyItExtendsBeforeApplying(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		trial, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+		stored := e.peers.m[trial.PublicKey]
+		stored.ExpiresAt = now.Add(-time.Minute)
+		e.peers.m[trial.PublicKey] = stored
+		_, err = e.svc.Maintain(ctx)
+		require.NoError(t, err)
+		payload := e.invoice(
+			t,
+			PurchaseInput{
+				UserID: 42,
+				Days:   30,
+			},
+		)
+		e.vpn.err = errBoom
+
+		_, err = e.svc.Pay(
+			ctx,
+			PaymentInput{
+				ChargeID: "c1",
+				PayerID:  42,
+				Payload:  payload,
+				Stars:    150,
+			},
+		)
+		require.Error(t, err)
+		require.Equal(t, trial.PublicKey, e.payments.m["c1"].PeerKey, "admins see which key to check")
+		require.False(t, e.payments.m["c1"].Applied)
+	})
 }

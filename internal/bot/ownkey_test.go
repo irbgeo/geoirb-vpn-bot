@@ -116,6 +116,15 @@ func TestReissueUnreadableKeyExplains(t *testing.T) {
 	require.Equal(t, keyUnreadableText, s.sent[len(s.sent)-1].Text)
 }
 
+func TestDeleteBlockedKeyExplains(t *testing.T) {
+	svc := ownKeyService()
+	svc.ownKeyErr = service.ErrBlocked
+	r, s := newRouter(svc)
+
+	require.NoError(t, r.Handle(context.Background(), press(cbDelete+"PUB=")))
+	require.Equal(t, blockedKeyDeleteText, s.sent[len(s.sent)-1].Text)
+}
+
 func TestAskForAKeyNotInMyAccess(t *testing.T) {
 	r, s := newRouter(ownKeyService())
 	require.NoError(t, r.Handle(context.Background(), press(cbDeleteAsk+"OTHER=")))

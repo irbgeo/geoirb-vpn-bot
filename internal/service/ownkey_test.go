@@ -77,6 +77,28 @@ func TestReissueFailureKeepsTheOldKey(t *testing.T) {
 	})
 }
 
+func TestReissueDBFailureKeepsTheOldKey(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		old := ownKey(t, e)
+		e.peers.replaceErr = errBoom
+		changes := e.vpn.changes
+
+		_, err := e.svc.ReissueKey(
+			context.Background(),
+			UserKey{
+				UserID:    42,
+				PublicKey: old.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, errBoom)
+		require.Equal(t, changes, e.vpn.changes, "the server is not touched")
+		require.True(t, e.vpn.hasPeer(old.PublicKey))
+		require.Len(t, e.peers.m, 1)
+		require.Equal(t, *old, e.peers.m[old.PublicKey], "the old record is back, secrets too")
+	})
+}
+
 func TestReissueUnreadableKeyRefused(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()
@@ -153,6 +175,86 @@ func TestDeleteOwnKeyKeepsTheKeyWhenTheServerFails(t *testing.T) {
 		)
 		require.ErrorIs(t, err, errBoom)
 		require.Contains(t, e.peers.m, old.PublicKey)
+	})
+}
+
+func TestDeleteOwnKeyRefusesABlockedKey(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		old := ownKey(t, e)
+		ctx := context.Background()
+		require.NoError(t, e.svc.Disable(ctx, old.PublicKey))
+
+		err := e.svc.DeleteOwnKey(
+			ctx,
+			UserKey{
+				UserID:    42,
+				PublicKey: old.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrBlocked)
+		require.True(t, e.peers.m[old.PublicKey].Blocked, "the block can't be deleted away")
+		require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 42), ErrHasKey)
+
+		require.NoError(t, e.svc.Delete(ctx, old.PublicKey), "an admin still deletes it")
+	})
+}
+
+// The trial mark is best effort when the key is issued; deleting that key
+// must not hand the user a second trial.
+func TestDeleteOwnKeyNeedsTheTrialMarked(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		e.users().trialErr = errBoom
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err, "the key is given even if the mark was not saved")
+		require.False(t, e.users().m[42].TrialUsed)
+		own := UserKey{
+			UserID:    42,
+			PublicKey: p.PublicKey,
+		}
+
+		require.ErrorIs(t, e.svc.DeleteOwnKey(ctx, own), errBoom)
+		require.Contains(t, e.peers.m, p.PublicKey, "no mark, no delete")
+
+		e.users().trialErr = nil
+		require.NoError(t, e.svc.DeleteOwnKey(ctx, own))
+		require.True(t, e.users().m[42].TrialUsed)
+		require.ErrorIs(t, e.svc.CheckCreateKey(ctx, 42), ErrTrialUsed)
+	})
+}
+
+func TestDeleteOwnKeyKeepsTheTrialOfAnUnlimitedUser(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUnlimited)
+		ctx := context.Background()
+		p, err := e.svc.CreateKey(
+			ctx,
+			CreateKeyInput{
+				UserID: 42,
+			},
+		)
+		require.NoError(t, err)
+
+		require.NoError(
+			t,
+			e.svc.DeleteOwnKey(
+				ctx,
+				UserKey{
+					UserID:    42,
+					PublicKey: p.PublicKey,
+				},
+			),
+		)
+		require.False(t, e.users().m[42].TrialUsed)
 	})
 }
 

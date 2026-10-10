@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 )
 
@@ -27,11 +28,11 @@ func (s *service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 	}
 	p := *old
 	p.PublicKey, p.PrivateKey, p.PSK = keys.Public, keys.Private, keys.PSK
-	swapInput := swapInput{
+	peerSwap := PeerSwap{
 		Old: old,
 		New: &p,
 	}
-	err = s.swapKey(ctx, swapInput)
+	err = s.swapKey(ctx, peerSwap)
 	if err != nil {
 		return nil, err
 	}
@@ -39,12 +40,21 @@ func (s *service) ReissueKey(ctx context.Context, k UserKey) (*Peer, error) {
 	return p.public(), nil
 }
 
-// DeleteOwnKey deletes one of the user's own keys for good.
+// DeleteOwnKey deletes one of the user's own keys for good. A key an admin
+// disabled is ErrBlocked: the block lives on the key, so deleting it would
+// let the user start over with a new one. Admins delete it with Delete.
 func (s *service) DeleteOwnKey(ctx context.Context, k UserKey) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	p, err := s.ownPeer(ctx, k)
+	if err != nil {
+		return err
+	}
+	if p.Blocked {
+		return ErrBlocked
+	}
+	err = s.closeTrial(ctx, k.UserID)
 	if err != nil {
 		return err
 	}
@@ -70,11 +80,11 @@ func (s *service) ownPeer(ctx context.Context, k UserKey) (*Peer, error) {
 }
 
 // swapKey replaces in.Old with in.New (same IP) in the DB and, for an
-// enabled key, on the server. The DB records are swapped first, so a DB
-// failure leaves the server as it was. On any failure the old key is put
-// back. The caller holds s.mu.
-func (s *service) swapKey(ctx context.Context, in swapInput) error {
-	err := s.swapRecords(ctx, in)
+// enabled key, on the server. The DB records are swapped first (one
+// write), so a DB failure leaves the server as it was. On any failure the
+// old key is put back. The caller holds s.mu.
+func (s *service) swapKey(ctx context.Context, in PeerSwap) error {
+	err := s.peers.Replace(ctx, in)
 	if err == nil && in.Old.Enabled {
 		replacePeerInput := &ReplacePeerInput{
 			Old: in.Old.vpnPeer(),
@@ -89,26 +99,33 @@ func (s *service) swapKey(ctx context.Context, in swapInput) error {
 	return nil
 }
 
-// swapRecords deletes the old DB record (it holds the IP) and saves the new.
-func (s *service) swapRecords(ctx context.Context, in swapInput) error {
-	err := s.peers.Delete(ctx, in.Old.PublicKey)
-	if err != nil {
-		return err
+// unswap undoes a failed swapKey in the DB: the old record comes back in
+// place of the new one, again in one write (the VPN already put the old
+// peer back). It runs even when ctx is cancelled; an error is logged.
+func (s *service) unswap(ctx context.Context, in PeerSwap) {
+	back := PeerSwap{
+		Old: in.New,
+		New: in.Old,
 	}
-	return s.peers.Save(ctx, in.New)
-}
-
-// unswap undoes a failed swapKey in the DB: the new record goes, the old
-// one comes back (the VPN already put the old peer back). It runs even
-// when ctx is cancelled; errors are logged.
-func (s *service) unswap(ctx context.Context, in swapInput) {
-	rb := context.WithoutCancel(ctx)
-	err := s.peers.Delete(rb, in.New.PublicKey)
+	err := s.peers.Replace(context.WithoutCancel(ctx), back)
 	if err != nil {
 		log.Printf("service: undo reissue of %s: %v", in.Old.IP, err)
 	}
-	err = s.peers.Save(rb, in.Old)
-	if err != nil {
-		log.Printf("service: undo reissue of %s: restore old record: %v", in.Old.IP, err)
+}
+
+// closeTrial makes sure a plain user's trial is marked used before their
+// key goes: the mark made when the key was issued is best effort, and
+// after the delete nothing else would stop a second trial.
+func (s *service) closeTrial(ctx context.Context, userID int64) error {
+	u, err := s.User(ctx, userID)
+	if errors.Is(err, ErrNotFound) {
+		return nil // no user row: nobody to give a trial to
 	}
+	if err != nil {
+		return err
+	}
+	if u.Role != RoleUser || u.TrialUsed {
+		return nil
+	}
+	return s.users.SetTrialUsed(ctx, userID)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -20,6 +21,8 @@ const checkKeySample = 20
 type peerRepo struct {
 	coll *mongo.Collection
 	box  *sealer // PrivateKey and PSK are stored encrypted
+	// logged: public keys of unreadable rows already written to the log.
+	logged sync.Map
 }
 
 // Get returns the peer by public key, or (nil, nil) if not found.
@@ -63,6 +66,28 @@ func (s *peerRepo) Delete(ctx context.Context, publicKey string) error {
 	_, err := s.coll.DeleteOne(ctx, byID(publicKey))
 	if err != nil {
 		return fmt.Errorf("store: delete peer: %w", err)
+	}
+	return nil
+}
+
+// Replace removes in.Old and stores in.New as one ordered bulk write: the
+// old row goes first because both hold the same server+IP (unique index).
+// It is one request, so stopping the bot can't leave the swap half done.
+func (s *peerRepo) Replace(ctx context.Context, in service.PeerSwap) error {
+	if in.New.PSK == "" {
+		return fmt.Errorf("store: replace peer %s: the new key has no secrets", in.New.IP)
+	}
+	d, err := s.encode(in.New)
+	if err != nil {
+		return err
+	}
+	peerSwap := peerSwap{
+		OldKey: in.Old.PublicKey,
+		New:    d,
+	}
+	_, err = s.coll.BulkWrite(ctx, replacePeer(peerSwap))
+	if err != nil {
+		return fmt.Errorf("store: replace peer %s: %w", in.New.IP, err)
 	}
 	return nil
 }
@@ -177,11 +202,16 @@ func (s *peerRepo) encode(p *service.Peer) (*peer, error) {
 }
 
 // decode converts a document back, decrypting the secrets. Secrets that
-// do not open are left empty (logged): one bad row must not stop expiry,
-// reminders and new keys for the rest.
+// do not open are left empty: one bad row must not stop expiry, reminders
+// and new keys for the rest. It is logged once per key, not on each of the
+// worker's reads every minute.
 func (s *peerRepo) decode(d *peer) *service.Peer {
 	p, err := s.open(d)
-	if err != nil {
+	if err == nil {
+		return p
+	}
+	_, seen := s.logged.LoadOrStore(d.PublicKey, true)
+	if !seen {
 		log.Printf("store: peer %s secrets unreadable: %v", d.IP, err)
 	}
 	return p

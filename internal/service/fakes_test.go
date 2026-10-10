@@ -12,7 +12,8 @@ import (
 // --- repositories: maps, copy on get/save so tests can't alias state ---
 
 type fakeUsers struct {
-	m map[int64]User
+	m        map[int64]User
+	trialErr error // SetTrialUsed fails
 }
 
 func (s *fakeUsers) Get(_ context.Context, id int64) (*User, error) {
@@ -54,6 +55,9 @@ func (s *fakeUsers) SetKeyCounts(_ context.Context, counts map[int64]int) error 
 }
 
 func (s *fakeUsers) SetTrialUsed(_ context.Context, id int64) error {
+	if s.trialErr != nil {
+		return s.trialErr
+	}
 	u := s.m[id]
 	u.TrialUsed = true
 	s.m[id] = u
@@ -102,7 +106,12 @@ func (s *fakeFeedback) List(_ context.Context, p Page) ([]*Feedback, int64, erro
 type fakePeers struct {
 	m       map[string]Peer
 	saveErr error
-	getErr  error
+	// saveLost: Save stores the row, then returns this (the reply was lost).
+	saveLost error
+	getErr   error
+	// replaceErr: the next Replace removes the old row, then fails (the
+	// worst case); the one after works.
+	replaceErr error
 }
 
 func (s *fakePeers) Get(_ context.Context, key string) (*Peer, error) {
@@ -121,7 +130,7 @@ func (s *fakePeers) Save(_ context.Context, p *Peer) error {
 		return s.saveErr
 	}
 	s.m[p.PublicKey] = *p
-	return nil
+	return s.saveLost
 }
 
 func (s *fakePeers) Delete(ctx context.Context, key string) error {
@@ -130,6 +139,17 @@ func (s *fakePeers) Delete(ctx context.Context, key string) error {
 		return err // like a real DB call on a cancelled context
 	}
 	delete(s.m, key)
+	return nil
+}
+
+func (s *fakePeers) Replace(_ context.Context, in PeerSwap) error {
+	delete(s.m, in.Old.PublicKey)
+	err := s.replaceErr
+	s.replaceErr = nil
+	if err != nil {
+		return err
+	}
+	s.m[in.New.PublicKey] = *in.New
 	return nil
 }
 
@@ -167,11 +187,14 @@ type fakePayments struct {
 	m         map[string]Payment
 	saveErr   error
 	saveFails int // fail this many Saves, then work
+	// addTaken: Add finds the charge already recorded (someone else wrote
+	// it after Get saw nothing).
+	addTaken bool
 }
 
 func (s *fakePayments) Add(_ context.Context, p *Payment) (bool, error) {
 	_, ok := s.m[p.ChargeID]
-	if ok {
+	if ok || s.addTaken {
 		return false, nil
 	}
 	s.m[p.ChargeID] = *p

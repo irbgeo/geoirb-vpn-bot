@@ -38,7 +38,7 @@ func (s *service) Invoice(ctx context.Context, in PurchaseInput) (*Invoice, erro
 	if !ok {
 		return nil, ErrNoTariff
 	}
-	err := s.checkBuyer(ctx, in)
+	_, err := s.checkBuyer(ctx, in)
 	if err != nil {
 		return nil, err
 	}
@@ -93,15 +93,9 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		// the days already, so applying again could double them. Admins decide.
 		return &PayResult{NeedsReview: true}, nil
 	case pay != nil && pay.Applied:
-		// A repeat must never turn into a refund, so a failed lookup of the
-		// key (only shown, not needed) is logged, not returned.
-		p, err := s.peers.Get(ctx, pay.PeerKey)
-		if err != nil {
-			log.Printf("service: repeat of payment %s: key lookup: %v", in.ChargeID, err)
-		}
+		// Nothing is read or checked again: a repeat must never fail, or it
+		// would turn into a refund.
 		return &PayResult{
-			Peer:   p.public(),
-			Days:   pay.Days,
 			Repeat: true,
 		}, nil
 	case pay != nil && !pay.RefundedAt.IsZero():
@@ -109,10 +103,6 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 	}
 
 	pu, err := s.purchase(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	err = s.pickKey(ctx, pu)
 	if err != nil {
 		return nil, err
 	}
@@ -128,9 +118,16 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		Days:      pu.Days,
 		CreatedAt: time.Now(),
 	}
-	_, err = s.payments.Add(ctx, pay)
+	added, err := s.payments.Add(ctx, pay)
 	if err != nil {
 		return nil, err
+	}
+	if !added {
+		// Recorded since the lookup above (not by this process: s.mu is
+		// held). Whoever wrote it applies it; a second time could double it.
+		return &PayResult{
+			NeedsReview: true,
+		}, nil
 	}
 
 	res, err := s.applyPurchase(ctx, pu)
@@ -197,43 +194,47 @@ func (s *service) tariff(days int) (Tariff, bool) {
 	return Tariff{}, false
 }
 
-// checkBuyer: the user exists, is a RoleUser, and owns the chosen key.
-func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) error {
+// checkBuyer: the user exists, is a RoleUser, and owns the chosen key. It
+// returns the key the purchase extends; nil = a new key is issued.
+func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) (*Peer, error) {
 	u, err := s.User(ctx, in.UserID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if u.Role != RoleUser {
-		return ErrNotForSale
+		return nil, ErrNotForSale
 	}
 	if in.PublicKey == "" {
 		// Buying extends one of their keys that can end; with keys but
 		// none of them timed, there is nothing to pay for.
-		_, err := s.chooseKey(ctx, in.UserID)
-		return err
+		return s.chooseKey(ctx, in.UserID)
 	}
 	p, err := s.ourPeer(ctx, in.PublicKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if p.UserID != in.UserID {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 	if p.ExpiresAt.IsZero() {
-		return ErrNotForSale // the key never ends
+		return nil, ErrNotForSale // the key never ends
 	}
 	if p.Blocked {
-		return ErrBlocked
+		return nil, ErrBlocked
 	}
-	return nil
+	if p.dead() {
+		return nil, ErrUnreadable
+	}
+	return p, nil
 }
 
 // chooseKey picks the key a no-key purchase extends: the unblocked key
 // with the lowest IP among those that can end (a key that never ends
 // can't be extended). nil means the user has no keys (a new one is
 // issued); ErrNotForSale: keys, none of them timed; ErrBlocked: timed
-// keys exist but an admin disabled them all. Invoice, CheckPurchase and
-// Pay all go through it, so they agree.
+// keys exist but an admin disabled them all; ErrUnreadable: the only keys
+// left can't go back on the server (see Peer.dead). Invoice, CheckPurchase
+// and Pay all go through it, so they agree.
 func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	keys, err := s.peers.ByUser(ctx, userID)
 	if err != nil {
@@ -241,12 +242,17 @@ func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	}
 	var first *Peer
 	timed := false
+	dead := false
 	for _, p := range keys {
 		if p.ExpiresAt.IsZero() {
 			continue
 		}
 		timed = true
 		if p.Blocked {
+			continue
+		}
+		if p.dead() {
+			dead = true
 			continue
 		}
 		if first == nil || parseIP(p.IP).Less(parseIP(first.IP)) {
@@ -256,6 +262,8 @@ func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	switch {
 	case first != nil:
 		return first, nil
+	case dead:
+		return nil, ErrUnreadable
 	case timed:
 		return nil, ErrBlocked
 	case len(keys) > 0:
@@ -264,7 +272,9 @@ func (s *service) chooseKey(ctx context.Context, userID int64) (*Peer, error) {
 	return nil, nil
 }
 
-// purchase parses and checks an invoice payload against the payment.
+// purchase parses and checks an invoice payload against the payment. In
+// the result PublicKey is the key to extend, also when the invoice named
+// none (see chooseKey); "" = a new key.
 func (s *service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput, error) {
 	f := strings.Split(in.Payload, "|")
 	if len(f) != 5 || f[0] != payloadVersion {
@@ -288,34 +298,21 @@ func (s *service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 		Days:      days,
 		PublicKey: f[4],
 	}
-	err := s.checkBuyer(ctx, *pu)
+	key, err := s.checkBuyer(ctx, *pu)
 	if err != nil {
 		return nil, err
 	}
+	if key != nil {
+		pu.PublicKey = key.PublicKey
+	}
 	return pu, nil
-}
-
-// pickKey fills in the key a purchase extends when the invoice named
-// none: see chooseKey, or "" for a new key.
-func (s *service) pickKey(ctx context.Context, pu *PurchaseInput) error {
-	if pu.PublicKey != "" {
-		return nil
-	}
-	p, err := s.chooseKey(ctx, pu.UserID)
-	if err != nil {
-		return err
-	}
-	if p != nil {
-		pu.PublicKey = p.PublicKey
-	}
-	return nil
 }
 
 // applyPurchase adds the paid days: to the chosen key, else to the user's
 // first key, else to a new key. Buying ends any chance of a trial. The
 // caller holds s.mu.
 func (s *service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayResult, error) {
-	key := pu.PublicKey // picked by pickKey; "" = a new key
+	key := pu.PublicKey // picked by purchase; "" = a new key
 
 	res := &PayResult{}
 	var err error
@@ -341,7 +338,8 @@ func (s *service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayRes
 }
 
 // markTrialUsed: after a purchase there is no free trial any more. A
-// failure only means a later trial check still sees the key.
+// failure is only logged: the key still stops a second trial, and
+// DeleteOwnKey marks it again before the key goes (closeTrial).
 func (s *service) markTrialUsed(ctx context.Context, userID int64) {
 	err := s.users.SetTrialUsed(ctx, userID)
 	if err != nil {
