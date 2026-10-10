@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.17.0-dev.1">
-  <title>geoirb-vpn-bot: architecture Diagram</title>
+  <title>VPN network: two servers Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5081,12 +5081,12 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="BLUEPRINT / REV 01"
            data-preset-badge-editorial="EDITORIAL / FIELD NOTE">
         <div class="pulse-dot"></div>
-        <h1>geoirb-vpn-bot: architecture</h1>
+        <h1>VPN network: two servers</h1>
       </div>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[]</script>
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"https://github.com/irbgeo/geoirb-vpn-bot","revision":"e230eb165cc8bff5494a86f60a0f8483bfdaaeaa","shortRevision":"e230eb1","label":"irbgeo/geoirb-vpn-bot","href":"https://github.com/irbgeo/geoirb-vpn-bot/tree/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa"},"referenceCount":11,"nodes":{"sysload":[{"path":"internal/sysload/sysload.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/sysload/sysload.go"}],"router":[{"path":"internal/bot/router.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/bot/router.go"}],"service":[{"path":"internal/service/peers.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/service/peers.go"}],"store":[{"path":"internal/store/queries.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/store/queries.go"}],"bypass":[{"path":"internal/bypass/bypass.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/bypass/bypass.go"}],"worker":[{"path":"internal/worker/worker.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/worker/worker.go"}],"amnezia":[{"path":"internal/vpn/amnezia/vpn.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/vpn/amnezia/vpn.go"}],"awg":[{"path":"deploy/geoirb-vpn.nft","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/deploy/geoirb-vpn.nft"}],"tunnel":[{"path":"internal/tunnel/tunnel.go","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/internal/tunnel/tunnel.go"}],"awgExit":[{"path":"deploy/vpn-routes.sh","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/deploy/vpn-routes.sh"}],"exit":[{"path":"deploy/exit/install.sh","href":"https://github.com/irbgeo/geoirb-vpn-bot/blob/e230eb165cc8bff5494a86f60a0f8483bfdaaeaa/deploy/exit/install.sh"}]}}</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"foreign","label":"Foreign site","focus":["client","awg0","split","tunnelRu","tunnelExit","world"],"note":"Address not in ru4: mark 0x1, table 100, the tunnel, out from the GCP address."},{"id":"russian","label":"Russian site","focus":["client","awg0","split","ruNet"],"note":"Address in ru4: no mark, the packet leaves directly from the RU server address."},{"id":"dns","label":"DNS","focus":["client","awg0","unbound","cloudflare"],"note":"The client asks 10.8.0.1, unbound asks Cloudflare over TLS."},{"id":"bot","label":"Bot traffic","focus":["bot","tunnelRu","tunnelExit","world"],"note":"ip rule 100/101 for uid 997 send the bot to Telegram through the tunnel."}]</script>
+
     <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"S cycles","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.story":"the guided story","viewer.owner.chapter":"the active chapter","viewer.owner.chapterPreview":"the chapter delta preview","viewer.owner.handoff":"the chapter handoff","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyShareCard":"Copy Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.period":"Clipboard image write not supported by this browser.","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.copiedShare":"Copied Share Card","viewer.export.downloadedShare":"Downloaded Share Card","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Route: {source} → {target} · {count} directed hop","viewer.export.card.routeSummary.other":"Route: {source} → {target} · {count} directed hops","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.card.defaultBadge":"ARCHIFY · {preset} · {theme}","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guided.region":"Guided diagram views","viewer.guided.previous":"Previous guided view","viewer.guided.previous.title":"Previous guided view ([)","viewer.guided.next":"Next guided view","viewer.guided.next.title":"Next guided view (])","viewer.guided.views":"Guided views","viewer.guided.explore":"Explore this system","viewer.guided.intro":"Step through curated paths without changing the source diagram.","viewer.guided.trail":"Story trail","viewer.guided.beat":"Beat","viewer.guided.nextBeat":"Next","viewer.guided.play":"Play guided story","viewer.guided.play.title":"Play guided story (P)","viewer.guided.pause":"Pause guided story","viewer.guided.pause.title":"Pause guided story (P)","viewer.guided.replay":"Replay guided story","viewer.guided.replay.title":"Replay guided story (P)","viewer.guided.playStory":"Play story","viewer.guided.pauseStory":"Pause","viewer.guided.replayStory":"Replay story","viewer.guided.motionUnavailable":"Story playback unavailable while motion is Still","viewer.guided.enableMotion":"Switch motion to Live to play the guided story","viewer.guided.selectBeatLink":"Select a Story Beat to copy its exact link","viewer.guided.copyMoment":"Copy moment","viewer.guided.momentCopied":"Moment link copied","viewer.guided.momentCopyFailed":"Could not copy story moment link","viewer.guided.copied":"Copied","viewer.guided.copyFailed":"Copy failed","viewer.guided.showAll":"Show all","viewer.guided.showAll.aria":"Show entire diagram","viewer.guided.chapters":"Story chapters","viewer.guided.storyTrail":"Story trail for {label}: {count} beats","viewer.guided.chapter.open":"Open chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.current":"Current chapter {index} of {total}: {label}, {count} stops","viewer.guided.chapter.selectedNodes":"{count} selected nodes","viewer.guided.chapter.stops":"{count} stops","viewer.guided.chapter.stop.one":"{count} stop","viewer.guided.chapter.stop.other":"{count} stops","viewer.guided.chapter.current.title":"{label} — current chapter, {count} stops","viewer.guided.chapter.delta.expanded":"{stay} stay, {enter} enter, {leave} leave","viewer.guided.chapter.delta.aria":"Open chapter {index} of {total}: {label}. Chapter focus delta: {delta}","viewer.guided.chapter.delta.title":"{label} — {delta} chapter focus","viewer.guided.handoff":"{from} → {to} · via {label}","viewer.guided.share.chapter":"Chapter {index} / {total}","viewer.guided.share.initial":"Chapter 01 / 01","viewer.guided.share.default":"Guided chapter","viewer.guided.state.ready":"Ready","viewer.guided.state.playing":"Playing","viewer.guided.state.settled":"Settled","viewer.guided.state.paused":"Paused","viewer.guided.state.pinned":"Pinned","viewer.guided.state.still":"Still","viewer.guided.share.step":"Step {index} / {total} · {label}","viewer.guided.share.staticMoment":"{step} · Static moment","viewer.guided.share.complete":"{count} steps complete · {note}","viewer.guided.share.settled":"Path settled for reading.","viewer.guided.share.staticPath":"{count} steps · Static path","viewer.guided.share.ready":"{count} steps · Ready","viewer.guided.share.aria":"{state} chapter {index} of {total}: {label}. {beat}. {route}","viewer.guided.beat.start":"Beat {index} / {total} · {label} · starting point","viewer.guided.beat.forward":"Beat {index} / {total} · {from} → {to}","viewer.guided.beat.reverse":"Beat {index} / {total} · {from} → {to} · reverse authored link","viewer.guided.beat.multiple":"Beat {index} / {total} · {from} ⇄ {to} · {count} authored links","viewer.guided.beat.group":"Beat {index} / {total} · {from} · {to} · grouped · no direct link","viewer.guided.beat.aria.prefix":"Story beat {index} of {total}: {label}. ","viewer.guided.beat.aria.start":"Starting point.","viewer.guided.beat.aria.forward":"From {from} through one authored forward relationship.","viewer.guided.beat.aria.reverse":"From {from}; the authored relationship points from {to} to {from}.","viewer.guided.beat.aria.multiple":"From {from} through {count} authored relationships; shown without arbitrary motion.","viewer.guided.beat.aria.group":"Grouped from {from} with no direct authored relationship.","viewer.guided.caption.start":"Starting point","viewer.guided.caption.grouped":"Grouped transition · no direct authored link","viewer.guided.caption.more":" +{count} more","viewer.guided.caption.reverse":"Reverse authored relationship","viewer.guided.caption.relationships":"{count} authored relationships","viewer.guided.caption.relationship":"Authored relationship","viewer.guided.caption.direction":"authored direction: {from} → {to}","viewer.guided.caption.starting":"Authored starting point","viewer.guided.beatLink":"Copy link to current story moment: Beat {index} of {total}: {label}","viewer.guided.noStory":"This diagram has no authored guided story.","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.story":"Play the guided story","viewer.guide.story.hint":"Walk the authored chapters and real relationships.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.facts":"{nodes} · {relationships} · {views}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.fact.view.one":"{count} guided view","viewer.guide.fact.view.other":"{count} guided views","viewer.guide.story.available.one":"Walk {count} authored chapter and its real relationships.","viewer.guide.story.available.other":"Walk {count} authored chapters and their real relationships.","viewer.guide.story.unavailable":"No authored guided story in this diagram.","viewer.guide.open":"Open diagram guide","viewer.guide.noStory":"This diagram has no authored guided story.","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.sourceMarker":"SRC","viewer.passport.beacon.one":"{count} verified source; focus this node to inspect","viewer.passport.beacon.other":"{count} verified sources; focus this node to inspect","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Route probe","viewer.route.start":"Choose a start node","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Traced route","viewer.route.pickTwo":"Pick two semantic nodes on the diagram","viewer.route.pickOne":"Pick a semantic node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Choose the source, then the destination. Direction matters.","viewer.route.destination":"Choose a destination from {label}","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"A route needs two distinct semantic nodes.","viewer.route.unreachable":"No directed route to {label}","viewer.route.unreachable.detail":"{target} is not reachable from {source}. Pick a highlighted destination.","viewer.route.start.instructions":"Select the source. The next step will reveal only directed destinations.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest authored route","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} directed hop","viewer.route.overview.hop.other":"{count} directed hops","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} directed destination available. Pick a highlighted node.","viewer.route.destination.count.other":"{count} directed destinations available. Pick a highlighted node.","viewer.route.noOutgoing":"No outgoing route starts here. Clear and choose another source.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"PATH","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -5130,8 +5130,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
-      <svg viewBox="0 0 1395 760" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
-        <title id="archify-diagram-title">geoirb-vpn-bot: architecture</title>
+      <svg viewBox="0 0 1280 700" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+        <title id="archify-diagram-title">VPN network: two servers</title>
         <desc id="archify-diagram-description">An architecture diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
@@ -5156,319 +5156,212 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Boundaries (behind everything) -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="RU server" x="335" y="26" width="860" height="508" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="RU server 185.22.152.218" x="220" y="120" width="650" height="302" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="security-group" data-composition-frame-id="1" data-composition-frame-label="Bot app: one Go process (systemd, vpnbot)" x="343" y="45" width="614" height="489" rx="8" class="c-security-group" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="GCP 35.217.8.40" x="870" y="300" width="210" height="122" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="users" data-edge-to="telegram" data-edge-label="buttons" data-edge-key="0" data-composition-points="140,292;175,292" d="M 140 292 L 175 292" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="telegram" data-edge-to="router" data-edge-label="long polling" data-edge-key="1" data-composition-points="325,292;355,292" d="M 325 292 L 355 292" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="router" data-edge-to="service" data-edge-label="calls" data-edge-key="2" data-composition-points="505,292;575,292" d="M 505 292 L 575 292" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="service" data-edge-to="store" data-edge-label="data" data-edge-key="3" data-composition-points="725,285;795,285" d="M 725 285 L 795 285" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="store" data-edge-to="mongo" data-edge-label="AES-GCM" data-edge-key="4" data-composition-points="945,292;1015,292" d="M 945 292 L 1015 292" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="service" data-edge-to="amnezia" data-edge-label="peers" data-edge-key="5" data-composition-points="725,299;760,299;760,482;795,482" d="M 725 299 L 752 299 Q 760 299 760 307 L 760 474 Q 760 482 768 482 L 795 482" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="amnezia" data-edge-to="awg" data-edge-label="awg syncconf" data-edge-key="6" data-composition-points="945,475;1015,475" d="M 945 475 L 1015 475" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="sysload" data-edge-to="router" data-edge-label="alerts" data-edge-key="7" data-composition-points="430,134;430,260" d="M 430 134 L 430 260" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="worker" data-edge-to="service" data-edge-label="Maintain" data-edge-key="8" data-composition-points="650,450;650,324" d="M 650 450 L 650 324" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="router" data-edge-to="bypass" data-edge-label="files" data-edge-key="9" data-composition-points="430,324;430,450" d="M 430 324 L 430 450" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="bypass" data-edge-to="lists" data-edge-label="files in Telegram" data-edge-key="10" data-composition-points="430,514;430,660" d="M 430 514 L 430 660" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="lists" data-edge-to="clients" data-edge-label="import into the app" data-edge-key="11" data-composition-points="505,692;795,692" d="M 505 692 L 795 692" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="clients" data-edge-to="awg" data-edge-label="UDP 443" data-edge-key="12" data-composition-points="955,692;985,692;985,489;1015,489" d="M 955 692 L 977 692 Q 985 692 985 684 L 985 497 Q 985 489 993 489 L 1015 489" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="awg" data-edge-to="internet" data-edge-label="address in ru4: direct" data-edge-key="13" data-composition-points="1095,514;1095,660" d="M 1095 514 L 1095 660" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="tunnel" data-edge-to="awgExit" data-edge-label="handshake, ip rule" data-edge-key="14" data-composition-points="945,102;1015,102" d="M 945 102 L 1015 102" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="awg" data-edge-to="awgExit" data-edge-label="not ru4: mark 0x1" data-edge-key="15" data-composition-points="1175,482;1213,482;1213,102;1175,102" d="M 1175 482 L 1205 482 Q 1213 482 1213 474 L 1213 110 Q 1213 102 1205 102 L 1175 102" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="awgExit" data-edge-to="exit" data-edge-label="UDP 26214" data-edge-key="16" data-composition-points="1175,102;1235,102" d="M 1175 102 L 1235 102" class="a-security" stroke-width="1.5" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="client" data-edge-to="awg0" data-edge-label="AWG, UDP 443" data-edge-key="0" data-edge-id="client-to-awg0" data-composition-points="180,366;250,366" d="M 180 366 L 250 366" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="awg0" data-edge-to="split" data-edge-label="decrypted" data-edge-key="1" data-edge-id="awg0-to-split" data-composition-points="400,366;470,366" d="M 400 366 L 470 366" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="split" data-edge-to="tunnelRu" data-edge-label="not ru4: mark 0x1" data-edge-key="2" data-edge-id="split-to-tunnel" data-composition-points="620,366;690,366" d="M 620 366 L 690 366" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="tunnelRu" data-edge-to="tunnelExit" data-edge-label="AWG, UDP 26214" data-edge-key="3" data-edge-id="tunnel-to-exit" data-composition-points="840,366;900,366" d="M 840 366 L 900 366" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="tunnelExit" data-edge-to="world" data-edge-label="masquerade" data-edge-key="4" data-edge-id="exit-to-world" data-composition-points="1050,366;1110,366" d="M 1050 366 L 1110 366" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="split" data-edge-to="ruNet" data-edge-label="address in ru4: direct" data-edge-key="5" data-edge-id="split-to-runet" data-composition-points="545,402;545,540" d="M 545 402 L 545 540" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="awg0" data-edge-to="unbound" data-edge-label="DNS query" data-edge-key="6" data-edge-id="awg0-to-unbound" data-composition-points="325,330;325,222" d="M 325 330 L 325 222" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="unbound" data-edge-to="cloudflare" data-edge-label="DoT, 853" data-edge-key="7" data-edge-id="unbound-to-cloudflare" data-composition-points="250,186;180,186" d="M 250 186 L 180 186" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="bot" data-edge-to="tunnelRu" data-edge-label="Telegram: ip rule 100/101" data-edge-key="8" data-edge-id="bot-to-tunnel" data-composition-points="765,222;765,330" d="M 765 222 L 765 330" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
 
         <!-- Components -->
-        <g id="node-users" data-node-id="users" data-node-label="Users" tabindex="0" role="button" aria-label="Focus Users, chat with the bot, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="chat with the bot" data-node-context="Architecture component">
-          <title>Users · chat with the bot · Architecture component</title>
-          <rect x="10" y="260" width="130" height="64" rx="6" class="c-mask"/>
-          <rect x="10" y="260" width="130" height="64" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(16 266) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="75" y="290" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Users</text>
-        <text data-detail="context" x="75" y="306" class="t-muted" font-size="9" text-anchor="middle">chat with the bot</text>
-        </g>
-
-        <g id="node-telegram" data-node-id="telegram" data-node-label="Telegram Bot API" tabindex="0" role="button" aria-label="Focus Telegram Bot API, messages + Stars, Architecture component, Telegram" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="messages + Stars" data-node-context="Architecture component" data-node-brand="Telegram" data-node-brand-id="telegram" data-node-brand-status="preset" data-node-brand-source="https://telegram.org/tour/screenshots">
-          <title>Telegram Bot API · messages + Stars · Architecture component · Telegram</title>
-          <rect x="175" y="260" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="175" y="260" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(181 266) scale(0.6875)">
-            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
-          </g>
-          <g aria-hidden="true" data-brand-mark="telegram" data-brand-title="Telegram" data-brand-status="preset" data-brand-source="https://telegram.org/tour/screenshots" class="brand-mark" transform="translate(303 266)">
-            <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
-            <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" transform="translate(3 3) scale(0.4166666666666667)" fill="#26A5E4"/>
-            <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="250" y="290" class="t-primary" font-size="9.7" font-weight="600" text-anchor="middle">Telegram Bot API</text>
-        <text data-detail="context" x="250" y="306" class="t-muted" font-size="9" text-anchor="middle">messages + Stars</text>
-        </g>
-
-        <g id="node-sysload" data-node-id="sysload" data-node-label="sysload" tabindex="0" role="button" aria-label="Focus sysload, load, every minute, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="load, every minute" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>sysload · load, every minute · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="355" y="70" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="355" y="70" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(361 76) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="430" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">sysload</text>
-        <text data-detail="context" x="430" y="116" class="t-muted" font-size="9" text-anchor="middle">load, every minute</text>
-        </g>
-
-        <g id="node-router" data-node-id="router" data-node-label="bot.Router" tabindex="0" role="button" aria-label="Focus bot.Router, menu, payments, alerts, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="menu, payments, alerts" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>bot.Router · menu, payments, alerts · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="355" y="260" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="355" y="260" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(361 266) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="430" y="290" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">bot.Router</text>
-        <text data-detail="context" x="430" y="306" class="t-muted" font-size="9" text-anchor="middle">menu, payments, alerts</text>
-        </g>
-
-        <g id="node-service" data-node-id="service" data-node-label="service" tabindex="0" role="button" aria-label="Focus service, keys, roles, limits, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="keys, roles, limits" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>service · keys, roles, limits · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="575" y="260" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="575" y="260" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(581 266) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="650" y="290" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">service</text>
-        <text data-detail="context" x="650" y="306" class="t-muted" font-size="9" text-anchor="middle">keys, roles, limits</text>
-        </g>
-
-        <g id="node-store" data-node-id="store" data-node-label="store" tabindex="0" role="button" aria-label="Focus store, queries, encryption, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="queries, encryption" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>store · queries, encryption · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="795" y="260" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="795" y="260" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(801 266) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="870" y="290" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">store</text>
-        <text data-detail="context" x="870" y="306" class="t-muted" font-size="9" text-anchor="middle">queries, encryption</text>
-        </g>
-
-        <g id="node-mongo" data-node-id="mongo" data-node-label="MongoDB" tabindex="0" role="button" aria-label="Focus MongoDB, keys, payments, feedback, RU server, MongoDB" aria-pressed="false" data-node-kind="database" data-node-sublabel="keys, payments, feedback" data-node-context="RU server" data-node-brand="MongoDB" data-node-brand-id="mongodb" data-node-brand-status="preset" data-node-brand-source="https://www.mongodb.com/pressroom">
-          <title>MongoDB · keys, payments, feedback · RU server · MongoDB</title>
-          <rect x="1015" y="260" width="160" height="64" rx="6" class="c-mask"/>
-          <rect x="1015" y="260" width="160" height="64" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1021 266) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <g aria-hidden="true" data-brand-mark="mongodb" data-brand-title="MongoDB" data-brand-status="preset" data-brand-source="https://www.mongodb.com/pressroom" class="brand-mark" transform="translate(1153 266)">
-            <rect width="16" height="16" rx="4" class="brand-mark-badge"/>
-            <path d="M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z" transform="translate(3 3) scale(0.4166666666666667)" fill="#47A248"/>
-            <rect width="16" height="16" rx="4" class="brand-mark-frame"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1095" y="290" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">MongoDB</text>
-        <text data-detail="context" x="1095" y="306" class="t-muted" font-size="9" text-anchor="middle">keys, payments, feedback</text>
-        </g>
-
-        <g id="node-bypass" data-node-id="bypass" data-node-label="bypass" tabindex="0" role="button" aria-label="Focus bypass, embedded lists, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="embedded lists" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>bypass · embedded lists · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="355" y="450" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="355" y="450" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(361 456) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="430" y="480" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">bypass</text>
-        <text data-detail="context" x="430" y="496" class="t-muted" font-size="9" text-anchor="middle">embedded lists</text>
-        </g>
-
-        <g id="node-worker" data-node-id="worker" data-node-label="worker" tabindex="0" role="button" aria-label="Focus worker, expiry, reminders, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="expiry, reminders" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>worker · expiry, reminders · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="575" y="450" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="575" y="450" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(581 456) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="650" y="480" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">worker</text>
-        <text data-detail="context" x="650" y="496" class="t-muted" font-size="9" text-anchor="middle">expiry, reminders</text>
-        </g>
-
-        <g id="node-amnezia" data-node-id="amnezia" data-node-label="vpn/amnezia" tabindex="0" role="button" aria-label="Focus vpn/amnezia, awg0.conf, awg syncconf, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="awg0.conf, awg syncconf" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>vpn/amnezia · awg0.conf, awg syncconf · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="795" y="450" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="795" y="450" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(801 456) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="870" y="480" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">vpn/amnezia</text>
-        <text data-detail="context" x="870" y="496" class="t-muted" font-size="9" text-anchor="middle">awg0.conf, awg syncconf</text>
-        </g>
-
-        <g id="node-awg" data-node-id="awg" data-node-label="awg0" tabindex="0" role="button" aria-label="Focus awg0, clients, 10.8.0.0/22, RU server" aria-pressed="false" data-node-kind="security" data-node-sublabel="clients, 10.8.0.0/22" data-node-context="RU server">
-          <title>awg0 · clients, 10.8.0.0/22 · RU server</title>
-          <rect x="1015" y="450" width="160" height="64" rx="6" class="c-mask"/>
-          <rect x="1015" y="450" width="160" height="64" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1021 456) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1095" y="480" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">awg0</text>
-        <text data-detail="context" x="1095" y="496" class="t-muted" font-size="9" text-anchor="middle">clients, 10.8.0.0/22</text>
-        </g>
-
-        <g id="node-lists" data-node-id="lists" data-node-label="Site lists" tabindex="0" role="button" aria-label="Focus Site lists, ru-sites-*.json, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="ru-sites-*.json" data-node-context="Architecture component">
-          <title>Site lists · ru-sites-*.json · Architecture component</title>
-          <rect x="355" y="660" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="355" y="660" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(361 666) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="430" y="690" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Site lists</text>
-        <text data-detail="context" x="430" y="706" class="t-muted" font-size="9" text-anchor="middle">ru-sites-*.json</text>
-        </g>
-
-        <g id="node-clients" data-node-id="clients" data-node-label="VPN apps" tabindex="0" role="button" aria-label="Focus VPN apps, AmneziaVPN, AmneziaWG, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="AmneziaVPN, AmneziaWG" data-node-context="Architecture component">
-          <title>VPN apps · AmneziaVPN, AmneziaWG · Architecture component</title>
-          <rect x="795" y="660" width="160" height="64" rx="6" class="c-mask"/>
-          <rect x="795" y="660" width="160" height="64" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(801 666) scale(0.6875)">
+        <g id="node-client" data-node-id="client" data-node-label="Client" tabindex="0" role="button" aria-label="Focus Client, AmneziaVPN, 10.8.0.x, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="AmneziaVPN, 10.8.0.x" data-node-context="Architecture component">
+          <title>Client · AmneziaVPN, 10.8.0.x · Architecture component</title>
+          <rect x="30" y="330" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="30" y="330" width="150" height="72" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(36 336) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="875" y="690" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">VPN apps</text>
-        <text data-detail="context" x="875" y="706" class="t-muted" font-size="9" text-anchor="middle">AmneziaVPN, AmneziaWG</text>
+          <text data-node-label="" data-detail-anchor="" x="105" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Client</text>
+        <text data-detail="context" x="105" y="380" class="t-muted" font-size="9" text-anchor="middle">AmneziaVPN, 10.8.0.x</text>
         </g>
 
-        <g id="node-internet" data-node-id="internet" data-node-label="Russian internet" tabindex="0" role="button" aria-label="Focus Russian internet, sees the RU server&#39;s IP, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="sees the RU server&#39;s IP" data-node-context="Architecture component">
-          <title>Russian internet · sees the RU server&#39;s IP · Architecture component</title>
-          <rect x="1015" y="660" width="160" height="64" rx="6" class="c-mask"/>
-          <rect x="1015" y="660" width="160" height="64" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1021 666) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="1095" y="690" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Russian internet</text>
-        <text data-detail="context" x="1095" y="706" class="t-muted" font-size="9" text-anchor="middle">sees the RU server&#39;s IP</text>
-        </g>
-
-        <g id="node-tunnel" data-node-id="tunnel" data-node-label="tunnel" tabindex="0" role="button" aria-label="Focus tunnel, tunnel watcher, RU server › Bot app: one Go process (systemd, vpnbot)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="tunnel watcher" data-node-context="RU server › Bot app: one Go process (systemd, vpnbot)">
-          <title>tunnel · tunnel watcher · RU server › Bot app: one Go process (systemd, vpnbot)</title>
-          <rect x="795" y="70" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="795" y="70" width="150" height="64" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(801 76) scale(0.6875)">
+        <g id="node-awg0" data-node-id="awg0" data-node-label="awg0" tabindex="0" role="button" aria-label="Focus awg0, 10.8.0.1/22, MTU 1380, RU server 185.22.152.218" aria-pressed="false" data-node-kind="backend" data-node-sublabel="10.8.0.1/22, MTU 1380" data-node-context="RU server 185.22.152.218">
+          <title>awg0 · 10.8.0.1/22, MTU 1380 · RU server 185.22.152.218</title>
+          <rect x="250" y="330" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="250" y="330" width="150" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(256 336) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="870" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">tunnel</text>
-        <text data-detail="context" x="870" y="116" class="t-muted" font-size="9" text-anchor="middle">tunnel watcher</text>
+          <text data-node-label="" data-detail-anchor="" x="325" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">awg0</text>
+        <text data-detail="context" x="325" y="380" class="t-muted" font-size="9" text-anchor="middle">10.8.0.1/22, MTU 1380</text>
         </g>
 
-        <g id="node-awgExit" data-node-id="awgExit" data-node-label="awg-exit" tabindex="0" role="button" aria-label="Focus awg-exit, tunnel, table 100, RU server" aria-pressed="false" data-node-kind="security" data-node-sublabel="tunnel, table 100" data-node-context="RU server">
-          <title>awg-exit · tunnel, table 100 · RU server</title>
-          <rect x="1015" y="70" width="160" height="64" rx="6" class="c-mask"/>
-          <rect x="1015" y="70" width="160" height="64" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1021 76) scale(0.6875)">
+        <g id="node-split" data-node-id="split" data-node-label="Split routing" tabindex="0" role="button" aria-label="Focus Split routing, nft: ru4, mark 0x1, RU server 185.22.152.218" aria-pressed="false" data-node-kind="security" data-node-sublabel="nft: ru4, mark 0x1" data-node-context="RU server 185.22.152.218">
+          <title>Split routing · nft: ru4, mark 0x1 · RU server 185.22.152.218</title>
+          <rect x="470" y="330" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="470" y="330" width="150" height="72" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(476 336) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1095" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">awg-exit</text>
-        <text data-detail="context" x="1095" y="116" class="t-muted" font-size="9" text-anchor="middle">tunnel, table 100</text>
+          <text data-node-label="" data-detail-anchor="" x="545" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Split routing</text>
+        <text data-detail="context" x="545" y="380" class="t-muted" font-size="9" text-anchor="middle">nft: ru4, mark 0x1</text>
         </g>
 
-        <g id="node-exit" data-node-id="exit" data-node-label="GCP: exit" tabindex="0" role="button" aria-label="Focus GCP: exit, NAT to foreign internet, Architecture component" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="NAT to foreign internet" data-node-context="Architecture component">
-          <title>GCP: exit · NAT to foreign internet · Architecture component</title>
-          <rect x="1235" y="70" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="1235" y="70" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(1241 76) scale(0.6875)">
+        <g id="node-tunnelRu" data-node-id="tunnelRu" data-node-label="awg-exit" tabindex="0" role="button" aria-label="Focus awg-exit, 10.255.255.1, table 100, RU server 185.22.152.218" aria-pressed="false" data-node-kind="backend" data-node-sublabel="10.255.255.1, table 100" data-node-context="RU server 185.22.152.218">
+          <title>awg-exit · 10.255.255.1, table 100 · RU server 185.22.152.218</title>
+          <rect x="690" y="330" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="690" y="330" width="150" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 336) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="765" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">awg-exit</text>
+        <text data-detail="context" x="765" y="380" class="t-muted" font-size="9" text-anchor="middle">10.255.255.1, table 100</text>
+        </g>
+
+        <g id="node-tunnelExit" data-node-id="tunnelExit" data-node-label="awg-exit" tabindex="0" role="button" aria-label="Focus awg-exit, 10.255.255.2, NAT, GCP 35.217.8.40" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="10.255.255.2, NAT" data-node-context="GCP 35.217.8.40">
+          <title>awg-exit · 10.255.255.2, NAT · GCP 35.217.8.40</title>
+          <rect x="900" y="330" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="900" y="330" width="150" height="72" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(906 336) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1310" y="100" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">GCP: exit</text>
-        <text data-detail="context" x="1310" y="116" class="t-muted" font-size="9" text-anchor="middle">NAT to foreign internet</text>
+          <text data-node-label="" data-detail-anchor="" x="975" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">awg-exit</text>
+        <text data-detail="context" x="975" y="380" class="t-muted" font-size="9" text-anchor="middle">10.255.255.2, NAT</text>
+        </g>
+
+        <g id="node-world" data-node-id="world" data-node-label="Foreign internet" tabindex="0" role="button" aria-label="Focus Foreign internet, sees 35.217.8.40, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="sees 35.217.8.40" data-node-context="Architecture component">
+          <title>Foreign internet · sees 35.217.8.40 · Architecture component</title>
+          <rect x="1110" y="330" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="1110" y="330" width="150" height="72" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1116 336) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1185" y="364" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Foreign internet</text>
+        <text data-detail="context" x="1185" y="380" class="t-muted" font-size="9" text-anchor="middle">sees 35.217.8.40</text>
+        </g>
+
+        <g id="node-unbound" data-node-id="unbound" data-node-label="unbound" tabindex="0" role="button" aria-label="Focus unbound, DNS on 10.8.0.1:53, RU server 185.22.152.218" aria-pressed="false" data-node-kind="backend" data-node-sublabel="DNS on 10.8.0.1:53" data-node-context="RU server 185.22.152.218">
+          <title>unbound · DNS on 10.8.0.1:53 · RU server 185.22.152.218</title>
+          <rect x="250" y="150" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="250" y="150" width="150" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(256 156) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="325" y="184" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">unbound</text>
+        <text data-detail="context" x="325" y="200" class="t-muted" font-size="9" text-anchor="middle">DNS on 10.8.0.1:53</text>
+        </g>
+
+        <g id="node-cloudflare" data-node-id="cloudflare" data-node-label="Cloudflare DNS" tabindex="0" role="button" aria-label="Focus Cloudflare DNS, 1.1.1.1, 1.0.0.1, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="1.1.1.1, 1.0.0.1" data-node-context="Architecture component">
+          <title>Cloudflare DNS · 1.1.1.1, 1.0.0.1 · Architecture component</title>
+          <rect x="30" y="150" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="30" y="150" width="150" height="72" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(36 156) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="105" y="184" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Cloudflare DNS</text>
+        <text data-detail="context" x="105" y="200" class="t-muted" font-size="9" text-anchor="middle">1.1.1.1, 1.0.0.1</text>
+        </g>
+
+        <g id="node-bot" data-node-id="bot" data-node-label="Bot" tabindex="0" role="button" aria-label="Focus Bot, uid 997, tunnel watcher, RU server 185.22.152.218" aria-pressed="false" data-node-kind="backend" data-node-sublabel="uid 997, tunnel watcher" data-node-context="RU server 185.22.152.218">
+          <title>Bot · uid 997, tunnel watcher · RU server 185.22.152.218</title>
+          <rect x="690" y="150" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="690" y="150" width="150" height="72" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(696 156) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="765" y="184" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Bot</text>
+        <text data-detail="context" x="765" y="200" class="t-muted" font-size="9" text-anchor="middle">uid 997, tunnel watcher</text>
+        </g>
+
+        <g id="node-ruNet" data-node-id="ruNet" data-node-label="Russian internet" tabindex="0" role="button" aria-label="Focus Russian internet, sees 185.22.152.218, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="sees 185.22.152.218" data-node-context="Architecture component">
+          <title>Russian internet · sees 185.22.152.218 · Architecture component</title>
+          <rect x="470" y="540" width="150" height="72" rx="6" class="c-mask"/>
+          <rect x="470" y="540" width="150" height="72" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(476 546) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="545" y="574" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Russian internet</text>
+        <text data-detail="context" x="545" y="590" class="t-muted" font-size="9" text-anchor="middle">sees 185.22.152.218</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="users" data-edge-to="telegram" data-edge-label="buttons" data-edge-key="0">
-          <rect x="135.7" y="246" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="157.5" y="256" class="t-backend" font-size="8" text-anchor="middle">buttons</text>
+        <g data-detail="context" data-edge-from="client" data-edge-to="awg0" data-edge-label="AWG, UDP 443" data-edge-key="0" data-edge-id="client-to-awg0">
+          <rect x="181.2" y="346" width="67.6" height="14" rx="3" class="c-mask"/>
+          <text x="215" y="356" class="t-backend" font-size="8" text-anchor="middle">AWG, UDP 443</text>
         </g>
-        <g data-detail="context" data-edge-from="telegram" data-edge-to="router" data-edge-label="long polling" data-edge-key="1">
-          <rect x="306.2" y="246" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="340" y="256" class="t-backend" font-size="8" text-anchor="middle">long polling</text>
+        <g data-detail="context" data-edge-from="awg0" data-edge-to="split" data-edge-label="decrypted" data-edge-key="1" data-edge-id="awg0-to-split">
+          <rect x="408.4" y="346" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="435" y="356" class="t-muted" font-size="8" text-anchor="middle">decrypted</text>
         </g>
-        <g data-detail="context" data-edge-from="router" data-edge-to="service" data-edge-label="calls" data-edge-key="2">
-          <rect x="523" y="272" width="34" height="14" rx="3" class="c-mask"/>
-          <text x="540" y="282" class="t-backend" font-size="8" text-anchor="middle">calls</text>
+        <g data-detail="context" data-edge-from="split" data-edge-to="tunnelRu" data-edge-label="not ru4: mark 0x1" data-edge-key="2" data-edge-id="split-to-tunnel">
+          <rect x="609.2" y="316" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="655" y="326" class="t-backend" font-size="8" text-anchor="middle">not ru4: mark 0x1</text>
         </g>
-        <g data-detail="context" data-edge-from="service" data-edge-to="store" data-edge-label="data" data-edge-key="3">
-          <rect x="745" y="265" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="760" y="275" class="t-muted" font-size="8" text-anchor="middle">data</text>
+        <g data-detail="context" data-edge-from="tunnelRu" data-edge-to="tunnelExit" data-edge-label="AWG, UDP 26214" data-edge-key="3" data-edge-id="tunnel-to-exit">
+          <rect x="831.4" y="406" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="870" y="416" class="t-backend" font-size="8" text-anchor="middle">AWG, UDP 26214</text>
         </g>
-        <g data-detail="context" data-edge-from="store" data-edge-to="mongo" data-edge-label="AES-GCM" data-edge-key="4">
-          <rect x="958.2" y="272" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="980" y="282" class="t-muted" font-size="8" text-anchor="middle">AES-GCM</text>
+        <g data-detail="context" data-edge-from="tunnelExit" data-edge-to="world" data-edge-label="masquerade" data-edge-key="4" data-edge-id="exit-to-world">
+          <rect x="1051" y="346" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="1080" y="356" class="t-muted" font-size="8" text-anchor="middle">masquerade</text>
         </g>
-        <g data-detail="context" data-edge-from="service" data-edge-to="amnezia" data-edge-label="peers" data-edge-key="5">
-          <rect x="743" y="370.5" width="34" height="14" rx="3" class="c-mask"/>
-          <text x="760" y="380.5" class="t-backend" font-size="8" text-anchor="middle">peers</text>
+        <g data-detail="context" data-edge-from="split" data-edge-to="ruNet" data-edge-label="address in ru4: direct" data-edge-key="5" data-edge-id="split-to-runet">
+          <rect x="487.2" y="406" width="115.6" height="14" rx="3" class="c-mask"/>
+          <text x="545" y="416" class="t-muted" font-size="8" text-anchor="middle">address in ru4: direct</text>
         </g>
-        <g data-detail="context" data-edge-from="amnezia" data-edge-to="awg" data-edge-label="awg syncconf" data-edge-key="6">
-          <rect x="946.2" y="455" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="980" y="465" class="t-backend" font-size="8" text-anchor="middle">awg syncconf</text>
+        <g data-detail="context" data-edge-from="awg0" data-edge-to="unbound" data-edge-label="DNS query" data-edge-key="6" data-edge-id="awg0-to-unbound">
+          <rect x="298.4" y="310" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="325" y="320" class="t-muted" font-size="8" text-anchor="middle">DNS query</text>
         </g>
-        <g data-detail="context" data-edge-from="sysload" data-edge-to="router" data-edge-label="alerts" data-edge-key="7">
-          <rect x="410.6" y="138" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="430" y="148" class="t-messagebus" font-size="8" text-anchor="middle">alerts</text>
+        <g data-detail="context" data-edge-from="unbound" data-edge-to="cloudflare" data-edge-label="DoT, 853" data-edge-key="7" data-edge-id="unbound-to-cloudflare">
+          <rect x="190.8" y="166" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="215" y="176" class="t-messagebus" font-size="8" text-anchor="middle">DoT, 853</text>
         </g>
-        <g data-detail="context" data-edge-from="worker" data-edge-to="service" data-edge-label="Maintain" data-edge-key="8">
-          <rect x="625.8" y="430" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="650" y="440" class="t-muted" font-size="8" text-anchor="middle">Maintain</text>
-        </g>
-        <g data-detail="context" data-edge-from="router" data-edge-to="bypass" data-edge-label="files" data-edge-key="9">
-          <rect x="413" y="328" width="34" height="14" rx="3" class="c-mask"/>
-          <text x="430" y="338" class="t-messagebus" font-size="8" text-anchor="middle">files</text>
-        </g>
-        <g data-detail="context" data-edge-from="bypass" data-edge-to="lists" data-edge-label="files in Telegram" data-edge-key="10">
-          <rect x="384.2" y="518" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="430" y="528" class="t-messagebus" font-size="8" text-anchor="middle">files in Telegram</text>
-        </g>
-        <g data-detail="context" data-edge-from="lists" data-edge-to="clients" data-edge-label="import into the app" data-edge-key="11">
-          <rect x="599.4" y="672" width="101.2" height="14" rx="3" class="c-mask"/>
-          <text x="650" y="682" class="t-messagebus" font-size="8" text-anchor="middle">import into the app</text>
-        </g>
-        <g data-detail="context" data-edge-from="clients" data-edge-to="awg" data-edge-label="UDP 443" data-edge-key="12">
-          <rect x="963.2" y="570.5" width="43.6" height="14" rx="3" class="c-mask"/>
-          <text x="985" y="580.5" class="t-security" font-size="8" text-anchor="middle">UDP 443</text>
-        </g>
-        <g data-detail="context" data-edge-from="awg" data-edge-to="internet" data-edge-label="address in ru4: direct" data-edge-key="13">
-          <rect x="1037.2" y="518" width="115.6" height="14" rx="3" class="c-mask"/>
-          <text x="1095" y="528" class="t-muted" font-size="8" text-anchor="middle">address in ru4: direct</text>
-        </g>
-        <g data-detail="context" data-edge-from="tunnel" data-edge-to="awgExit" data-edge-label="handshake, ip rule" data-edge-key="14">
-          <rect x="931.8" y="138" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="980" y="148" class="t-messagebus" font-size="8" text-anchor="middle">handshake, ip rule</text>
-        </g>
-        <g data-detail="context" data-edge-from="awg" data-edge-to="awgExit" data-edge-label="not ru4: mark 0x1" data-edge-key="15">
-          <rect x="1167.2" y="380" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="1213" y="390" class="t-backend" font-size="8" text-anchor="middle">not ru4: mark 0x1</text>
-        </g>
-        <g data-detail="context" data-edge-from="awgExit" data-edge-to="exit" data-edge-label="UDP 26214" data-edge-key="16">
-          <rect x="1178.4" y="82" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="1205" y="92" class="t-security" font-size="8" text-anchor="middle">UDP 26214</text>
+        <g data-detail="context" data-edge-from="bot" data-edge-to="tunnelRu" data-edge-label="Telegram: ip rule 100/101" data-edge-key="8" data-edge-id="bot-to-tunnel">
+          <rect x="700" y="226" width="130" height="14" rx="3" class="c-mask"/>
+          <text x="765" y="236" class="t-messagebus" font-size="8" text-anchor="middle">Telegram: ip rule 100/101</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="RU server">
-          <rect data-graph-role="structural-frame-label-mask" x="339" y="30" width="58.60000539999999" height="17" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="343" y="43.000001" class="t-cloud" font-size="9.000001" font-weight="600">RU server</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="0" data-composition-frame-kind="region" data-composition-frame-label="RU server 185.22.152.218">
+          <rect data-graph-role="structural-frame-label-mask" x="224" y="130" width="139.6" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="228" y="143" class="t-cloud" font-size="9" font-weight="600">RU server 185.22.152.218</text>
         </g>
 
-        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="security-group" data-composition-frame-label="Bot app: one Go process (systemd, vpnbot)">
-          <rect data-graph-role="structural-frame-label-mask" x="347" y="49" width="231.40002459999997" height="17" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="351" y="62.000001" class="t-security" font-size="9.000001" font-weight="600">Bot app: one Go process (systemd, vpnbot)</text>
+        <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="GCP 35.217.8.40">
+          <rect data-graph-role="structural-frame-label-mask" x="874" y="310" width="91" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="878" y="323" class="t-cloud" font-size="9" font-weight="600">GCP 35.217.8.40</text>
         </g>
 
         <!-- Legend -->
-
+        <g data-legend="" data-legend-bridge="">
+          <text x="40" y="664" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="684" data-legend-width="83">
+            <rect x="40" y="675" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="684" class="t-muted" font-size="10" font-weight="500">Frontend</text>
+          </g>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="145" data-legend-baseline="684" data-legend-width="78">
+            <rect x="145" y="675" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="167" y="684" class="t-muted" font-size="10" font-weight="500">Backend</text>
+          </g>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="245" data-legend-baseline="684" data-legend-width="68">
+            <rect x="245" y="675" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
+            <text x="267" y="684" class="t-muted" font-size="10" font-weight="500">Cloud</text>
+          </g>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="Security" data-legend-x="335" data-legend-baseline="684" data-legend-width="83">
+            <rect x="335" y="675" width="16" height="10" rx="2.5" class="c-security" stroke-width="1"/>
+            <text x="357" y="684" class="t-muted" font-size="10" font-weight="500">Security</text>
+          </g>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="440" data-legend-baseline="684" data-legend-width="83">
+            <rect x="440" y="675" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="462" y="684" class="t-muted" font-size="10" font-weight="500">External</text>
+          </g>
+        </g>
       </svg>
       <p class="intent-trace-status no-print" id="intent-trace-status" role="status" aria-live="polite" aria-atomic="true"></p>
       <div class="share-chapter-cue no-print" id="share-chapter-cue" hidden role="status" aria-live="polite">
@@ -5657,37 +5550,37 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <div class="card-dot cyan"></div>
-          <h3>Inside the bot app</h3>
+          <div class="card-dot emerald"></div>
+          <h3>Fail closed</h3>
         </div>
         <ul>
-          <li>&bull; bot.Router — menu, admin panel, Stars payments, broadcasts, feedback</li>
-          <li>&bull; service — keys, roles, users reissue and delete their own keys</li>
-          <li>&bull; worker, sysload, tunnel — 1-minute timers in the same process</li>
+          <li>&bull; Table 100: default dev awg-exit</li>
+          <li>&bull; Fallback route: unreachable default</li>
+          <li>&bull; Tunnel down: foreign traffic stops, it never leaves from the RU address</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <div class="card-dot emerald"></div>
-          <h3>Reliability</h3>
+          <div class="card-dot amber"></div>
+          <h3>Rule guards</h3>
         </div>
         <ul>
-          <li>&bull; awg syncconf — other clients stay connected</li>
-          <li>&bull; Reconcile at startup; backup once a day</li>
-          <li>&bull; Tunnel down: foreign traffic stops, admins get an alert</li>
+          <li>&bull; networkd leaves foreign rules alone</li>
+          <li>&bull; A timer re-adds rule 110 every minute</li>
+          <li>&bull; The bot re-adds rules 100/101 every minute</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot rose"></div>
-          <h3>Network</h3>
+          <h3>Blocked</h3>
         </div>
         <ul>
-          <li>&bull; VPN in the host kernel (amneziawg module), no docker</li>
-          <li>&bull; Russian addresses (set ru4) — direct, the rest — through GCP</li>
-          <li>&bull; Details: docs/diagrams/network.html</li>
+          <li>&bull; A client cannot reach another client</li>
+          <li>&bull; No access to private networks</li>
+          <li>&bull; IPv6 is closed for the bot</li>
         </ul>
       </div>
     </div>

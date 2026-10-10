@@ -39,13 +39,10 @@ backup:
 backup-pull:
 	./scripts/backup-pull.sh
 
-# Rebuild docs/diagrams/architecture.html from architecture.json with the
-# Archify skill. Update the json first (and its meta.repository.revision to
-# the commit the source links should point to); the build checks every link.
-ARCHIFY ?= $(HOME)/.claude/skills/archify/bin/archify.mjs
-diagram:
-	node "$(ARCHIFY)" deliver architecture docs/diagrams/architecture.json docs/diagrams/architecture.html --quality showcase --repo-root .
 
-# Open the architecture diagram in the default browser (macOS `open`).
-diagram-open:
+diagram-architecture-open:
 	open docs/diagrams/architecture.html
+
+diagram-network-open:
+	open docs/diagrams/network.html
+

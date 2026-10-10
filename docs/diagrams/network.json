@@ -1,0 +1,323 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "VPN network: two servers",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1280,
+      700
+    ],
+    "views": [
+      {
+        "id": "foreign",
+        "label": "Foreign site",
+        "focus": [
+          "client",
+          "awg0",
+          "split",
+          "tunnelRu",
+          "tunnelExit",
+          "world"
+        ],
+        "note": "Address not in ru4: mark 0x1, table 100, the tunnel, out from the GCP address."
+      },
+      {
+        "id": "russian",
+        "label": "Russian site",
+        "focus": [
+          "client",
+          "awg0",
+          "split",
+          "ruNet"
+        ],
+        "note": "Address in ru4: no mark, the packet leaves directly from the RU server address."
+      },
+      {
+        "id": "dns",
+        "label": "DNS",
+        "focus": [
+          "client",
+          "awg0",
+          "unbound",
+          "cloudflare"
+        ],
+        "note": "The client asks 10.8.0.1, unbound asks Cloudflare over TLS."
+      },
+      {
+        "id": "bot",
+        "label": "Bot traffic",
+        "focus": [
+          "bot",
+          "tunnelRu",
+          "tunnelExit",
+          "world"
+        ],
+        "note": "ip rule 100/101 for uid 997 send the bot to Telegram through the tunnel."
+      }
+    ],
+    "locale": "en"
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "Client",
+      "sublabel": "AmneziaVPN, 10.8.0.x",
+      "pos": [
+        30,
+        330
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "awg0",
+      "type": "backend",
+      "label": "awg0",
+      "sublabel": "10.8.0.1/22, MTU 1380",
+      "pos": [
+        250,
+        330
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "split",
+      "type": "security",
+      "label": "Split routing",
+      "sublabel": "nft: ru4, mark 0x1",
+      "pos": [
+        470,
+        330
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "tunnelRu",
+      "type": "backend",
+      "label": "awg-exit",
+      "sublabel": "10.255.255.1, table 100",
+      "pos": [
+        690,
+        330
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "tunnelExit",
+      "type": "cloud",
+      "label": "awg-exit",
+      "sublabel": "10.255.255.2, NAT",
+      "pos": [
+        900,
+        330
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "world",
+      "type": "external",
+      "label": "Foreign internet",
+      "sublabel": "sees 35.217.8.40",
+      "pos": [
+        1110,
+        330
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "unbound",
+      "type": "backend",
+      "label": "unbound",
+      "sublabel": "DNS on 10.8.0.1:53",
+      "pos": [
+        250,
+        150
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "cloudflare",
+      "type": "external",
+      "label": "Cloudflare DNS",
+      "sublabel": "1.1.1.1, 1.0.0.1",
+      "pos": [
+        30,
+        150
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "bot",
+      "type": "backend",
+      "label": "Bot",
+      "sublabel": "uid 997, tunnel watcher",
+      "pos": [
+        690,
+        150
+      ],
+      "size": [
+        150,
+        72
+      ]
+    },
+    {
+      "id": "ruNet",
+      "type": "external",
+      "label": "Russian internet",
+      "sublabel": "sees 185.22.152.218",
+      "pos": [
+        470,
+        540
+      ],
+      "size": [
+        150,
+        72
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "RU server 185.22.152.218",
+      "wraps": [
+        "awg0",
+        "split",
+        "tunnelRu",
+        "unbound",
+        "bot"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "GCP 35.217.8.40",
+      "wraps": [
+        "tunnelExit"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-to-awg0",
+      "from": "client",
+      "to": "awg0",
+      "label": "AWG, UDP 443",
+      "variant": "emphasis"
+    },
+    {
+      "id": "awg0-to-split",
+      "from": "awg0",
+      "to": "split",
+      "label": "decrypted"
+    },
+    {
+      "id": "split-to-tunnel",
+      "from": "split",
+      "to": "tunnelRu",
+      "label": "not ru4: mark 0x1",
+      "variant": "emphasis",
+      "labelDy": -30
+    },
+    {
+      "id": "tunnel-to-exit",
+      "from": "tunnelRu",
+      "to": "tunnelExit",
+      "label": "AWG, UDP 26214",
+      "variant": "emphasis",
+      "labelDy": 60
+    },
+    {
+      "id": "exit-to-world",
+      "from": "tunnelExit",
+      "to": "world",
+      "label": "masquerade"
+    },
+    {
+      "id": "split-to-runet",
+      "from": "split",
+      "to": "ruNet",
+      "label": "address in ru4: direct",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "awg0-to-unbound",
+      "from": "awg0",
+      "to": "unbound",
+      "label": "DNS query",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "unbound-to-cloudflare",
+      "from": "unbound",
+      "to": "cloudflare",
+      "label": "DoT, 853",
+      "variant": "dashed"
+    },
+    {
+      "id": "bot-to-tunnel",
+      "from": "bot",
+      "to": "tunnelRu",
+      "label": "Telegram: ip rule 100/101",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Fail closed",
+      "items": [
+        "Table 100: default dev awg-exit",
+        "Fallback route: unreachable default",
+        "Tunnel down: foreign traffic stops, it never leaves from the RU address"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Rule guards",
+      "items": [
+        "networkd leaves foreign rules alone",
+        "A timer re-adds rule 110 every minute",
+        "The bot re-adds rules 100/101 every minute"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Blocked",
+      "items": [
+        "A client cannot reach another client",
+        "No access to private networks",
+        "IPv6 is closed for the bot"
+      ]
+    }
+  ]
+}

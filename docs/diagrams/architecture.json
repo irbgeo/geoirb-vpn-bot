@@ -2,17 +2,17 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "geoirb-vpn-bot: архитектура",
+    "title": "geoirb-vpn-bot: architecture",
     "output": "docs/diagrams/architecture.html",
     "quality_profile": "showcase",
     "repository": {
       "url": "https://github.com/irbgeo/geoirb-vpn-bot",
       "provider": "github",
       "link_mode": "web",
-      "revision": "3920d2bf2c1007c97c63d818be7dba7980b89aaf"
+      "revision": "e230eb165cc8bff5494a86f60a0f8483bfdaaeaa"
     },
     "viewBox": [
-      1290,
+      1395,
       760
     ]
   },
@@ -20,8 +20,8 @@
     {
       "id": "users",
       "type": "external",
-      "label": "Пользователи",
-      "sublabel": "чат с ботом",
+      "label": "Users",
+      "sublabel": "chat with the bot",
       "pos": [
         10,
         260
@@ -35,10 +35,10 @@
       "id": "telegram",
       "type": "cloud",
       "label": "Telegram Bot API",
-      "sublabel": "сообщения + Stars",
+      "sublabel": "messages + Stars",
       "brand": "telegram",
       "pos": [
-        205,
+        175,
         260
       ],
       "size": [
@@ -50,9 +50,9 @@
       "id": "sysload",
       "type": "backend",
       "label": "sysload",
-      "sublabel": "нагрузка, раз в минуту",
+      "sublabel": "load, every minute",
       "pos": [
-        430,
+        355,
         70
       ],
       "size": [
@@ -69,9 +69,9 @@
       "id": "router",
       "type": "backend",
       "label": "bot.Router",
-      "sublabel": "меню, оплата, отзывы",
+      "sublabel": "menu, payments, alerts",
       "pos": [
-        430,
+        355,
         260
       ],
       "size": [
@@ -88,9 +88,9 @@
       "id": "service",
       "type": "backend",
       "label": "service",
-      "sublabel": "ключи, роли, лимиты",
+      "sublabel": "keys, roles, limits",
       "pos": [
-        650,
+        575,
         260
       ],
       "size": [
@@ -107,9 +107,9 @@
       "id": "store",
       "type": "backend",
       "label": "store",
-      "sublabel": "запросы, шифрование",
+      "sublabel": "queries, encryption",
       "pos": [
-        870,
+        795,
         260
       ],
       "size": [
@@ -126,10 +126,10 @@
       "id": "mongo",
       "type": "database",
       "label": "MongoDB",
-      "sublabel": "ключи, оплаты, отзывы",
+      "sublabel": "keys, payments, feedback",
       "brand": "mongodb",
       "pos": [
-        1090,
+        1015,
         260
       ],
       "size": [
@@ -141,9 +141,9 @@
       "id": "bypass",
       "type": "backend",
       "label": "bypass",
-      "sublabel": "списки встроены",
+      "sublabel": "embedded lists",
       "pos": [
-        430,
+        355,
         450
       ],
       "size": [
@@ -160,9 +160,9 @@
       "id": "worker",
       "type": "backend",
       "label": "worker",
-      "sublabel": "сроки, напоминания",
+      "sublabel": "expiry, reminders",
       "pos": [
-        650,
+        575,
         450
       ],
       "size": [
@@ -179,9 +179,9 @@
       "id": "amnezia",
       "type": "backend",
       "label": "vpn/amnezia",
-      "sublabel": "конфиг, docker exec",
+      "sublabel": "awg0.conf, awg syncconf",
       "pos": [
-        870,
+        795,
         450
       ],
       "size": [
@@ -190,32 +190,36 @@
       ],
       "sources": [
         {
-          "path": "internal/vpn/amnezia/server.go"
+          "path": "internal/vpn/amnezia/vpn.go"
         }
       ]
     },
     {
       "id": "awg",
       "type": "security",
-      "label": "amnezia-awg2",
-      "sublabel": "awg0 в ядре",
-      "brand": "docker",
+      "label": "awg0",
+      "sublabel": "clients, 10.8.0.0/22",
       "pos": [
-        1090,
+        1015,
         450
       ],
       "size": [
         160,
         64
+      ],
+      "sources": [
+        {
+          "path": "deploy/geoirb-vpn.nft"
+        }
       ]
     },
     {
       "id": "lists",
       "type": "external",
-      "label": "Списки сайтов",
+      "label": "Site lists",
       "sublabel": "ru-sites-*.json",
       "pos": [
-        430,
+        355,
         660
       ],
       "size": [
@@ -226,10 +230,10 @@
     {
       "id": "clients",
       "type": "frontend",
-      "label": "VPN-приложения",
+      "label": "VPN apps",
       "sublabel": "AmneziaVPN, AmneziaWG",
       "pos": [
-        870,
+        795,
         660
       ],
       "size": [
@@ -240,22 +244,79 @@
     {
       "id": "internet",
       "type": "external",
-      "label": "Интернет",
-      "sublabel": "сайты и сервисы",
+      "label": "Russian internet",
+      "sublabel": "sees the RU server's IP",
       "pos": [
-        1090,
+        1015,
         660
       ],
       "size": [
         160,
         64
       ]
+    },
+    {
+      "id": "tunnel",
+      "type": "backend",
+      "label": "tunnel",
+      "sublabel": "tunnel watcher",
+      "pos": [
+        795,
+        70
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "internal/tunnel/tunnel.go"
+        }
+      ]
+    },
+    {
+      "id": "awgExit",
+      "type": "security",
+      "label": "awg-exit",
+      "sublabel": "tunnel, table 100",
+      "pos": [
+        1015,
+        70
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/vpn-routes.sh"
+        }
+      ]
+    },
+    {
+      "id": "exit",
+      "type": "cloud",
+      "label": "GCP: exit",
+      "sublabel": "NAT to foreign internet",
+      "pos": [
+        1235,
+        70
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "deploy/exit/install.sh"
+        }
+      ]
     }
   ],
   "boundaries": [
     {
       "kind": "region",
-      "label": "VPN-сервер",
+      "label": "RU server",
       "wraps": [
         "sysload",
         "router",
@@ -265,13 +326,15 @@
         "bypass",
         "worker",
         "amnezia",
-        "awg"
+        "awg",
+        "awgExit",
+        "tunnel"
       ],
-      "pad": 24
+      "pad": 20
     },
     {
       "kind": "security-group",
-      "label": "Приложение бота: один Go-процесс (systemd, vpnbot)",
+      "label": "Bot app: one Go process (systemd, vpnbot)",
       "wraps": [
         "sysload",
         "router",
@@ -279,7 +342,8 @@
         "store",
         "bypass",
         "worker",
-        "amnezia"
+        "amnezia",
+        "tunnel"
       ],
       "pad": 12
     }
@@ -288,25 +352,27 @@
     {
       "from": "users",
       "to": "telegram",
-      "label": "кнопки",
-      "variant": "emphasis"
+      "label": "buttons",
+      "variant": "emphasis",
+      "labelDy": -26
     },
     {
       "from": "telegram",
       "to": "router",
       "label": "long polling",
-      "variant": "emphasis"
+      "variant": "emphasis",
+      "labelDy": -26
     },
     {
       "from": "router",
       "to": "service",
-      "label": "вызовы",
+      "label": "calls",
       "variant": "emphasis"
     },
     {
       "from": "service",
       "to": "store",
-      "label": "данные"
+      "label": "data"
     },
     {
       "from": "store",
@@ -316,19 +382,19 @@
     {
       "from": "service",
       "to": "amnezia",
-      "label": "пиры",
+      "label": "peers",
       "variant": "emphasis"
     },
     {
       "from": "amnezia",
       "to": "awg",
-      "label": "docker exec",
+      "label": "awg syncconf",
       "variant": "emphasis"
     },
     {
       "from": "sysload",
       "to": "router",
-      "label": "алерты",
+      "label": "alerts",
       "variant": "dashed",
       "labelDy": 24
     },
@@ -340,21 +406,21 @@
     {
       "from": "router",
       "to": "bypass",
-      "label": "файлы",
+      "label": "files",
       "variant": "dashed",
       "labelDy": 24
     },
     {
       "from": "bypass",
       "to": "lists",
-      "label": "файлы в Telegram",
+      "label": "files in Telegram",
       "variant": "dashed",
       "labelDy": 24
     },
     {
       "from": "lists",
       "to": "clients",
-      "label": "импорт в приложение",
+      "label": "import into the app",
       "variant": "dashed"
     },
     {
@@ -366,36 +432,74 @@
     {
       "from": "awg",
       "to": "internet",
-      "label": "NAT, MSS 1340",
+      "label": "address in ru4: direct",
       "labelDy": 24
+    },
+    {
+      "from": "tunnel",
+      "to": "awgExit",
+      "label": "handshake, ip rule",
+      "variant": "dashed",
+      "labelAt": [
+        980,
+        148
+      ]
+    },
+    {
+      "from": "awg",
+      "to": "awgExit",
+      "label": "not ru4: mark 0x1",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1213,
+          482
+        ],
+        [
+          1213,
+          102
+        ]
+      ],
+      "labelAt": [
+        1213,
+        390
+      ]
+    },
+    {
+      "from": "awgExit",
+      "to": "exit",
+      "label": "UDP 26214",
+      "variant": "security"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "Внутри приложения бота",
+      "title": "Inside the bot app",
       "items": [
-        "bot.Router — меню, админка, оплата Stars, рассылки, отзывы",
-        "service — ключи, роли, перевыпуск и удаление ключа пользователем",
-        "worker и sysload — таймеры раз в минуту в том же процессе"
+        "bot.Router — menu, admin panel, Stars payments, broadcasts, feedback",
+        "service — keys, roles, users reissue and delete their own keys",
+        "worker, sysload, tunnel — 1-minute timers in the same process"
       ]
     },
     {
       "dot": "emerald",
-      "title": "Надёжность",
+      "title": "Reliability",
       "items": [
-        "awg syncconf — без разрыва остальных клиентов",
-        "Reconcile при старте; бэкап (скрипт сервера) раз в сутки, 7 копий",
-        "Списки сайтов встроены в бота; применяет их приложение"
+        "awg syncconf — other clients stay connected",
+        "Reconcile at startup; backup once a day",
+        "Tunnel down: foreign traffic stops, admins get an alert"
       ]
     },
     {
       "dot": "rose",
-      "title": "Нагрузка",
+      "title": "Network",
       "items": [
-        "conntrack 65536, TCP MSS 1340 — большие пакеты не режутся",
-        "VPN в ядре (модуль amneziawg): меньше процессора",
-        "План: MTU 1380, бот без docker — docs/plan.md"
+        "VPN in the host kernel (amneziawg module), no docker",
+        "Russian addresses (set ru4) — direct, the rest — through GCP",
+        "Details: docs/diagrams/network.html"
       ]
     }
   ]
