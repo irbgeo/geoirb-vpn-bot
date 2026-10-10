@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,35 @@ func TestConfigFileName(t *testing.T) {
 		p := &service.Peer{Name: name}
 		require.Equal(t, want, configFileName(p), name)
 	}
+}
+
+// A charge whose purchase was refused is recorded without days: no text
+// may call it "0 месяцев".
+func TestRefusedChargeIsNotShownAsZeroMonths(t *testing.T) {
+	refused := &service.Payment{
+		ChargeID:   "c1",
+		UserID:     7,
+		Stars:      150,
+		CreatedAt:  time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		RefundedAt: time.Date(2026, 9, 1, 0, 0, 1, 0, time.UTC),
+	}
+	ps := []*service.Payment{
+		refused,
+	}
+	texts := []string{
+		paymentsText(ps),
+		unfinishedPaymentsText(ps),
+		refundConfirmText(refused),
+		refundedToUserText(refused),
+	}
+	for _, text := range texts {
+		require.NotContains(t, text, "0 месяцев")
+		require.Contains(t, text, "150 ⭐")
+	}
+	require.Contains(t, texts[0], "150 ⭐, оплата отклонена, ↩️ возвращено")
+	require.Contains(t, texts[1], "оплата отклонена")
+	require.Contains(t, texts[2], "отклонённую оплату")
+	require.Equal(t, "↩️ Вам вернули 150 ⭐.", texts[3])
 }
 
 func TestTariffLabel(t *testing.T) {

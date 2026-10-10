@@ -326,7 +326,7 @@ func unfinishedPaymentsText(ps []*service.Payment) string {
 		if p.PeerKey != "" {
 			key = "ключ " + shortKey(p.PeerKey)
 		}
-		fmt.Fprintf(&b, "• id %d — %d ⭐, %s, %s, %s\n", p.UserID, p.Stars, tariffLabel(p.Days), key, mskTime(p.CreatedAt))
+		fmt.Fprintf(&b, "• id %d — %d ⭐, %s, %s, %s\n", p.UserID, p.Stars, paidFor(p), key, mskTime(p.CreatedAt))
 	}
 	return b.String()
 }
@@ -923,7 +923,7 @@ func paymentsText(ps []*service.Payment) string {
 	var b strings.Builder
 	b.WriteString("\n💳 Оплаты:\n")
 	for _, p := range recentPayments(ps) {
-		fmt.Fprintf(&b, "• %s — %d ⭐, %s", mskTime(p.CreatedAt), p.Stars, tariffLabel(p.Days))
+		fmt.Fprintf(&b, "• %s — %d ⭐, %s", mskTime(p.CreatedAt), p.Stars, paidFor(p))
 		if !p.RefundedAt.IsZero() {
 			b.WriteString(", ↩️ возвращено")
 		}
@@ -942,7 +942,19 @@ func recentPayments(ps []*service.Payment) []*service.Payment {
 	return ps[:min(len(ps), cardPaymentsLimit)]
 }
 
+// paidFor says what a payment bought: its term, or that the purchase was
+// refused (such a charge is recorded without days: nothing was given).
+func paidFor(p *service.Payment) string {
+	if p.Days == 0 {
+		return "оплата отклонена"
+	}
+	return tariffLabel(p.Days)
+}
+
 func refundConfirmText(p *service.Payment) string {
+	if p.Days == 0 {
+		return fmt.Sprintf("↩️ Вернуть %d ⭐ за отклонённую оплату (%s)?", p.Stars, mskTime(p.CreatedAt))
+	}
 	return fmt.Sprintf(
 		"↩️ Вернуть %d ⭐ за «%s» (оплата %s)?\nКлюч не отключится — если нужно, отключите его отдельно.",
 		p.Stars,
@@ -961,6 +973,9 @@ func refundConfirmKeyboard(ref paymentRef) *tgbot.InlineKeyboardMarkup {
 }
 
 func refundedToUserText(p *service.Payment) string {
+	if p.Days == 0 {
+		return fmt.Sprintf("↩️ Вам вернули %d ⭐.", p.Stars)
+	}
 	return fmt.Sprintf("↩️ Вам вернули %d ⭐ за «%s».", p.Stars, tariffLabel(p.Days))
 }
 
