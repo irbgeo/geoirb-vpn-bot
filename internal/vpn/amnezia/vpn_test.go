@@ -219,6 +219,19 @@ func TestPutPeerTakesThePeerOffWhenItTimesOut(t *testing.T) {
 	require.False(t, b.onServer(t, "NEW="))
 }
 
+func TestPutPeerFailureKeepsAPeerThatWasAlreadyThere(t *testing.T) {
+	b := newBox(t)
+	b.confErr = errBoom // syncconf ran, the file was not saved
+	p := &service.VPNPeer{
+		PublicKey: "PUB1=",
+		PSK:       "PSK1=",
+		IP:        "10.8.1.1",
+	}
+
+	require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), ErrNotPersisted)
+	require.True(t, b.onServer(t, "PUB1="), "the call added nothing, so it takes nothing off")
+}
+
 func TestRemovePeer(t *testing.T) {
 	b := newBox(t)
 

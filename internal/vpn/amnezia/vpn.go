@@ -96,7 +96,10 @@ func (s *vpn) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) err
 
 // PutPeer puts a known key back on its IP, unless another peer (e.g. one
 // made in the Amnezia app) took the IP meanwhile: service.ErrIPTaken.
+// A failure takes the peer off again only if this call added it: a peer that
+// was there before stays.
 func (s *vpn) PutPeer(ctx context.Context, p *service.VPNPeer) error {
+	added := false
 	err := s.srv.Update(ctx, func(c *serverConf) error {
 		for _, other := range c.Peers {
 			if other.PublicKey == p.PublicKey {
@@ -107,20 +110,17 @@ func (s *vpn) PutPeer(ctx context.Context, p *service.VPNPeer) error {
 			}
 		}
 		c.AddPeer(serverPeer(p))
+		added = true
 		return nil
 	})
-	if errors.Is(err, service.ErrIPTaken) {
-		return err // nothing was changed
-	}
-	if err != nil {
+	if err != nil && added {
 		takeOffInput := &takeOffInput{
 			Peer:  p,
 			Cause: err,
 		}
 		s.undo(ctx, takeOffInput)
-		return err
 	}
-	return nil
+	return err
 }
 
 // RemovePeer takes a key off the server.
