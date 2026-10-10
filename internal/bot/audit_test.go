@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,7 +82,7 @@ func TestPendingBroadcastExpiresAndCanBeCancelled(t *testing.T) {
 	previews := func() int {
 		n := 0
 		for _, m := range s.sent {
-			if m.Keyboard != nil && len(m.Keyboard.InlineKeyboard) > 0 && m.Keyboard.InlineKeyboard[0][0].CallbackData == "a:bcok" {
+			if m.Keyboard != nil && len(m.Keyboard.InlineKeyboard) > 0 && strings.HasPrefix(m.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:") {
 				n++
 			}
 		}

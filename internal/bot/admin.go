@@ -30,11 +30,11 @@ const (
 	actIssueDays   = "issd"   // + user ID + ":" + days (0 = never expires)
 	actStats       = "stats"  //
 	actBroadcast   = "bc"     // asks for the broadcast text
-	actBroadcastOK = "bcok"   // sends the previewed broadcast
+	actBroadcastOK = "bcok"   // + preview token: sends the previewed broadcast
 	actCancel      = "cancel" // drops what the bot waits for (broadcast text)
 	actFeedback    = "fb"     // + page (from 0): reviews and suggestions
 	actConfigs     = "cfgs"   // asks to send every user a fresh config
-	actConfigsOK   = "cfgsok" // confirmed: send them
+	actConfigsOK   = "cfgsok" // + preview token: confirmed, send them
 	actMaint       = "mnt"    // previews "maintenance started" or, while on, "over"
 	actRefund      = "ref"    // + user ID + ":" + payRef: asks to confirm
 	actRefundOK    = "refok"  // confirmed: return the Stars
@@ -133,12 +133,12 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 // adminText handles a text an admin sent after "📣 Рассылка": the
 // broadcast text. A new text at a preview replaces it and keeps what the
 // preview does to maintenance (own wording for the same switch). Any other
-// text, text from someone who is not an admin, or an old prompt
-// (pendingTTL) is ignored. A message without text (a photo, a sticker)
+// text, text at the "update configs" question, text from someone who is
+// not an admin, or an old prompt (pendingTTL) is ignored. A message without text (a photo, a sticker)
 // gets "send text" and the bot keeps waiting.
 func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 	p, waiting := s.dialogs.peek(m.Chat.ID)
-	if !waiting {
+	if !waiting || p.Kind == readyConfigs {
 		return nil
 	}
 	u, err := s.users.User(ctx, m.From.ID)

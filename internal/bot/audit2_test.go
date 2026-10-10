@@ -58,7 +58,7 @@ func TestExpiredPreviewIsNotSent(t *testing.T) {
 	p.At = time.Now().Add(-pendingTTL - time.Minute)
 	r.dialogs.set(p)
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Empty(t, s.sentTo(7))
 	require.False(t, r.maint.on())
@@ -76,7 +76,7 @@ func TestMaintenancePreviewAlreadyDoneIsNotSentAgain(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press("a:mnt"))) // preview "started"
 	require.NoError(t, r.maint.set(true))             // someone else turned it on meanwhile
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Empty(t, s.sentTo(7), "users are not told again")
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже")
@@ -94,9 +94,9 @@ func TestBroadcastKeptWhenRecipientsFail(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
 
 	svc.recipientsErr = errors.New("mongo down")
-	require.Error(t, r.Handle(ctx, press("a:bcok")))
+	require.Error(t, r.Handle(ctx, pressSend(s)))
 	svc.recipientsErr = nil
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Equal(t, "hello", s.sentTo(7)[0].Text, "a second press sends it")
 }
@@ -121,7 +121,7 @@ func TestCustomTextAtAMaintenancePreviewStillFlips(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
 	require.NoError(t, r.Handle(ctx, startUpdate("Работы до 20:00")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 
 	require.Equal(t, "Работы до 20:00", s.sentTo(7)[0].Text)
@@ -138,7 +138,7 @@ func TestFailedMaintenanceFlipStopsTheBroadcast(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
 
-	require.Error(t, r.Handle(ctx, press("a:bcok")))
+	require.Error(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Empty(t, s.sentTo(7), "users are not told about maintenance that is not recorded")
 }
@@ -154,13 +154,13 @@ func TestOnlyOneMassSendAtATime(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	require.Empty(t, s.sentTo(7))
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже идёт")
 
 	r.jobs.release()
 	r.pause = 0
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Equal(t, "hello", s.sentTo(7)[0].Text, "the preview waited for the free slot")
 }

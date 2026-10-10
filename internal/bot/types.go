@@ -183,12 +183,15 @@ const (
 	readyBroadcast                          // admin: text given, waiting for "send"
 	pendingKeyName                          // user: the name of the key to create
 	pendingFeedback                         // user: a review or suggestion
+	readyConfigs                            // admin: "update configs" asked, waiting for "send"
 )
 
-// dialogTake asks dialogs.take for a chat's entry of one kind.
+// dialogTake asks dialogs.take for a chat's entry of one kind. Token is
+// the one in the pressed button: it must be the entry's.
 type dialogTake struct {
 	ChatID int64
 	Kind   pendingKind
+	Token  string
 }
 
 // massSend is one background send to every user with an enabled key:
@@ -214,6 +217,9 @@ type pendingInput struct {
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
 	Maint  maintChange
+	// Token ties a preview (readyBroadcast, readyConfigs) to the "send"
+	// button under it: a button of an older preview does not match.
+	Token string
 }
 
 // maintChange: what sending a ready broadcast does to the maintenance state.

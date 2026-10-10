@@ -424,10 +424,12 @@ func broadcastPreviewText(v broadcastView) string {
 	return fmt.Sprintf("📣 Отправить это %d пользователям?\n\n%s", v.Recipients, v.Text)
 }
 
-func broadcastKeyboard() *tgbot.InlineKeyboardMarkup {
+// broadcastKeyboard: "send" carries the preview's token, so it sends only
+// the text it sits under.
+func broadcastKeyboard(token string) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(
-			tgbot.Button("📣 Отправить", cbAdminBcOK),
+			tgbot.Button("📣 Отправить", cbAdminBcOK+":"+token),
 			tgbot.Button("Отмена", cbAdminCanc),
 		),
 	)
@@ -437,6 +439,7 @@ const (
 	statsUnavailableText  = "Данные о подключениях временно недоступны."
 	staleButtonText       = "Эта кнопка устарела — начните заново."
 	previewExpiredText    = "Этот предпросмотр устарел — ничего не отправлено. Откройте /menu и начните заново."
+	oldPreviewText        = "Эта кнопка от старого предпросмотра — ничего не отправлено. Нажмите «Отправить» под последним."
 	massSendBusyText      = "📣 Сейчас уже идёт рассылка — дождитесь её отчёта и нажмите «Отправить» ещё раз."
 	keyDeliveryFailedText = "🔑 Ключ создан, но отправить его сразу не получилось. Он в «📋 Мой доступ» — нажмите «📄 Конфиг»."
 )
@@ -552,10 +555,10 @@ func myAccessKeyboard() *tgbot.InlineKeyboardMarkup {
 	)
 }
 
-func configsKeyboard() *tgbot.InlineKeyboardMarkup {
+func configsKeyboard(token string) *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(
-			tgbot.Button("🔄 Отправить", cbAdminCfgOK),
+			tgbot.Button("🔄 Отправить", cbAdminCfgOK+":"+token),
 			tgbot.Button("Отмена", cbAdminCanc),
 		),
 	)

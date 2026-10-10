@@ -390,10 +390,10 @@ func TestAdminBroadcast(t *testing.T) {
 	preview := s.sent[1]
 	require.Contains(t, preview.Text, "3 пользователям")
 	require.Contains(t, preview.Text, "Сервер переедет в субботу")
-	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Contains(t, preview.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:")
 	require.Equal(t, "a:cancel", preview.Keyboard.InlineKeyboard[0][1].CallbackData)
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, s.sent[2].Text, "началась", "the admin is told at once")
 	require.Equal(t, int64(7), s.sent[3].ChatID)
@@ -404,7 +404,7 @@ func TestAdminBroadcast(t *testing.T) {
 	require.Contains(t, report.Text, "не доставлено 1")
 
 	sent := len(s.sent)
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Len(t, s.sent, sent, "a second press sends nothing")
 }
@@ -420,7 +420,7 @@ func TestAdminBroadcastCancel(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
 	require.NoError(t, r.Handle(ctx, startUpdate("oops")))
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 
 	for _, m := range s.sent {
@@ -441,7 +441,7 @@ func TestAdminBroadcastStopsOnShutdownAndReports(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:bc")))
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 
@@ -488,7 +488,7 @@ func TestAdminPendingKeepsWaitingOnNonText(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, startUpdate("second")))
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "second", "new text replaces the preview")
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	var toUser []string
 	for _, m := range s.sent {
@@ -533,7 +533,7 @@ func TestAdminBroadcastOutlivesTheHandlerContext(t *testing.T) {
 
 	// go-tgbot's Dispatcher cancels the handler's ctx as soon as Handle returns.
 	ctx, cancel := context.WithCancel(context.Background())
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	cancel()
 	r.Wait()
 
@@ -577,10 +577,10 @@ func TestAdminUpdateConfigs(t *testing.T) {
 	require.Contains(t, ask.Text, "2 пользователям")
 	require.Contains(t, ask.Text, "ENDPOINT_HOST")
 	require.Contains(t, ask.Text, configsNoticeText, "the admin sees exactly what users get")
-	require.Equal(t, "a:cfgsok", ask.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Contains(t, ask.Keyboard.InlineKeyboard[0][0].CallbackData, "a:cfgsok:")
 	require.Equal(t, "a:cancel", ask.Keyboard.InlineKeyboard[0][1].CallbackData)
 
-	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, s.sent[1].Text, "Рассылаю", "the admin is told at once")
 	notice := s.sent[2]
@@ -607,10 +607,16 @@ func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
 	ctx := context.Background()
 
 	require.True(t, r.jobs.reserve()) // another mass send is running
-	require.NoError(t, r.Handle(ctx, press("a:cfgsok")))
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
-	require.Empty(t, s.files, "nothing sent while another run is going")
-	require.Contains(t, s.sent[0].Text, "уже идёт")
+	require.Empty(t, s.sentTo(7), "nothing sent while another run is going")
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже идёт")
+
+	r.jobs.release()
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Len(t, s.sentTo(7), 1, "the same button works once the slot is free")
 }
 
 func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
@@ -641,10 +647,10 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 	preview := s.sent[len(s.sent)-1]
 	require.Contains(t, preview.Text, "1 пользователям")
 	require.Contains(t, strings.ToLower(preview.Text), "технические работы")
-	require.Equal(t, "a:bcok", preview.Keyboard.InlineKeyboard[0][0].CallbackData)
+	require.Contains(t, preview.Keyboard.InlineKeyboard[0][0].CallbackData, "a:bcok:")
 	require.False(t, r.maint.on(), "nothing changes before send (/menu here would drop the preview)")
 
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, strings.ToLower(s.sentTo(7)[0].Text), "технические работы")
 	require.Equal(t, "✅ Закончить техработы", menuButton().Text)
@@ -652,7 +658,7 @@ func TestAdminMaintenanceIsOneToggleButton(t *testing.T) {
 	// end: same button, the "over" text
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
 	require.Contains(t, strings.ToLower(s.sent[len(s.sent)-1].Text), "работы закончены")
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Contains(t, strings.ToLower(s.sentTo(7)[1].Text), "работы закончены")
 	require.Equal(t, "🛠 Техработы", menuButton().Text)
@@ -668,7 +674,7 @@ func TestMaintenanceCancelKeepsTheState(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.False(t, r.maint.on())
 	require.Empty(t, s.sentTo(7))
@@ -705,7 +711,7 @@ func TestMaintenanceStateSurvivesARestart(t *testing.T) {
 	r.pause = 0
 	ctx := context.Background()
 	require.NoError(t, r.Handle(ctx, press("a:mnt")))
-	require.NoError(t, r.Handle(ctx, press("a:bcok")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.FileExists(t, flag)
 
@@ -876,4 +882,84 @@ func TestAdminRefundOfAnAlreadyReturnedChargeDoesNotTellTheUserAgain(t *testing.
 	require.Len(t, svc.refunded, 1, "now it is recorded")
 	require.Empty(t, s.sentTo(7), "the user heard about it the first time")
 	require.Contains(t, s.edits[2].Text, "↩️ возвращено")
+}
+
+// confirmButtons are the "send" buttons of every preview sent so far, oldest
+// first: each carries its own preview's token.
+func confirmButtons(s *fakeSender) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, m := range s.sent {
+		if m.Keyboard == nil || len(m.Keyboard.InlineKeyboard) == 0 {
+			continue
+		}
+		data := m.Keyboard.InlineKeyboard[0][0].CallbackData
+		if strings.HasPrefix(data, cbAdminBcOK+":") || strings.HasPrefix(data, cbAdminCfgOK+":") {
+			out = append(out, data)
+		}
+	}
+	return out
+}
+
+// pressSend presses "send" under the newest preview.
+func pressSend(s *fakeSender) tgbot.Update {
+	all := confirmButtons(s)
+	return press(all[len(all)-1])
+}
+
+func TestSendUnderAnOlderPreviewSendsNothing(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, startUpdate("first draft")))
+	require.NoError(t, r.Handle(ctx, startUpdate("final text")))
+	old := confirmButtons(s)[0]
+
+	require.NoError(t, r.Handle(ctx, press(old)))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "the old button must not send the newer text")
+	require.Equal(t, oldPreviewText, s.sent[len(s.sent)-1].Text)
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, "final text", s.sentTo(7)[0].Text, "the newest preview is still there")
+}
+
+func TestConfigsSendButtonWorksOnceAndOnlyUnderItsOwnQuestion(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press(cbAdminCfgOK+":forged")))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "no question was asked")
+
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, startUpdate("just a text")))
+	require.Len(t, confirmButtons(s), 1, "a text at the configs question is not a broadcast")
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, press(confirmButtons(s)[0])))
+	r.Wait()
+	require.Empty(t, s.sentTo(7), "the button of the older question")
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Len(t, s.sentTo(7), 1, "sent once; the second press finds nothing")
+
+	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
+	require.NoError(t, r.Handle(ctx, press("a:cancel")))
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Len(t, s.sentTo(7), 1, "cancelled")
 }

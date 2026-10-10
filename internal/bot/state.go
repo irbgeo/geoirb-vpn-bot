@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"os"
 	"slices"
@@ -25,6 +26,7 @@ type takeResult int
 const (
 	takeNone    takeResult = iota // nothing of that kind waits
 	takeExpired                   // it waited too long and is dropped
+	takeStale                     // the button belongs to an older preview; the newer one stays
 	takeOK
 )
 
@@ -42,6 +44,15 @@ func (s *dialogs) set(p pendingInput) {
 	s.mu.Lock()
 	s.m[p.ChatID] = p
 	s.mu.Unlock()
+}
+
+// preview records p as a preview that waits for its "send" button, with a
+// fresh pendingTTL, and returns the token that button must carry.
+func (s *dialogs) preview(p pendingInput) string {
+	p.At = time.Time{}
+	p.Token = rand.Text()[:8]
+	s.set(p)
+	return p.Token
 }
 
 // drop forgets what the bot waited for from this chat.
@@ -62,14 +73,18 @@ func (s *dialogs) peek(chatID int64) (pendingInput, bool) {
 	return p, true
 }
 
-// take removes and returns the chat's entry if it is of kind k. An
-// expired one is removed too, and reported as takeExpired.
+// take removes and returns the chat's entry if it is of kind in.Kind and
+// has in.Token. An expired one is removed too, and reported as
+// takeExpired; one with another token stays (takeStale).
 func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, ok := s.m[in.ChatID]
 	if !ok || p.Kind != in.Kind {
 		return pendingInput{}, takeNone
+	}
+	if p.Token != in.Token {
+		return pendingInput{}, takeStale
 	}
 	delete(s.m, in.ChatID)
 	if time.Since(p.At) > pendingTTL {
