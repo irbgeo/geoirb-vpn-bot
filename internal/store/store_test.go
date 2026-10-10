@@ -478,15 +478,36 @@ func TestPaymentRoundTripAndQueries(t *testing.T) {
 			ctx,
 			service.PaymentMark{
 				ChargeID: "missing",
+				At:       ts("2026-09-29T10:00:00Z"),
+				UserID:   43,
+				Stars:    150,
 			},
 		),
-		"refunding a charge with no record is fine",
+		"refunding a charge with no record creates it",
 	)
+	got, err = s.Payments.Get(ctx, "missing")
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		&service.Payment{
+			ChargeID:   "missing",
+			UserID:     43,
+			Stars:      150,
+			CreatedAt:  ts("2026-09-29T10:00:00Z"),
+			RefundedAt: ts("2026-09-29T10:00:00Z"),
+		},
+		got,
+		"a refused, refunded charge: no key, no days, not applied",
+	)
+	added, err := s.Payments.Add(ctx, got)
+	require.NoError(t, err)
+	require.False(t, added, "the charge is known: delivered again, it is not new")
 
 	since, err := s.Payments.Since(ctx, ts("2026-09-01T00:00:00Z"))
 	require.NoError(t, err)
-	require.Len(t, since, 1)
-	require.Equal(t, "charge-1", since[0].ChargeID)
+	require.Len(t, since, 2)
+	require.Equal(t, "missing", since[0].ChargeID)
+	require.Equal(t, "charge-1", since[1].ChargeID)
 }
 
 func TestRegisterKeepsHandSetFields(t *testing.T) {

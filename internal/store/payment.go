@@ -57,9 +57,11 @@ func (s *paymentRepo) MarkApplied(ctx context.Context, m service.PaymentMark) er
 }
 
 // MarkRefunded records the refund time, touching nothing else. A charge
-// with no record (refused before it was saved) is not an error.
+// with no record (it could not be saved when it came) gets one now, as a
+// refused purchase of m.UserID for m.Stars: a refunded charge is always
+// known, so Pay does not apply it if Telegram delivers it again.
 func (s *paymentRepo) MarkRefunded(ctx context.Context, m service.PaymentMark) error {
-	_, err := s.coll.UpdateOne(ctx, byID(m.ChargeID), markRefunded(m.At))
+	_, err := s.coll.UpdateOne(ctx, byID(m.ChargeID), markRefunded(m), upsertUpdate())
 	if err != nil {
 		return fmt.Errorf("store: mark payment refunded: %w", err)
 	}

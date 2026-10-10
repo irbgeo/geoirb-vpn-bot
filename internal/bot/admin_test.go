@@ -312,6 +312,7 @@ func TestAdminRefund(t *testing.T) {
 			{
 				UserID:   7,
 				ChargeID: charge,
+				Stars:    150,
 			},
 		},
 		s.refunds,

@@ -292,9 +292,76 @@ func TestMarkRefunded(t *testing.T) {
 		ctx := context.Background()
 		e.pay(t, "c1")
 
-		require.NoError(t, e.svc.MarkRefunded(ctx, "c1"))
-		require.Equal(t, now, e.payments.m["c1"].RefundedAt)
-		require.NoError(t, e.svc.MarkRefunded(ctx, "unknown"), "a refund before the record was saved is fine")
+		require.NoError(
+			t,
+			e.svc.MarkRefunded(
+				ctx,
+				RefundInput{
+					ChargeID: "c1",
+				},
+			),
+		)
+		got := e.payments.m["c1"]
+		require.Equal(t, now, got.RefundedAt)
+		require.Equal(t, 150, got.Stars, "the record itself is not rewritten")
+		require.True(t, got.Applied)
+	})
+}
+
+// A charge that could not be recorded and was refunded still gets a record:
+// if Telegram delivers the same payment again after a restart, it must not
+// be applied as a new one.
+func TestRefundOfAnUnrecordedChargeIsRemembered(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		paymentInput := PaymentInput{
+			ChargeID: "c1",
+			PayerID:  42,
+			Payload: e.invoice(
+				t,
+				PurchaseInput{
+					UserID: 42,
+					Days:   30,
+				},
+			),
+			Stars: 150,
+		}
+		e.payments.addErr = errBoom
+		_, err := e.svc.Pay(ctx, paymentInput)
+		require.ErrorIs(t, err, errBoom)
+		require.Empty(t, e.payments.m, "the charge has no record")
+
+		// the bot returns the Stars and records it
+		require.NoError(
+			t,
+			e.svc.MarkRefunded(
+				ctx,
+				RefundInput{
+					ChargeID: "c1",
+					UserID:   42,
+					Stars:    150,
+				},
+			),
+		)
+		require.Equal(
+			t,
+			Payment{
+				ChargeID:   "c1",
+				UserID:     42,
+				Stars:      150,
+				CreatedAt:  now,
+				RefundedAt: now,
+			},
+			e.payments.m["c1"],
+			"a record of a refused charge: no key, no days",
+		)
+
+		e.payments.addErr = nil
+		_, err = e.svc.Pay(ctx, paymentInput)
+		require.ErrorIs(t, err, ErrAlreadyRefunded, "the redelivered payment is not applied")
+		require.Empty(t, e.peers.m)
 	})
 }
 
@@ -656,7 +723,7 @@ func TestRefundDuringPayIsNotLost(t *testing.T) {
 		e.register(t, RoleUser)
 		// the admin refunds while Pay is applying the days
 		e.vpn.onChange = func() {
-			require.NoError(t, e.svc.MarkRefunded(context.Background(), "c1"))
+			require.NoError(t, e.svc.MarkRefunded(context.Background(), RefundInput{ChargeID: "c1"}))
 		}
 
 		e.pay(t, "c1")

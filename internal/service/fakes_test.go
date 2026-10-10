@@ -194,9 +194,13 @@ type fakePayments struct {
 	// addTaken: Add finds the charge already recorded (someone else wrote
 	// it after Get saw nothing).
 	addTaken bool
+	addErr   error // Add fails
 }
 
 func (s *fakePayments) Add(_ context.Context, p *Payment) (bool, error) {
+	if s.addErr != nil {
+		return false, s.addErr
+	}
 	_, ok := s.m[p.ChargeID]
 	if ok || s.addTaken {
 		return false, nil
@@ -237,8 +241,13 @@ func (s *fakePayments) MarkRefunded(_ context.Context, m PaymentMark) error {
 		return s.saveErr
 	}
 	p, ok := s.m[m.ChargeID]
-	if !ok {
-		return nil
+	if !ok { // like the store's upsert: the record of a refused charge
+		p = Payment{
+			ChargeID:  m.ChargeID,
+			UserID:    m.UserID,
+			Stars:     m.Stars,
+			CreatedAt: m.At,
+		}
 	}
 	p.RefundedAt = m.At
 	s.m[m.ChargeID] = p

@@ -97,10 +97,12 @@ type preCheckoutAnswer struct {
 	Error string // shown to the user when OK is false
 }
 
-// refundInput returns the Stars of one payment.
+// refundInput returns the Stars of one payment. Stars is not sent to
+// Telegram (it returns the whole charge): it goes into the record.
 type refundInput struct {
 	UserID   int64
 	ChargeID string
+	Stars    int
 }
 
 // accessView is what the "My access" keyboard needs.

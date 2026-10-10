@@ -237,11 +237,24 @@ func TestPaymentFailureRefunds(t *testing.T) {
 			{
 				UserID:   42,
 				ChargeID: "charge1",
+				Stars:    150,
 			},
 		},
 		s.refunds,
 	)
 	require.Equal(t, []string{"charge1"}, svc.refunded)
+	require.Equal(
+		t,
+		[]service.RefundInput{
+			{
+				ChargeID: "charge1",
+				UserID:   42,
+				Stars:    150,
+			},
+		},
+		svc.refundedAs,
+		"with the payer and the amount: the record may have to be created",
+	)
 	require.Contains(t, s.sent[0].Text, "звёзды возвращены")
 }
 

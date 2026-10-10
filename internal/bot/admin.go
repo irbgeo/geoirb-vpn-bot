@@ -525,6 +525,7 @@ func (s *router) adminRefund(ctx context.Context, a adminAction) error {
 	refundInput := refundInput{
 		UserID:   p.UserID,
 		ChargeID: p.ChargeID,
+		Stars:    p.Stars,
 	}
 	res, err := s.returnStars(ctx, refundInput)
 	if err != nil {

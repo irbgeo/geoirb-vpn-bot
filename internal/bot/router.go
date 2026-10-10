@@ -51,7 +51,7 @@ type Billing interface {
 	Invoice(ctx context.Context, in service.PurchaseInput) (*service.Invoice, error)
 	CheckPurchase(ctx context.Context, in service.PaymentInput) error
 	Pay(ctx context.Context, in service.PaymentInput) (*service.PayResult, error)
-	MarkRefunded(ctx context.Context, chargeID string) error
+	MarkRefunded(ctx context.Context, in service.RefundInput) error
 	Payments(ctx context.Context, userID int64) ([]*service.Payment, error)
 	UnfinishedPayments(ctx context.Context) ([]*service.Payment, error)
 }

@@ -170,8 +170,9 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 // a context that can't be cancelled: Telegram is not expected to deliver
 // the payment again, so a refund skipped at shutdown would be lost. If it
 // does come again (the last updates before a restart can), Pay finds the
-// charge recorded as refunded and applies nothing; that record is why a
-// failed MarkRefunded is told to the admins.
+// charge recorded as refunded and applies nothing — MarkRefunded writes
+// that record even when Pay could not save the charge; that record is why
+// a failed MarkRefunded is told to the admins.
 func (s *router) refund(ctx context.Context, f failedPayment) error {
 	ctx = context.WithoutCancel(ctx)
 	m := f.Message
@@ -184,6 +185,7 @@ func (s *router) refund(ctx context.Context, f failedPayment) error {
 	refundInput := refundInput{
 		UserID:   a.UserID,
 		ChargeID: a.ChargeID,
+		Stars:    int(m.SuccessfulPayment.TotalAmount),
 	}
 	res, err := s.returnStars(ctx, refundInput)
 	a.RefundErr, a.RecordErr = err, res.RecordErr
@@ -215,7 +217,12 @@ func (s *router) returnStars(ctx context.Context, in refundInput) (starsReturn, 
 	if err != nil {
 		return starsReturn{}, err
 	}
-	recordErr := s.billing.MarkRefunded(ctx, in.ChargeID)
+	refundInput := service.RefundInput{
+		ChargeID: in.ChargeID,
+		UserID:   in.UserID,
+		Stars:    in.Stars,
+	}
+	recordErr := s.billing.MarkRefunded(ctx, refundInput)
 	if recordErr != nil {
 		log.Printf("bot: stars returned but not recorded for %s: %v", in.ChargeID, recordErr)
 	}

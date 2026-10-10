@@ -105,10 +105,22 @@ func markApplied(peerKey string) bson.M {
 	}
 }
 
-func markRefunded(t time.Time) bson.M {
+// markRefunded sets the refund time of a payment. Run with upsertUpdate, it
+// also creates the record of a charge that has none (it could not be saved
+// when it came): a refused purchase of m.Stars by m.UserID, with no key and
+// no days, so the charge is known if Telegram delivers it again.
+func markRefunded(m service.PaymentMark) bson.M {
 	return bson.M{
 		"$set": bson.M{
-			"refunded_at": t,
+			"refunded_at": m.At,
+		},
+		"$setOnInsert": bson.M{
+			"user_id":    m.UserID,
+			"peer_key":   "",
+			"stars":      m.Stars,
+			"days":       0,
+			"applied":    false,
+			"created_at": m.At,
 		},
 	}
 }
@@ -169,6 +181,10 @@ func ipOnly() *options.FindOptions {
 
 func upsert() *options.ReplaceOptions {
 	return options.Replace().SetUpsert(true)
+}
+
+func upsertUpdate() *options.UpdateOptions {
+	return options.Update().SetUpsert(true)
 }
 
 func upsertReturnAfter() *options.FindOneAndUpdateOptions {

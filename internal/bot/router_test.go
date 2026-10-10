@@ -175,6 +175,7 @@ type fakeService struct {
 	payRes        *service.PayResult
 	payErr        error
 	refunded      []string
+	refundedAs    []service.RefundInput // what MarkRefunded got, also when it fails
 	payments      []*service.Payment
 	unfinished    []*service.Payment
 	stats         *service.Stats
@@ -246,7 +247,9 @@ func (s *fakeService) Pay(context.Context, service.PaymentInput) (*service.PayRe
 	return s.payRes, s.payErr
 }
 
-func (s *fakeService) MarkRefunded(_ context.Context, chargeID string) error {
+func (s *fakeService) MarkRefunded(_ context.Context, in service.RefundInput) error {
+	chargeID := in.ChargeID
+	s.refundedAs = append(s.refundedAs, in)
 	if s.refundMarkErr != nil {
 		return s.refundMarkErr
 	}

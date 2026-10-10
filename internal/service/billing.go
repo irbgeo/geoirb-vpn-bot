@@ -181,11 +181,14 @@ func (s *service) Payments(ctx context.Context, userID int64) ([]*Payment, error
 }
 
 // MarkRefunded records that the Stars of a charge were returned. A charge
-// that never got a record (Pay could not save it) is fine.
-func (s *service) MarkRefunded(ctx context.Context, chargeID string) error {
+// that never got a record (Pay could not save it) gets one now, so Pay
+// answers ErrAlreadyRefunded if Telegram delivers the payment again.
+func (s *service) MarkRefunded(ctx context.Context, in RefundInput) error {
 	paymentMark := PaymentMark{
-		ChargeID: chargeID,
+		ChargeID: in.ChargeID,
 		At:       time.Now(),
+		UserID:   in.UserID,
+		Stars:    in.Stars,
 	}
 	return s.payments.MarkRefunded(ctx, paymentMark)
 }

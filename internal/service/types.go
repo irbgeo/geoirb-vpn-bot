@@ -113,11 +113,22 @@ type FeedbackInput struct {
 }
 
 // PaymentMark is one change to a payment record: applied (to PeerKey) or
-// refunded (At).
+// refunded (At). UserID and Stars are written only when a refund finds no
+// record and creates it.
 type PaymentMark struct {
 	ChargeID string
 	PeerKey  string
 	At       time.Time
+	UserID   int64
+	Stars    int
+}
+
+// RefundInput is a charge whose Stars went back. UserID and Stars describe
+// it in case it has no record yet (Pay could not save it).
+type RefundInput struct {
+	ChargeID string
+	UserID   int64
+	Stars    int
 }
 
 // Page selects a slice of a list.
