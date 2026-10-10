@@ -343,9 +343,9 @@ type Deps struct {
 	Ops      Ops
 	Feedback Feedback
 	Sender   Sender
-	// SplitVideo: the video on app split tunneling (data.SplitTunnel); empty = no such step.
+	// SplitVideo: the video on app split tunneling (data.AndroidSplitTunnel); empty = no such step.
 	SplitVideo []byte
-	// IPhoneVideo: the video for the iPhone guide (data.IPhoneAutomation);
+	// IPhoneVideo: the video for the iPhone guide (data.IPhoneSplitTunnel);
 	// empty = the guide is text only.
 	IPhoneVideo []byte
 	Notifier    *notifier

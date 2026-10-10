@@ -13,14 +13,14 @@ func requireMP4TelegramAccepts(t *testing.T, v []byte) {
 	require.Less(t, len(v), 50<<20, "bots may upload up to 50 MB")
 }
 
-func TestSplitTunnelIsAnMP4TelegramAccepts(t *testing.T) {
-	requireMP4TelegramAccepts(t, SplitTunnel())
+func TestAndroidSplitTunnelIsAnMP4TelegramAccepts(t *testing.T) {
+	requireMP4TelegramAccepts(t, AndroidSplitTunnel())
 }
 
 // The iPhone video is added later: until then there is none, and that is
 // not an error.
-func TestIPhoneAutomationIsMissingOrAnMP4TelegramAccepts(t *testing.T) {
-	v := IPhoneAutomation()
+func TestIPhoneSplitTunnelIsMissingOrAnMP4TelegramAccepts(t *testing.T) {
+	v := IPhoneSplitTunnel()
 	if v == nil {
 		return
 	}

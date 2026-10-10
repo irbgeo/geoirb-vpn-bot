@@ -95,8 +95,8 @@ func main() {
 		cfg,
 		load,
 	)
-	splitVideo := data.SplitTunnel()
-	iphoneVideo := data.IPhoneAutomation()
+	splitVideo := data.AndroidSplitTunnel()
+	iphoneVideo := data.IPhoneSplitTunnel()
 	deps := bot.Deps{
 		Users:       svc,
 		Keys:        svc,

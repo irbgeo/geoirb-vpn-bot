@@ -13,11 +13,11 @@ import (
 // The last step of getting a key, also a menu button: apps that refuse to
 // work while the tunnel is on (banks, Gosuslugi). AmneziaVPN can route
 // chosen apps around the tunnel on Android and Windows only, and one video
-// (data/SplitTunnel.mp4, built into the binary) shows how. Without that
+// (data/AndroidSplitTunnel.mp4, built into the binary) shows how. Without that
 // video there is neither the step nor the button. iPhone and iPad get
 // another guide (a Shortcuts automation that switches the tunnel off while
 // the app is open), with its own video when there is one
-// (data/IPhoneAutomation.mp4). Both guides are a videoGuide and share the
+// (data/IPhoneSplitTunnel.mp4). Both guides are a videoGuide and share the
 // code below.
 
 // askDevice asks which device the user has: each guide fits some of them.
