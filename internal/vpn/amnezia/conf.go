@@ -234,6 +234,10 @@ func (s *peer) addLine(line string) {
 	case ok && strings.EqualFold(k, "PresharedKey"):
 		s.PresharedKey = v
 	case ok && strings.EqualFold(k, "AllowedIPs"):
+		// A second AllowedIPs line adds to the first, as in awg itself.
+		if s.AllowedIPs != "" {
+			v = s.AllowedIPs + ", " + v
+		}
 		s.AllowedIPs = v
 	default:
 		s.Other = append(s.Other, line)

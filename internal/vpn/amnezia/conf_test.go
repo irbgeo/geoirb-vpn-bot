@@ -218,3 +218,10 @@ func TestParseServerConfKeepsAHeaderComment(t *testing.T) {
 	_, err = ParseServerConf("stray = 1\n" + serverConfText)
 	require.ErrorContains(t, err, "outside a section")
 }
+
+func TestParseServerConfJoinsRepeatedAllowedIPs(t *testing.T) {
+	c, err := ParseServerConf("[Interface]\nAddress = 10.8.1.0/24\n[Peer]\nPublicKey = A\nAllowedIPs = 10.8.1.1/32\nAllowedIPs = fd00::1/128\n")
+	require.NoError(t, err)
+	require.Equal(t, "10.8.1.1/32, fd00::1/128", c.Peers[0].AllowedIPs)
+	require.Contains(t, c.String(), "AllowedIPs = 10.8.1.1/32, fd00::1/128\n")
+}
