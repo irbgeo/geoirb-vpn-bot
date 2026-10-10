@@ -19,7 +19,35 @@ linters:
     - nilerr
     - bodyclose
     - prealloc
+    # packages and security
+    - gosec           # unsafe code: commands, files, crypto, random numbers
+    - depguard        # packages this project must not import (list below)
+    - gomoddirectives # no `replace` / `exclude` left in go.mod
+    - noctx           # a network call or a command without a context
   settings:
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          deny:
+            - pkg: io/ioutil
+              desc: deprecated since Go 1.16, use io and os
+            - pkg: math/rand$
+              desc: use math/rand/v2, or crypto/rand for anything secret
+            - pkg: golang.org/x/crypto/openpgp
+              desc: unmaintained and unsafe by design
+            - pkg: github.com/pkg/errors
+              desc: use errors and fmt.Errorf with %w
+            - pkg: go.mongodb.org/mongo-driver/v2
+              desc: the project is on driver v1; move every package at once, not one
+            - pkg: github.com/irbgeo/geoirb-vpn-bot/internal/store
+              desc: adapters are wired only in cmd/bot
+            - pkg: github.com/irbgeo/geoirb-vpn-bot/internal/vpn
+              desc: adapters are wired only in cmd/bot
+    gomoddirectives:
+      replace-local: false
+      exclude-forbidden: true
+      retract-allow-no-explanation: false
     govet:
       disable:
         - fieldalignment
@@ -36,6 +64,15 @@ linters:
         linters:
           - gocritic
         text: exitAfterDefer
+      # cmd/bot is the wiring layer: the only place that may import adapters
+      - path: ^cmd/
+        linters:
+          - depguard
+      # an adapter imports its own packages
+      - path: ^internal/(store|vpn)/
+        linters:
+          - depguard
+        text: adapters are wired only in cmd/bot
 
 formatters:
   enable:

@@ -1,7 +1,13 @@
-.PHONY: lint test test-sh build deploy deploy-exit backup backup-pull diagram-architecture-open diagram-network-open
+.PHONY: lint vuln test test-sh build deploy deploy-exit backup backup-pull diagram-architecture-open diagram-network-open
 
 lint:
 	golangci-lint run --fix
+
+# Known vulnerabilities in the Go version and in every package the bot uses
+# (golangci-lint cannot check that). Scans the build that runs on the server.
+vuln:
+	go install golang.org/x/vuln/cmd/govulncheck@latest
+	GOOS=linux GOARCH=amd64 "$$(go env GOPATH)/bin/govulncheck" ./...
 
 # The script tests, then the Go tests (store tests need Mongo on
 # localhost:27017). The script tests go first and need nothing, so a machine
