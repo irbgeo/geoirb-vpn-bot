@@ -34,7 +34,8 @@ bash "$S/awg-tools.sh"
 
 id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
 install -d -m 755 "$OPT"
-install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$S/import-peers.sh" "$OPT/"
+install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$S/import-peers.sh" \
+  "$S/awg0-check.sh" "$OPT/"
 install -d -m 750 "$ROOT/etc/geoirb-vpn-bot"
 chown root:vpnbot "$ROOT/etc/geoirb-vpn-bot"
 install -m 640 "$S/env" "$E"

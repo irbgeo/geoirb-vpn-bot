@@ -71,7 +71,7 @@ check "routes check runs the rules mode" "ExecStart=/opt/geoirb-vpn-bot/vpn-rout
 check "unbound drop-in" "1" "$(has "$SD/unbound.service.d/geoirb.conf")"
 check "unbound conf" "1" "$(has "$R/etc/unbound/unbound.conf.d/geoirb.conf")"
 check "nft file" "1" "$(has "$R/etc/geoirb-vpn/geoirb-vpn.nft")"
-check "scripts in /opt" "1 1" "$(has "$OPT/backup.sh") $(has "$OPT/ru-nets.sh")"
+check "scripts in /opt" "1 1 1" "$(has "$OPT/backup.sh") $(has "$OPT/ru-nets.sh") $(has "$OPT/awg0-check.sh")"
 check "conntrack timer files gone" "0 0 0 0" \
   "$(has "$SD/geoirb-vpn-conntrack.service") $(has "$SD/geoirb-vpn-conntrack.timer") $(has "$OPT/awg-conntrack.sh") $(has "$OPT/awg-container.sh")"
 check "awg0.conf created" "1" "$(grep -c '^Address = 10.8.0.1/22' "$R/etc/amnezia/amneziawg/awg0.conf")"
