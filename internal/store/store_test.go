@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -579,6 +581,31 @@ func TestPeerListsKeepUnreadableRowsWithoutSecrets(t *testing.T) {
 	ips, err := s.Peers.ServerIPs(ctx, "geoirb-vpn")
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"10.8.1.10", "10.8.1.11"}, ips, "its IP stays taken")
+}
+
+func TestUnreadablePeerIsLoggedOnce(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	require.NoError(t, s.Peers.Save(ctx, testPeer()))
+	_, err := s.Peers.coll.UpdateOne(
+		ctx,
+		byID("PUB="),
+		bson.M{
+			"$set": bson.M{
+				"psk": "v1:garbage",
+			},
+		},
+	)
+	require.NoError(t, err)
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	for range 3 { // the worker reads every key once a minute
+		_, err = s.Peers.ByServer(ctx, "geoirb-vpn")
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, strings.Count(logged.String(), "secrets unreadable"), logged.String())
 }
 
 func TestConnectAcceptsOneBadRowAmongGoodOnes(t *testing.T) {
