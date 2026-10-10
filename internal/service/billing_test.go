@@ -186,6 +186,47 @@ func TestPayChosenKey(t *testing.T) {
 	})
 }
 
+// The owner check is the only thing between a forged button or payload and
+// another user's key (extending also lifts an admin block).
+func TestPurchaseOfAnotherUsersKeyIsNotFound(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		ctx := context.Background()
+		theirs := e.seed(t, now.AddDate(0, 0, 10)) // user 42's key
+		_, err := e.svc.Register(
+			ctx,
+			RegisterInput{
+				ID:       7,
+				Username: "eve",
+			},
+		)
+		require.NoError(t, err)
+
+		_, err = e.svc.Invoice(
+			ctx,
+			PurchaseInput{
+				UserID:    7,
+				Days:      30,
+				PublicKey: theirs.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, ErrNotFound)
+
+		forged := PaymentInput{
+			ChargeID: "c1",
+			PayerID:  7,
+			Payload:  "v1|7|30|150|" + theirs.PublicKey,
+			Stars:    150,
+		}
+		require.ErrorIs(t, e.svc.CheckPurchase(ctx, forged), ErrNotFound)
+		_, err = e.svc.Pay(ctx, forged)
+		require.ErrorIs(t, err, ErrNotFound)
+		require.Empty(t, e.payments.m, "nothing recorded")
+		require.Equal(t, now.AddDate(0, 0, 10), e.peers.m[theirs.PublicKey].ExpiresAt)
+	})
+}
+
 func TestPaySameChargeTwiceExtendsOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()
