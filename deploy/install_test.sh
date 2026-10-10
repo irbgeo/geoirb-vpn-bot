@@ -22,7 +22,28 @@ printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/id"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" == genkey ]] && echo KEY || echo "amneziawg-tools %s"\n' "$TAG" >"$TMP/bin/awg"
 printf '#!/usr/bin/env bash\necho "ufw $*" >>"$CALLS"\n[[ "$1" != status ]] || echo "Status: $UFW"\n' >"$TMP/bin/ufw"
 # systemctl also logs the awg-exit conf and the bot binary it sees, to prove the order.
-printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"\ncase "$*" in\n  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;\n  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;\n  *is-active*systemd-networkd*) [[ -z "${NO_NETWORKD:-}" ]] ;;\n  *start*geoirb-vpn-bot-backup*) [[ -z "${BACKUP_FAIL:-}" ]] ;;\nesac\n' >"$TMP/bin/systemctl"
+cat >"$TMP/bin/systemctl" <<'X'
+#!/usr/bin/env bash
+echo "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null) bot=$(cat "$ROOT/opt/geoirb-vpn-bot/bot" 2>/dev/null)" >>"$CALLS"
+case "$*" in
+  *is-active*geoirb-vpn-routes*) [[ -n "${ROUTES_ACTIVE:-}" ]] ;;
+  *is-active*geoirb-awg0*) [[ -n "${AWG0_ACTIVE:-}" ]] ;;
+  *is-active*systemd-networkd*) [[ -z "${NO_NETWORKD:-}" ]] ;;
+  # like backup.sh: the stamp path comes from the env installed at that moment
+  *start*geoirb-vpn-bot-backup*)
+    [[ -z "${BACKUP_FAIL:-}" ]] || exit 1
+    s="$(sed -n 's/^BACKUP_STAMP=//p' "$ROOT/etc/geoirb-vpn-bot/env" 2>/dev/null)"
+    [[ -z "$s" ]] || { mkdir -p "$ROOT$(dirname "$s")" && touch "$ROOT$s"; } ;;
+  # like the new ru-nets.sh: the set and the stamp go to the root-owned directory
+  *start*geoirb-ru-nets.service*)
+    [[ -z "${RU_NETS_FAIL:-}" ]] || exit 1
+    printf 'flush set inet geoirb ru4\nadd element inet geoirb ru4 {\n77.88.0.0/18\n}\n' >"$ROOT/var/lib/geoirb-vpn/ru4.nft"
+    touch "$ROOT/var/lib/geoirb-vpn/ru-nets.stamp" ;;
+  # what the stopping old bot and the starting new one can see
+  *restart*geoirb-vpn-bot.service*)
+    { ls "$ROOT/var/lib/geoirb-vpn" | sed 's/^/new:/'; ls "$ROOT/var/lib/geoirb-vpn-bot" 2>/dev/null | sed 's/^/old:/'; } >"$CALLS.state" ;;
+esac
+X
 chmod +x "$TMP/bin"/*
 
 run() { # run <ufw state> [env...]: installs a fresh copy of the package as deploy.sh lays it out.
@@ -30,7 +51,7 @@ run() { # run <ufw state> [env...]: installs a fresh copy of the package as depl
   cp "$DIR"/*.sh "$DIR"/*.service "$DIR"/*.timer "$DIR"/*.conf "$DIR"/*.nft "$DIR/exit/geoirb-awg-exit.service" "$TMP/pkg/"
   echo "[Interface] NEW" >"$TMP/pkg/awg-exit.conf"
   echo NEWBOT >"$TMP/pkg/bot"
-  printf 'BOT_TOKEN=1:a\nDB_SECRET_KEY=k\n' >"$TMP/pkg/env"
+  printf 'BOT_TOKEN=1:a\nDB_SECRET_KEY=k\nBACKUP_STAMP=/var/lib/geoirb-vpn/last-backup\n' >"$TMP/pkg/env"
   : >"$TMP/calls"
   local ufw="$1"; shift
   env CALLS="$TMP/calls" UFW="$ufw" ROOT="$R" PATH="$TMP/bin:$PATH" LOCAL_HASH="$HASH" "$@" \
@@ -101,6 +122,13 @@ check "ufw active: route allowed" "1" "$(grep -c '^ufw route allow in on awg0$' 
 check "ufw active: DNS allowed" "1" "$(grep -c '^ufw allow in on awg0 to 10.8.0.1 port 53$' "$TMP/calls")"
 check "first install: backup after the bot start" "1" "$([[ "$(line '^systemctl restart geoirb-vpn-bot.service')" -lt "$(line '^systemctl start geoirb-vpn-bot-backup.service')" ]] && echo 1)"
 check "bot installed" "NEWBOT" "$(cat "$OPT/bot")"
+# A clean server: the root-owned state directory is made, nothing to migrate.
+NEW="$R/var/lib/geoirb-vpn"
+OLD="$R/var/lib/geoirb-vpn-bot"
+check "first install: root state dir 755, made before ru-nets writes to it" "755 1" \
+  "$(mode "$NEW") $([[ "$(line "^chown root:root $NEW")" -lt "$(line '^systemctl start geoirb-ru-nets.service')" ]] && echo 1)"
+check "first install: set and both stamps there, no old directory, no warning" "last-backup ru-nets.stamp ru4.nft 0 0" \
+  "$(ls "$NEW" | tr '\n' ' ')$([[ -e "$OLD" ]] && echo 1 || echo 0) $(grep -c 'warning' "$TMP/out")"
 
 # Update: the backup sees the old binary; ufw inactive adds no rules.
 echo OLDBOT >"$OPT/bot"
@@ -171,6 +199,77 @@ check "hash guard: nothing done" "0" "$(grep -c . "$TMP/calls")"
 check "hash guard: env kept" "BOT_TOKEN=2:b" "$(head -1 "$R/etc/geoirb-vpn-bot/env")"
 run active FORCE=1
 check "FORCE=1 replaces" "0" "$?"
+
+# Migration from the bot-owned state directory (audit #25).
+GOOD_SET='flush set inet geoirb ru4
+add element inet geoirb ru4 {
+5.8.0.0/19,
+31.13.0.0/24
+}'
+touch -t 200101010000 "$TMP/y2001"
+old_layout() { # old_layout <ru4.nft content>: a server as the previous version left it
+  rm -rf "$NEW" "$OLD"; mkdir -p "$OLD"
+  printf 'BOT_TOKEN=1:a\nDB_SECRET_KEY=k\nBACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup\n' >"$R/etc/geoirb-vpn-bot/env"
+  touch -t 200001010000 "$OLD/last-backup" "$OLD/ru-nets.stamp"
+  touch "$OLD/maintenance"
+  printf '%s\n' "$1" >"$OLD/ru4.nft"
+}
+
+old_layout "$GOOD_SET"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
+check "migration: exits 0, no warning" "0 0" "$? $(grep -c 'warning' "$TMP/out")"
+check "migration: the three files are in the root directory, mode 644" "last-backup ru-nets.stamp ru4.nft 644 644 644" \
+  "$(ls "$NEW" | tr '\n' ' ')$(mode "$NEW/last-backup") $(mode "$NEW/ru-nets.stamp") $(mode "$NEW/ru4.nft")"
+# The early backup ran with the old env and wrote the OLD stamp: its fresh time is carried over.
+check "migration: the backup stamp is fresh" "1" "$([[ "$NEW/last-backup" -nt "$TMP/y2001" ]] && echo 1)"
+check "migration: a good download wins over the old set" "1" "$(grep -c '^77.88.0.0/18$' "$NEW/ru4.nft")"
+check "migration: old files gone, the maintenance flag and the directory stay" "maintenance" "$(ls "$OLD")"
+check "migration: at the bot restart both layouts are complete" "new:last-backup new:ru-nets.stamp new:ru4.nft old:last-backup old:maintenance old:ru-nets.stamp old:ru4.nft " \
+  "$(tr '\n' ' ' <"$TMP/calls.state")"
+check "migration: routes reloaded, never restarted" "1 0" "$(grep -c '^systemctl reload geoirb-vpn-routes' "$TMP/calls") $(grep -c '^systemctl restart geoirb-vpn-routes' "$TMP/calls")"
+
+# Already migrated, and this time the download fails: nothing is touched.
+touch -t 200001010000 "$NEW/ru-nets.stamp"
+cp -p "$NEW/ru4.nft" "$TMP/ru4.migrated"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 RU_NETS_FAIL=1
+check "second deploy: exits 0, set and stamp as they were, nothing new" "0 1 1 last-backup ru-nets.stamp ru4.nft maintenance" \
+  "$? $(cmp -s "$NEW/ru4.nft" "$TMP/ru4.migrated" && echo 1) $([[ "$NEW/ru-nets.stamp" -ot "$TMP/y2001" ]] && echo 1) $(ls "$NEW" | tr '\n' ' ')$(ls "$OLD")"
+check "second deploy: only the download warning" "1 0" "$(grep -c 'warning: RU networks not loaded yet' "$TMP/out") $(grep -c 'not copied' "$TMP/out")"
+
+# The download fails on the migrating deploy: the old set is taken after the format check.
+old_layout "$GOOD_SET"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 RU_NETS_FAIL=1
+check "failed download, good old set: copied, 644, no temp file" "0 $GOOD_SET 644 last-backup ru-nets.stamp ru4.nft " \
+  "$? $(cat "$NEW/ru4.nft") $(mode "$NEW/ru4.nft") $(ls "$NEW" | tr '\n' ' ')"
+check "failed download: the RU stamp keeps its old time, the backup stamp is fresh" "1 1" \
+  "$([[ "$NEW/ru-nets.stamp" -ot "$TMP/y2001" ]] && echo 1) $([[ "$NEW/last-backup" -nt "$TMP/y2001" ]] && echo 1)"
+check "failed download, good old set: old files gone, no copy warning" "maintenance 0" "$(ls "$OLD") $(grep -c 'not copied' "$TMP/out")"
+
+# Content from the bot-owned directory is not trusted: anything but the exact format is left behind.
+n=0
+for bad in "$GOOD_SET
+add rule inet geoirb pre accept" 'include "/etc/shadow"' "flush ruleset" "add element inet geoirb ru4 { 0.0.0.0/0 }" \
+  "5.8.0.0/19; flush ruleset" " 5.8.0.0/19" "$GOOD_SET
+" ""; do
+  n=$((n + 1))
+  old_layout "$bad"
+  run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 RU_NETS_FAIL=1
+  check "bad old set $n: not copied, warned, deploy goes on" "0 last-backup ru-nets.stamp 1 maintenance" \
+    "$? $(ls "$NEW" | tr '\n' ' ')$(grep -c 'warning: .*not copied' "$TMP/out") $(ls "$OLD")"
+done
+# A symlink planted as the old set (here to a well-formed file) is not followed.
+old_layout x
+printf '%s\n' "$GOOD_SET" >"$TMP/elsewhere"
+ln -sf "$TMP/elsewhere" "$OLD/ru4.nft"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 RU_NETS_FAIL=1
+check "symlink as the old set: not copied, removed, its target kept" "0 0 maintenance 1" \
+  "$? $(has "$NEW/ru4.nft") $(ls "$OLD") $(has "$TMP/elsewhere")"
+
+# A failed deploy (here: the early backup) leaves the old layout as it was, for the old bot.
+old_layout "$GOOD_SET"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1 BACKUP_FAIL=1
+check "failed deploy: old state files kept" "last-backup maintenance ru-nets.stamp ru4.nft " "$(ls "$OLD" | tr '\n' ' ')"
+printf 'BOT_TOKEN=1:a\nDB_SECRET_KEY=k\n' >"$R/etc/geoirb-vpn-bot/env"
 
 check "never restarts routes or awg0" "0" "$(cat "$TMP"/all-calls | grep -c '^systemctl restart geoirb-\(vpn-routes\|awg0\)')"
 

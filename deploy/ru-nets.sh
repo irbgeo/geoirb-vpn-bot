@@ -6,11 +6,13 @@
 # Russian IPv4 networks from the RIPE NCC delegated stats: client traffic to
 # them leaves here directly, the rest goes through the exit tunnel. A failed
 # or short download keeps the old set and exits 1. On success it touches the
-# stamp the bot watches. ROOT is a path prefix for tests.
+# stamp the bot watches. The saved set and the stamp live in root's own
+# /var/lib/geoirb-vpn (the bot only reads the stamp's time), not in the bot's
+# state directory. ROOT is a path prefix for tests.
 set -euo pipefail
 URL="${RU_NETS_URL:-https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest}"
 MIN="${RU_NETS_MIN:-1000}" # fewer prefixes = a broken download
-STATE="${ROOT:-}/var/lib/geoirb-vpn-bot"
+STATE="${ROOT:-}/var/lib/geoirb-vpn"
 STAMP="$STATE/ru-nets.stamp"
 
 tmp="$(mktemp -d)"
@@ -53,9 +55,9 @@ nft -f "$tmp/ru4.nft"
 # Kept for the next boot: geoirb-vpn-routes.service loads it before the tunnels.
 mkdir -p "$STATE"
 # tmp + mv in the same dir: a crash never leaves a half-written file there.
-# Random names (mktemp) and a move over the stamp instead of `touch`: the
-# bot user owns this directory, and a fixed name could be a symlink it
-# planted for root to write through.
+# Random names (mktemp) and a move over the stamp instead of `touch`: a
+# fixed name could be a symlink for root to write through. Only root writes
+# to this directory now (deploy/install.sh makes it); the habit is kept.
 new="$(mktemp "$STATE/ru4.nft.XXXXXX")"
 cat "$tmp/ru4.nft" >"$new"
 chmod 644 "$new"

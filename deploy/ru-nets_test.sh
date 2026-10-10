@@ -31,15 +31,16 @@ echo "nft $*" >>"$CALLS"
 X
 chmod +x "$TMP/bin"/*
 
-STAMP="$TMP/root/var/lib/geoirb-vpn-bot/ru-nets.stamp"
+STAMP="$TMP/root/var/lib/geoirb-vpn/ru-nets.stamp"
 run() { # run [env...]
   : >"$TMP/calls"; rm -f "$TMP/nft.in"
   env CALLS="$TMP/calls" NFT_IN="$TMP/nft.in" FIXTURE="$TMP/ripe" ROOT="$TMP/root" \
     PATH="$TMP/bin:$PATH" "$@" bash "$DIR/ru-nets.sh" >/dev/null 2>&1
 }
 
-# The bot user owns the state directory: symlinks planted at the stamp and at
-# the old fixed temp name must not make root write through them.
+# The state directory is root's own now, but the files are still replaced by
+# a move, never written in place: symlinks at the stamp and at the old fixed
+# temp name must not make root write through them.
 mkdir -p "$(dirname "$STAMP")"
 echo keep >"$TMP/victim"
 touch -t 200001010000 "$TMP/victim"
@@ -59,7 +60,7 @@ add element inet geoirb ru4 {
 }" "$(cat "$TMP/nft.in")"
 check "nft called once" "1" "$(grep -c '^nft -f' "$TMP/calls")"
 check "stamp touched" "1" "$([[ -f "$STAMP" ]] && echo 1)"
-SAVED="$TMP/root/var/lib/geoirb-vpn-bot/ru4.nft"
+SAVED="$TMP/root/var/lib/geoirb-vpn/ru4.nft"
 check "elements saved for boot" "$(cat "$TMP/nft.in")" "$(cat "$SAVED" 2>/dev/null)"
 check "saved file mode" "644" "$(stat -c %a "$SAVED" 2>/dev/null || stat -f %Lp "$SAVED")"
 check "no temp file left" "" "$(ls "$(dirname "$SAVED")" | grep -v -e '^ru4.nft$' -e '^ru-nets.stamp$')"

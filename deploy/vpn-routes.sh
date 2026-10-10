@@ -10,7 +10,9 @@
 # ROOT is a path prefix for tests.
 set -euo pipefail
 ROOT="${ROOT:-}"
-SAVED="$ROOT/var/lib/geoirb-vpn-bot/ru4.nft"
+# Written by deploy/ru-nets.sh in root's own directory, never in the bot's
+# state directory: this file is run by `nft -f` as root.
+SAVED="$ROOT/var/lib/geoirb-vpn/ru4.nft"
 
 mode="${1:-}"
 # An `nft flush ruleset` or a start of nftables.service removes the table:

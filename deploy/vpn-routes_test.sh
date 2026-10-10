@@ -31,7 +31,7 @@ EOF2
 chmod +x "$TMP/bin"/*
 
 R="$TMP/root"
-mkdir -p "$R/etc/geoirb-vpn" "$R/var/lib/geoirb-vpn-bot"
+mkdir -p "$R/etc/geoirb-vpn" "$R/var/lib/geoirb-vpn"
 touch "$R/etc/geoirb-vpn/geoirb-vpn.nft"
 MODE=""
 run() { : >"$TMP/calls"; env CALLS="$TMP/calls" ROOT="$R" PATH="$TMP/bin:$PATH" "$@" bash "$DIR/vpn-routes.sh" $MODE >/dev/null 2>"$TMP/err"; }
@@ -45,7 +45,7 @@ check "unreachable route" "1" "$(n '^ip route replace unreachable default metric
 check "rule added when missing" "1" "$(n '^ip rule add fwmark 0x1 lookup 100 prio 110$')"
 check "rule never deleted" "0" "$(n '^ip rule del')"
 
-echo "add element inet geoirb ru4 { 5.8.0.0/19 }" >"$R/var/lib/geoirb-vpn-bot/ru4.nft"
+echo "add element inet geoirb ru4 { 5.8.0.0/19 }" >"$R/var/lib/geoirb-vpn/ru4.nft"
 run HAS_RULE=1
 check "rule present: exits 0" "0" "$?"
 check "saved set loaded after the table" "2" "$(grep -n '^nft -f' "$TMP/calls" | grep ru4.nft | cut -d: -f1)"
@@ -85,7 +85,7 @@ check "rules mode: quiet when all is in place" "0" "$(wc -c <"$TMP/err" | tr -d 
 run HAS_EXIT=1 HAS_RULE=1
 check "rules mode, no nft table: exits 0" "0" "$?"
 check "rules mode, no nft table: table and saved set loaded" "nft -f $R/etc/geoirb-vpn/geoirb-vpn.nft
-nft -f $R/var/lib/geoirb-vpn-bot/ru4.nft" "$(grep '^nft -f' "$TMP/calls")"
+nft -f $R/var/lib/geoirb-vpn/ru4.nft" "$(grep '^nft -f' "$TMP/calls")"
 check "rules mode, no nft table: reported" "1" "$(grep -c 'warning: nft table inet geoirb was missing' "$TMP/err")"
 MODE=""
 

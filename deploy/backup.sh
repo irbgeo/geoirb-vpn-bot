@@ -41,8 +41,9 @@ echo "backup: $out ($(du -h "$out" | cut -f1))"
 ls -1t "$DEST"/geoirb-vpn-*.tar.gz | tail -n +"$((KEEP + 1))" | xargs -r rm --
 
 # The bot reads this file's time and tells the admins when it gets old.
-# A new file moved over the name, not `touch`: the bot user owns that
-# directory, and a symlink planted as the stamp is replaced, not followed.
+# A new file moved over the name, not `touch`: a symlink planted as the
+# stamp is replaced, not followed. The stamp is in root's own directory
+# (/var/lib/geoirb-vpn, scripts/server-env.sh); the habit is kept.
 if [[ -n "$STAMP" ]]; then
   install -d "$(dirname "$STAMP")"
   s="$(mktemp "$STAMP.XXXXXX")"

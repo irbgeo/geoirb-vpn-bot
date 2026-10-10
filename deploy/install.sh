@@ -12,6 +12,11 @@ ROOT="${ROOT:-}"
 E="$ROOT/etc/geoirb-vpn-bot/env"
 OPT="$ROOT/opt/geoirb-vpn-bot"
 SD="$ROOT/etc/systemd/system"
+# Root's own state: the saved RU set (vpn-routes.sh runs it with `nft -f`) and
+# the two stamps. They used to be in the bot's state directory, which the bot
+# user can write to.
+STATE="$ROOT/var/lib/geoirb-vpn"
+OLD_STATE="$ROOT/var/lib/geoirb-vpn-bot"
 
 # The bot token and the key that encrypts client keys: a different one
 # would take over another bot or make every stored key unreadable.
@@ -46,6 +51,9 @@ bash "$S/awg-tools.sh"
 
 id vpnbot >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin vpnbot
 install -d -m 755 "$OPT"
+# before anything writes there (ru-nets.sh, backup.sh with the new env)
+install -d -m 755 "$STATE"
+chown root:root "$STATE"
 install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$S/import-peers.sh" \
   "$S/awg0-check.sh" "$OPT/"
 install -d -m 750 "$ROOT/etc/geoirb-vpn-bot"
@@ -151,8 +159,36 @@ systemctl enable --quiet --now geoirb-ru-nets.timer
 systemctl start geoirb-ru-nets.service || echo "warning: RU networks not loaded yet, see journalctl -u geoirb-ru-nets" >&2
 systemctl enable --quiet --now geoirb-vpn-bot-backup.timer
 
+# A server with the old layout, once. Nothing but a stamp's time is taken
+# from the bot's directory as it is: the new bot must not see "backup is old"
+# (the backup above ran with the old env and marked the old path).
+for f in last-backup ru-nets.stamp; do
+  if [[ -e "$OLD_STATE/$f" && ! -e "$STATE/$f" ]]; then
+    touch -r "$OLD_STATE/$f" "$STATE/$f"
+    chmod 644 "$STATE/$f"
+  fi
+done
+# The saved RU set: only when the download above left none. Copied first and
+# the copy checked, so the bot user cannot change it after the check. Only
+# the lines ru-nets.sh writes pass; without a saved set the next boot starts
+# with an empty ru4 (everything through the tunnel) until ru-nets runs.
+if [[ ! -s "$STATE/ru4.nft" && -e "$OLD_STATE/ru4.nft" ]]; then
+  new="$(mktemp "$STATE/ru4.nft.XXXXXX")"
+  [[ -L "$OLD_STATE/ru4.nft" || ! -f "$OLD_STATE/ru4.nft" ]] || cat "$OLD_STATE/ru4.nft" >"$new" || true
+  if [[ -s "$new" ]] && ! LC_ALL=C grep -qvxE 'flush set inet geoirb ru4|add element inet geoirb ru4 \{|\}|[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2},?' "$new"; then
+    chmod 644 "$new"
+    mv -f "$new" "$STATE/ru4.nft"
+  else
+    rm -f "$new"
+    echo "warning: the old saved RU set $OLD_STATE/ru4.nft is not in the expected format, not copied. Until ru-nets loads a new one, a reboot starts with an empty RU set (all client traffic through the tunnel)." >&2
+  fi
+fi
+
 install -m 755 "$S/bot" "$OPT/bot"
 systemctl enable --quiet geoirb-vpn-bot.service
 systemctl restart geoirb-vpn-bot.service
+# Only now: the old bot read the old stamps until it stopped (a missing stamp
+# is an alert). The maintenance flag in that directory is the bot's and stays.
+rm -f "$OLD_STATE/last-backup" "$OLD_STATE/ru-nets.stamp" "$OLD_STATE/ru4.nft"
 # the first deploy: a backup now, so the bot has a last-backup mark
 [[ "$first" == 0 ]] || systemctl start geoirb-vpn-bot-backup.service

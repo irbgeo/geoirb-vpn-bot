@@ -15,7 +15,9 @@ RestartSec=5
 # maintenance pass finish; its steps have their own limits, under this one.
 TimeoutStopSec=60
 
-# Last-backup mark, maintenance flag, RU networks stamp.
+# The bot's own files only: the maintenance flag. The last-backup mark and the
+# RU networks stamp are root's, in /var/lib/geoirb-vpn; the bot only reads
+# their time there (ProtectSystem=strict leaves /var/lib readable).
 StateDirectory=geoirb-vpn-bot
 
 # NET_ADMIN only: `awg` changes awg0 live, `ip rule` sends the bot's own

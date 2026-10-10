@@ -12,7 +12,8 @@
 #   /etc/geoirb-vpn-bot/env              config (640 root:vpnbot), from scripts/server-env.sh
 #   /etc/amnezia/amneziawg/awg0.conf     client VPN (vpnbot 600), created once
 #   /etc/geoirb-vpn/                     awg-exit.conf (tunnel), geoirb-vpn.nft
-#   /var/lib/geoirb-vpn-bot              last-backup mark, RU networks stamp
+#   /var/lib/geoirb-vpn                  root's: last-backup mark, RU networks stamp, saved RU set
+#   /var/lib/geoirb-vpn-bot              the bot's: maintenance flag
 #   /var/backups/geoirb-vpn-bot          daily backups, 7 kept
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -49,9 +49,9 @@ DB_SECRET_KEY=a2V5
 ENDPOINT_HOST=35.217.30.38
 TARIFFS=30:150,90:400
 MONGO_URI=mongodb://geoirb_vpn_bot:ru-pass@127.0.0.1:27017/geoirb_vpn?authSource=geoirb_vpn
-BACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup
+BACKUP_STAMP=/var/lib/geoirb-vpn/last-backup
 MAINTENANCE_FLAG=/var/lib/geoirb-vpn-bot/maintenance
-RU_NETS_STAMP=/var/lib/geoirb-vpn-bot/ru-nets.stamp
+RU_NETS_STAMP=/var/lib/geoirb-vpn/ru-nets.stamp
 EXIT_IFACE=awg-exit
 CLIENT_DNS=10.8.0.1" \
   "$out"

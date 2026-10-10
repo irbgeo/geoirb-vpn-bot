@@ -31,11 +31,12 @@ grep -vE '^[[:space:]]*(#|$)' "$ENV_FILE" |
 encoded="$(printf '%s' "$password" | python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=""))')"
 echo "MONGO_URI=mongodb://$DB_USER:$encoded@127.0.0.1:27017/$DB?authSource=$DB"
 # deploy/backup.sh touches it after every good backup; the bot alerts when it gets old.
-echo "BACKUP_STAMP=/var/lib/geoirb-vpn-bot/last-backup"
+# Both stamps are in root's own directory (deploy/install.sh), not the bot's.
+echo "BACKUP_STAMP=/var/lib/geoirb-vpn/last-backup"
 # exists while the admin's "maintenance" is on (the bot's state directory)
 echo "MAINTENANCE_FLAG=/var/lib/geoirb-vpn-bot/maintenance"
 # deploy/ru-nets.sh touches it after every good update of the RU networks set
-echo "RU_NETS_STAMP=/var/lib/geoirb-vpn-bot/ru-nets.stamp"
+echo "RU_NETS_STAMP=/var/lib/geoirb-vpn/ru-nets.stamp"
 # the tunnel to the exit server (deploy/awg-exit.conf.tmpl)
 echo "EXIT_IFACE=awg-exit"
 # clients resolve through unbound on the RU server (deploy/unbound-geoirb.conf)
