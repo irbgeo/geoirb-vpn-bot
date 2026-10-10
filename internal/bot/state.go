@@ -2,8 +2,8 @@ package bot
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"sync"
@@ -50,9 +50,9 @@ func (s *dialogs) set(p pendingInput) {
 // fresh pendingTTL, and returns the token that button must carry.
 func (s *dialogs) preview(p pendingInput) string {
 	p.At = time.Time{}
-	p.Token = rand.Text()[:8]
+	p.Token = rand.Uint32()
 	s.set(p)
-	return p.Token
+	return p.token()
 }
 
 // drop forgets what the bot waited for from this chat.
@@ -83,7 +83,7 @@ func (s *dialogs) take(in dialogTake) (pendingInput, takeResult) {
 	if !ok || p.Kind != in.Kind {
 		return pendingInput{}, takeNone
 	}
-	if p.Token != in.Token {
+	if p.token() != in.Token {
 		return pendingInput{}, takeStale
 	}
 	delete(s.m, in.ChatID)

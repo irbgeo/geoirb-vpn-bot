@@ -218,7 +218,12 @@ type pendingInput struct {
 	Maint  maintChange
 	// Token ties a preview (readyBroadcast, readyConfigs) to the "send"
 	// button under it: a button of an older preview does not match.
-	Token string
+	Token uint32
+}
+
+// token is Token as the button carries it.
+func (s pendingInput) token() string {
+	return strconv.FormatUint(uint64(s.Token), 36)
 }
 
 // maintChange: what sending a ready broadcast does to the maintenance state.
