@@ -1,6 +1,7 @@
 package amnezia
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -203,4 +204,17 @@ AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = vpn.example.com:443
 PersistentKeepalive = 25-35
 `, got)
+}
+
+func TestParseServerConfKeepsAHeaderComment(t *testing.T) {
+	text := "# managed by hand, ask geo\n\n# second line\n" + serverConfText
+
+	c, err := ParseServerConf(text)
+	require.NoError(t, err)
+	require.Equal(t, "SERVERPRIV=", c.Get("PrivateKey"))
+	require.True(t, strings.HasPrefix(c.String(), "# managed by hand, ask geo\n# second line\n[Interface]\n"), c.String())
+	require.True(t, strings.HasPrefix(c.Stripped(), "[Interface]\n"), "syncconf gets no comments")
+
+	_, err = ParseServerConf("stray = 1\n" + serverConfText)
+	require.ErrorContains(t, err, "outside a section")
 }

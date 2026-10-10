@@ -65,6 +65,9 @@ func TestOpenDetectsLayout(t *testing.T) {
 
 func TestOpenOldWireGuardLayout(t *testing.T) {
 	r := &fakeRunner{handler: func(in execInput) (string, error) {
+		if in.Args[0] == "cat" {
+			return serverConfText, nil
+		}
 		return "/usr/bin/wg\n", nil
 	}}
 	s, err := Open(context.Background(), r, "/etc/amnezia/amneziawg/wg0.conf")
@@ -82,6 +85,12 @@ func TestOpenFailsWithoutConf(t *testing.T) {
 	}}
 	_, err := Open(context.Background(), r, confFile)
 	require.ErrorContains(t, err, confFile)
+}
+
+func TestOpenFailsOnAConfItCannotRead(t *testing.T) {
+	conf := "stray = 1\n" + serverConfText
+	_, err := Open(context.Background(), awgContainer(&conf), confFile)
+	require.ErrorContains(t, err, "outside a section", "better at start than on the first key")
 }
 
 func TestGenKeys(t *testing.T) {

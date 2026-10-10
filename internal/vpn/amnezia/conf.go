@@ -59,6 +59,8 @@ func ParseServerConf(text string) (*serverConf, error) {
 			var p peer
 			c.Peers = append(c.Peers, p)
 		case line == "":
+		case section == "" && strings.HasPrefix(line, "#"):
+			c.Header = append(c.Header, line)
 		case section == "interface":
 			c.Interface = append(c.Interface, line)
 		case section == "peer":
@@ -115,6 +117,10 @@ func (s *serverConf) Get(key string) string {
 // String renders the config back to file text.
 func (s *serverConf) String() string {
 	var b strings.Builder
+	for _, line := range s.Header {
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
 	b.WriteString("[Interface]\n")
 	for _, line := range s.Interface {
 		b.WriteString(line)

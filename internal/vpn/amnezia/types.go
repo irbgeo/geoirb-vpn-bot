@@ -28,6 +28,8 @@ type peer struct {
 // serverConf is the parsed awg0.conf. The [Interface] lines are kept
 // verbatim (comments included) so the file is written back unchanged.
 type serverConf struct {
+	// Header is the comment lines a person put above [Interface].
+	Header    []string
 	Interface []string
 	Peers     []peer
 }
