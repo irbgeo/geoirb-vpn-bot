@@ -18,10 +18,11 @@ func (s *router) adminConfigsAsk(ctx context.Context, a adminAction) error {
 		Kind:   readyConfigs,
 	}
 	token := s.dialogs.preview(pendingInput)
+	send := tgbot.Button("🔄 Отправить", cbAdminCfgOK+":"+token)
 	outMessage := outMessage{
 		ChatID:   a.ChatID,
 		Text:     configsAskText(len(ids)),
-		Keyboard: sendCancelKeyboard(tgbot.Button("🔄 Отправить", cbAdminCfgOK+":"+token)),
+		Keyboard: sendCancelKeyboard(send),
 	}
 	return s.send.Send(ctx, outMessage)
 }

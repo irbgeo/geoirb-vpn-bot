@@ -57,10 +57,11 @@ func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 		Recipients: len(ids),
 		Text:       p.Text,
 	}
+	send := tgbot.Button("📣 Отправить", cbAdminBcOK+":"+token)
 	outMessage := outMessage{
 		ChatID:   p.ChatID,
 		Text:     broadcastPreviewText(preview),
-		Keyboard: sendCancelKeyboard(tgbot.Button("📣 Отправить", cbAdminBcOK+":"+token)),
+		Keyboard: sendCancelKeyboard(send),
 	}
 	return s.send.Send(ctx, outMessage)
 }
