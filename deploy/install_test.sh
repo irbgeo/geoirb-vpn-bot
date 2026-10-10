@@ -55,6 +55,7 @@ touch "$SD/geoirb-vpn-conntrack.service" "$SD/geoirb-vpn-conntrack.timer" "$OPT/
 echo "[Interface] OLD" >"$R/etc/geoirb-vpn/awg-exit.conf"
 run active
 check "first install exits 0" "0" "$?"
+check "install.sh does not delete its own directory" "1" "$(has "$TMP/pkg/install.sh")"
 for u in geoirb-vpn-bot.service geoirb-awg0.service geoirb-awg-exit.service geoirb-vpn-routes.service \
   geoirb-ru-nets.service geoirb-ru-nets.timer geoirb-vpn-mss.service geoirb-vpn-bot-backup.service geoirb-vpn-bot-backup.timer \
   geoirb-vpn-routes-check.service geoirb-vpn-routes-check.timer; do

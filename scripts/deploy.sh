@@ -55,6 +55,7 @@ echo "▶ Installing on $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
 # log when the bot is not up or restarted.
 tar -C "$TMP/pkg" -cz . | remote "sudo LOCAL_HASH=$LOCAL_HASH FORCE=${FORCE:-} bash -euo pipefail -c '
 S=\$(mktemp -d /tmp/geoirb-vpn-bot-deploy.XXXXXX)
+trap \"rm -rf \$S\" EXIT
 tar -xz -C \$S
 bash \$S/install.sh
 echo \"▶ Status\"

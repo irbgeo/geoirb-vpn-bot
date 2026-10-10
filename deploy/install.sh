@@ -7,8 +7,7 @@
 # Env: LOCAL_HASH (hash of BOT_TOKEN/DB_SECRET_KEY in the package), FORCE=1
 # to replace them anyway. ROOT is a path prefix for tests.
 set -euo pipefail
-S="$(cd "$(dirname "$0")" && pwd)"
-trap 'rm -rf "$S"' EXIT
+S="$(cd "$(dirname "$0")" && pwd)" # removed by its creator (scripts/deploy.sh), not here
 ROOT="${ROOT:-}"
 E="$ROOT/etc/geoirb-vpn-bot/env"
 OPT="$ROOT/opt/geoirb-vpn-bot"
