@@ -103,13 +103,16 @@ func (s *router) deleteOwnKey(ctx context.Context, cq *tgbot.CallbackQuery) erro
 // ownKeyFailed explains a failed reissue or delete; a key that is gone (a
 // second press, another user's key) is not an error.
 func (s *router) ownKeyFailed(ctx context.Context, in ownKeyFailedInput) error {
-	text, known := keyNotFoundText, errors.Is(in.Err, service.ErrNotFound)
-	if errors.Is(in.Err, service.ErrUnreadable) {
-		text, known = keyUnreadableText, true
-	} else if errors.Is(in.Err, service.ErrBlocked) {
-		text, known = blockedKeyDeleteText, true
-	} else if !known {
-		text = ownKeyFailedText
+	text, known := ownKeyFailedText, true
+	switch {
+	case errors.Is(in.Err, service.ErrUnreadable):
+		text = keyUnreadableText
+	case errors.Is(in.Err, service.ErrBlocked):
+		text = blockedKeyDeleteText
+	case errors.Is(in.Err, service.ErrNotFound):
+		text = keyNotFoundText
+	default:
+		known = false
 	}
 	userError := userError{
 		ChatID: in.Query.ChatID(),
