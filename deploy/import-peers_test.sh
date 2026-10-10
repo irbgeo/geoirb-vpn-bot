@@ -13,7 +13,8 @@ mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 
 mkdir "$TMP/bin"
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\n[[ "$1" != syncconf ]] || cat "$3" >"$CALLS.synced"\n' >"$TMP/bin/awg"
-printf '#!/usr/bin/env bash\ncat "$2"\n' >"$TMP/bin/awg-quick"
+# awg-quick strip: fails with $STRIP_FAIL, prints nothing with $STRIP_EMPTY.
+printf '#!/usr/bin/env bash\n[[ -z "${STRIP_FAIL:-}" ]] || exit 1\n[[ -n "${STRIP_EMPTY:-}" ]] || cat "$2"\n' >"$TMP/bin/awg-quick"
 printf '#!/usr/bin/env bash\necho "systemctl $*" >>"$CALLS"\n[[ "$1" != is-active ]] || [[ -n "${BOT_ACTIVE:-}" ]]\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
 
@@ -84,7 +85,20 @@ C
 # last block without a trailing newline, CRLF on one block
 printf '\n[Peer]\r\nPublicKey = jjjjjjjjjj=\r\nAllowedIPs = 10.8.2.7/32' >>"$TMP/old.conf"
 
-run() { BOT_ACTIVE=1 CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$DIR/import-peers.sh" "$TMP/old.conf" 2>&1; }
+run() { env BOT_ACTIVE=1 CALLS="$TMP/calls" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" "$@" bash "$DIR/import-peers.sh" "$TMP/old.conf" 2>&1; }
+
+# A failed (or empty) `awg-quick strip` must not reach `awg syncconf`: an empty
+# conf there removes every live peer. Nothing on the server changes.
+cp "$CONF" "$TMP/before"
+for sw in STRIP_FAIL=1 STRIP_EMPTY=1; do
+  : >"$TMP/calls"
+  run "$sw" >/dev/null
+  check "$sw: fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+  check "$sw: no syncconf" "0" "$(grep -c '^awg syncconf' "$TMP/calls")"
+  check "$sw: conf untouched, nothing left behind" "awg0.conf" "$(cmp -s "$CONF" "$TMP/before" && ls "$(dirname "$CONF")")"
+  check "$sw: bot started again" "1" "$(grep -c 'systemctl start geoirb-vpn-bot' "$TMP/calls")"
+done
+: >"$TMP/calls"
 
 out="$(run)"
 check "exit 0" "0" "$?"

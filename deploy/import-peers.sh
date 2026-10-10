@@ -14,7 +14,9 @@ CONF="${ROOT:-}/etc/amnezia/amneziawg/awg0.conf"
 W="$CONF.import" # own temp names, distinct from the bot's .tmp/.bak
 BOT=geoirb-vpn-bot
 restart=0
+tmp="$(mktemp -d)" # root only; the name awg0.conf in it is what `awg-quick strip` wants
 cleanup() {
+  rm -rf "$tmp"
   rm -f "$W.tmp" "$W.new" "$W.skip"
   [[ "$restart" == 0 ]] || systemctl start "$BOT"
 }
@@ -75,10 +77,17 @@ n="${summary#imported }"
 n="${n%%,*}"
 [[ "$n" != 0 ]] || exit 0
 
+cp -p "$CONF" "$tmp/awg0.conf" # same owner and mode
+[[ -z "$(tail -c1 "$CONF")" ]] || echo >>"$tmp/awg0.conf"
+cat "$W.new" >>"$tmp/awg0.conf"
+# Strip into a file, and before the conf is replaced: bash does not see a
+# failure inside <(...), and `awg syncconf` with an empty file would remove
+# every live peer. A failure here leaves the server as it was.
+awg-quick strip "$tmp/awg0.conf" >"$tmp/strip"
+[[ -s "$tmp/strip" ]] || { echo "error: awg-quick strip gave an empty conf, nothing changed" >&2; exit 1; }
+
 cp -p "$CONF" "$CONF.bak-import-$(date -u +%Y%m%dT%H%M%SZ)"
-cp -p "$CONF" "$W.tmp" # same dir, same owner and mode
-[[ -z "$(tail -c1 "$CONF")" ]] || echo >>"$W.tmp"
-cat "$W.new" >>"$W.tmp"
+cp -p "$tmp/awg0.conf" "$W.tmp" # same dir, so the mv is atomic
 mv "$W.tmp" "$CONF"
 
-awg syncconf awg0 <(awg-quick strip "$CONF")
+awg syncconf awg0 "$tmp/strip"
