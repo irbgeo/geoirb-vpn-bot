@@ -12,6 +12,7 @@ check() { # check <name> <expected> <actual>
 mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 
 TAG="$(sed -n 's/^AWG_TOOLS_TAG="${AWG_TOOLS_TAG-\([^}]*\)}".*/\1/p' "$DIR/../awg-tools.sh")"
+COMMIT="$(sed -n 's/^AWG_TOOLS_COMMIT="${AWG_TOOLS_COMMIT-\([^}]*\)}".*/\1/p' "$DIR/../awg-tools.sh")"
 
 mkdir "$TMP/bin"
 # Every fake logs its name and args; `awg --version` prints $AWG_VERSION.
@@ -19,6 +20,8 @@ for c in modprobe systemctl sysctl iptables make apt-get git; do
   printf '#!/usr/bin/env bash\necho "%s $*" >>"$CALLS"\n' "$c" >"$TMP/bin/$c"
 done
 printf '#!/usr/bin/env bash\necho "awg $*" >>"$CALLS"\necho "$AWG_VERSION"\n' >"$TMP/bin/awg"
+# git: `rev-parse HEAD` prints $GIT_HEAD, the commit the cloned tag points to.
+printf '#!/usr/bin/env bash\necho "git $*" >>"$CALLS"\n[[ "$*" != *rev-parse* ]] || echo "$GIT_HEAD"\n' >"$TMP/bin/git"
 # stop also logs the conf it sees, to prove the stop comes before the conf is replaced.
 printf '#!/usr/bin/env bash\necho "systemctl $* conf=$(cat "$ROOT/etc/geoirb-vpn/awg-exit.conf" 2>/dev/null)" >>"$CALLS"\n' >"$TMP/bin/systemctl"
 chmod +x "$TMP/bin"/*
@@ -29,9 +32,9 @@ PKG="$(sed -n '/^cp "\$ROOT\/deploy\/exit\/install.sh"/,/"\$TMP\/pkg\/"$/p' "$DI
 for f in $PKG; do cp "$DIR/../$f" "$TMP/pkg/"; done
 echo "[Interface]" >"$TMP/pkg/awg-exit.conf"
 
-run() { # run <awg version output>
+run() { # run <awg version output> [commit of the cloned tag]
   : >"$TMP/calls"
-  CALLS="$TMP/calls" AWG_VERSION="$1" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$TMP/pkg/install.sh" >/dev/null 2>&1
+  CALLS="$TMP/calls" AWG_VERSION="$1" GIT_HEAD="${2:-$COMMIT}" ROOT="$TMP/root" PATH="$TMP/bin:$PATH" bash "$TMP/pkg/install.sh" >/dev/null 2>&1
 }
 
 mkdir -p "$TMP/root/etc/geoirb-vpn"; echo OLD >"$TMP/root/etc/geoirb-vpn/awg-exit.conf"
@@ -57,6 +60,12 @@ check "awg-tools built on other version" "1" "$(grep -c '^make .*install' "$TMP/
 check "build uses WITH_WGQUICK" "1" "$(grep -c 'WITH_WGQUICK=yes' "$TMP/calls")"
 check "build deps installed" "1" "$(grep -c '^apt-get install.*build-essential git' "$TMP/calls")"
 check "pinned tag cloned" "1" "$(grep -c "^git clone.*$TAG" "$TMP/calls")"
+check "pinned commit is a full hash" "40" "$(printf '%s' "$COMMIT" | tr -d -c '0-9a-f' | wc -c | tr -d ' ')"
+
+# The tag was moved to another commit: nothing is built, the tunnel is not touched.
+run "amneziawg-tools v0.0.1" 0000000000000000000000000000000000000000
+check "moved tag fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "moved tag: no build, no tunnel stop" "0" "$(grep -c '^\(make\|systemctl\)' "$TMP/calls")"
 
 rm "$TMP/pkg/awg-exit.conf"
 run "amneziawg-tools $TAG"
