@@ -342,6 +342,57 @@ func costlyKeyAction(data string) bool {
 	return strings.HasPrefix(data, cbReissue) || strings.HasPrefix(data, cbDelete) || strings.HasPrefix(data, cbConfig)
 }
 
+// start registers the user (first /start adds them to the bot) and sends
+// the main menu. /start and /menu are a way out of any prompt.
+func (s *router) start(ctx context.Context, m *tgbot.Message) error {
+	s.dialogs.drop(m.Chat.ID)
+	menu, err := s.mainMenu(ctx, m.From)
+	if err != nil {
+		return err
+	}
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     menu.Text,
+		Keyboard: menu.Keyboard,
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
+// keyNamed creates the key with the name the user sent. A bad name asks
+// again and keeps waiting; anything else ends the question. (Only private
+// chats are handled, so the chat is the user who was asked.)
+func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
+	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
+		outMessage := outMessage{
+			ChatID:   m.Chat.ID,
+			Text:     askKeyNameText,
+			Keyboard: skipKeyNameKeyboard(),
+		}
+		return s.send.Send(ctx, outMessage)
+	}
+	s.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
+	keyRequest := keyRequest{
+		ChatID: m.Chat.ID,
+		UserID: m.From.ID,
+		Name:   m.Text,
+	}
+	err := s.issueKey(ctx, keyRequest)
+	if !errors.Is(err, service.ErrBadKeyName) {
+		return err
+	}
+	pendingInput := pendingInput{
+		ChatID: m.Chat.ID,
+		Kind:   pendingKeyName,
+	}
+	s.dialogs.set(pendingInput)
+	outMessage := outMessage{
+		ChatID:   m.Chat.ID,
+		Text:     badKeyNameText,
+		Keyboard: skipKeyNameKeyboard(),
+	}
+	return s.send.Send(ctx, outMessage)
+}
+
 // backToMenu is the "◀️ Меню" button: it turns the same message back into
 // the main menu, so the chat does not fill up with menus. If Telegram does
 // not let the bot edit it (e.g. too old), the menu comes as a new message.
@@ -427,6 +478,41 @@ func createKeyErrorText(err error) (text string, known bool) {
 		return keyLimitText, true
 	}
 	return internalErrorText, false
+}
+
+// configAgain resends one of the user's own keys.
+func (s *router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	userKey := service.UserKey{
+		UserID:    cq.SenderID(),
+		PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
+	}
+	kc, err := s.keys.UserConfig(ctx, userKey)
+	if err != nil {
+		text, known := configErrorText(err)
+		userError := userError{
+			ChatID: cq.ChatID(),
+			Err:    err,
+			Text:   text,
+			Known:  known,
+		}
+		return s.replyError(ctx, userError)
+	}
+	configDelivery := configDelivery{
+		ChatID: cq.ChatID(),
+		Key:    kc,
+	}
+	return s.sendConfig(ctx, configDelivery)
+}
+
+// configErrorText explains why a key's config can't be sent again.
+func configErrorText(err error) (text string, known bool) {
+	switch {
+	case errors.Is(err, service.ErrNotFound):
+		return keyNotFoundText, true
+	case errors.Is(err, service.ErrNoPrivateKey):
+		return noPrivateKeyText, true
+	}
+	return configFailedText, false
 }
 
 // replyError tells the user what went wrong. An expected error (Known)
@@ -649,90 +735,4 @@ func (s *router) commandText(c command) string {
 		return paySupportText(s.support)
 	}
 	return unknownCommandText
-}
-
-// configAgain resends one of the user's own keys.
-func (s *router) configAgain(ctx context.Context, cq *tgbot.CallbackQuery) error {
-	userKey := service.UserKey{
-		UserID:    cq.SenderID(),
-		PublicKey: strings.TrimPrefix(cq.Data, cbConfig),
-	}
-	kc, err := s.keys.UserConfig(ctx, userKey)
-	if err != nil {
-		text, known := configErrorText(err)
-		userError := userError{
-			ChatID: cq.ChatID(),
-			Err:    err,
-			Text:   text,
-			Known:  known,
-		}
-		return s.replyError(ctx, userError)
-	}
-	configDelivery := configDelivery{
-		ChatID: cq.ChatID(),
-		Key:    kc,
-	}
-	return s.sendConfig(ctx, configDelivery)
-}
-
-// configErrorText explains why a key's config can't be sent again.
-func configErrorText(err error) (text string, known bool) {
-	switch {
-	case errors.Is(err, service.ErrNotFound):
-		return keyNotFoundText, true
-	case errors.Is(err, service.ErrNoPrivateKey):
-		return noPrivateKeyText, true
-	}
-	return configFailedText, false
-}
-
-// start registers the user (first /start adds them to the bot) and sends
-// the main menu. /start and /menu are a way out of any prompt.
-func (s *router) start(ctx context.Context, m *tgbot.Message) error {
-	s.dialogs.drop(m.Chat.ID)
-	menu, err := s.mainMenu(ctx, m.From)
-	if err != nil {
-		return err
-	}
-	outMessage := outMessage{
-		ChatID:   m.Chat.ID,
-		Text:     menu.Text,
-		Keyboard: menu.Keyboard,
-	}
-	return s.send.Send(ctx, outMessage)
-}
-
-// keyNamed creates the key with the name the user sent. A bad name asks
-// again and keeps waiting; anything else ends the question. (Only private
-// chats are handled, so the chat is the user who was asked.)
-func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
-	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
-		outMessage := outMessage{
-			ChatID:   m.Chat.ID,
-			Text:     askKeyNameText,
-			Keyboard: skipKeyNameKeyboard(),
-		}
-		return s.send.Send(ctx, outMessage)
-	}
-	s.dialogs.drop(m.Chat.ID) // before issuing: a second text is not a second key
-	keyRequest := keyRequest{
-		ChatID: m.Chat.ID,
-		UserID: m.From.ID,
-		Name:   m.Text,
-	}
-	err := s.issueKey(ctx, keyRequest)
-	if !errors.Is(err, service.ErrBadKeyName) {
-		return err
-	}
-	pendingInput := pendingInput{
-		ChatID: m.Chat.ID,
-		Kind:   pendingKeyName,
-	}
-	s.dialogs.set(pendingInput)
-	outMessage := outMessage{
-		ChatID:   m.Chat.ID,
-		Text:     badKeyNameText,
-		Keyboard: skipKeyNameKeyboard(),
-	}
-	return s.send.Send(ctx, outMessage)
 }
