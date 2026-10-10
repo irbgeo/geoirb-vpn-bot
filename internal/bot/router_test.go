@@ -80,11 +80,11 @@ func (s *fakeSender) SendPhoto(_ context.Context, m outFile) error {
 	return nil
 }
 
-func (s *fakeSender) SendVideo(_ context.Context, m outVideo) error {
+func (s *fakeSender) SendVideo(_ context.Context, m *outVideo) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.videos = append(s.videos, m)
-	return nil
+	s.videos = append(s.videos, *m)
+	return "VID1", nil
 }
 
 func (s *fakeSender) Answer(_ context.Context, callbackID string) error {

@@ -114,8 +114,8 @@ type router struct {
 	send     Sender
 	notify   *notifier
 	support  string // support contact
-	// splitVideo: Telegram ID of the app split-tunneling video; empty = no step 3.
-	splitVideo string
+	// splitVideo: the video on app split tunneling; empty = no such step.
+	splitVideo *videoFile
 
 	// dialogs: what each chat's next input is (a broadcast text, a key
 	// name). In memory only: after a restart the button is pressed again.
@@ -137,6 +137,7 @@ func New(
 	jobs := newJobs()
 	maint := newMaintFlag(d.Config.MaintenanceFlag)
 	refunds := newInFlight()
+	splitVideo := newVideoFile(d.SplitVideo)
 	return &router{
 		users:      d.Users,
 		keys:       d.Keys,
@@ -145,7 +146,7 @@ func New(
 		feedback:   d.Feedback,
 		send:       d.Sender,
 		support:    d.Config.SupportContact,
-		splitVideo: d.Config.SplitVideoFileID,
+		splitVideo: splitVideo,
 		notify:     d.Notifier,
 		dialogs:    dialogs,
 		jobs:       jobs,
@@ -188,12 +189,6 @@ func (s *router) Handle(ctx context.Context, upd tgbot.Update) error {
 			Text:   s.commandText(command),
 		}
 		return s.send.Send(ctx, outMessage)
-	}
-	if upd.Message.Video != nil {
-		handled, err := s.adminVideo(ctx, upd.Message)
-		if handled || err != nil {
-			return err
-		}
 	}
 	p, ok := s.dialogs.peek(upd.Message.Chat.ID)
 	if ok {
@@ -349,7 +344,7 @@ func (s *router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, e
 	menuView := menuView{
 		Role:        u.Role,
 		Maintenance: u.Role == service.RoleAdmin && s.maint.on(),
-		SplitVideo:  s.splitVideo != "",
+		SplitVideo:  !s.splitVideo.empty(),
 	}
 	return &menuScreen{
 		Text:     greeting(u),
@@ -517,7 +512,7 @@ func (s *router) deliverKey(ctx context.Context, d keyDelivery) error {
 		ChatID: d.ChatID,
 		Text:   importText,
 	}
-	if s.splitVideo == "" {
+	if s.splitVideo.empty() {
 		outMessage.Keyboard = menuKeyboard()
 		return s.send.Send(ctx, outMessage)
 	}

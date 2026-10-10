@@ -50,10 +50,6 @@ type Config struct {
 	AWGExec string `envconfig:"AWG_EXEC"`
 	// ExitIface: the tunnel to the exit server; empty = no tunnel watch.
 	ExitIface string `envconfig:"EXIT_IFACE"`
-	// SplitVideoFileID: Telegram file ID of the video on app split tunneling
-	// (Android, Windows). An admin sends the video to the bot to learn its
-	// ID; empty = getting a key has no step 3.
-	SplitVideoFileID string `envconfig:"SPLIT_VIDEO_FILE_ID"`
 	// RUNetsStamp: touched by every good update of the RU networks list; empty = no check.
 	RUNetsStamp string `envconfig:"RU_NETS_STAMP"`
 

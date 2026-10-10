@@ -275,3 +275,41 @@ func (s *inFlight) end(id string) {
 	delete(s.m, id)
 	s.mu.Unlock()
 }
+
+// videoFile is a video shipped in the binary. The first send uploads it;
+// the file ID Telegram returns is reused afterwards. In memory only: one
+// upload after every restart.
+type videoFile struct {
+	data []byte // never changed after newVideoFile
+	mu   sync.Mutex
+	id   string
+}
+
+func newVideoFile(
+	data []byte,
+) *videoFile {
+	return &videoFile{
+		data: data,
+	}
+}
+
+func (s *videoFile) empty() bool {
+	return len(s.data) == 0
+}
+
+// fileID is Telegram's ID of the uploaded video; "" before the first upload.
+func (s *videoFile) fileID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.id
+}
+
+// remember keeps the ID of a sent video; an empty one changes nothing.
+func (s *videoFile) remember(id string) {
+	if id == "" {
+		return
+	}
+	s.mu.Lock()
+	s.id = id
+	s.mu.Unlock()
+}

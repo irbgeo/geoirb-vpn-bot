@@ -18,7 +18,9 @@ type Sender interface {
 	Edit(ctx context.Context, m editMessage) error
 	SendDocument(ctx context.Context, f outFile) error
 	SendPhoto(ctx context.Context, f outFile) error
-	SendVideo(ctx context.Context, v outVideo) error
+	// SendVideo returns Telegram's file ID of the sent video, to send it
+	// again without an upload.
+	SendVideo(ctx context.Context, v *outVideo) (string, error)
 	Answer(ctx context.Context, callbackID string) error
 	SendInvoice(ctx context.Context, inv *outInvoice) error
 	AnswerPreCheckout(ctx context.Context, a preCheckoutAnswer) error
@@ -100,16 +102,23 @@ func (s *telegramSender) SendPhoto(ctx context.Context, f outFile) error {
 	return err
 }
 
-// SendVideo sends a video Telegram already has, by its file ID.
-func (s *telegramSender) SendVideo(ctx context.Context, v outVideo) error {
+// SendVideo sends a video: by its file ID, or as an upload of v.Data.
+func (s *telegramSender) SendVideo(ctx context.Context, v *outVideo) (string, error) {
 	inputFile := tgbot.InputFile{
 		FileID: v.FileID,
+	}
+	if v.FileID == "" {
+		inputFile.Reader = bytes.NewReader(v.Data)
+		inputFile.Filename = v.Name
 	}
 	sendVideoOptions := tgbot.SendVideoOptions{
 		Caption: v.Caption,
 	}
-	_, err := s.client.SendVideo(ctx, v.ChatID, inputFile, &sendVideoOptions)
-	return err
+	m, err := s.client.SendVideo(ctx, v.ChatID, inputFile, &sendVideoOptions)
+	if err != nil || m.Video == nil {
+		return "", err
+	}
+	return m.Video.FileID, nil
 }
 
 // Answer stops the loading spinner on a pressed inline button.

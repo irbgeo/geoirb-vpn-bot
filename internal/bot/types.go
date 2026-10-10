@@ -248,12 +248,18 @@ type outFile struct {
 	Caption string
 }
 
-// outVideo is a video sent again by its Telegram file ID (no upload).
+// outVideo is a video to send: by FileID when Telegram already has it,
+// otherwise Data is uploaded as Name.
 type outVideo struct {
 	ChatID  int64
 	FileID  string
+	Name    string
+	Data    []byte
 	Caption string
 }
+
+// splitVideoName is the file name users see for the uploaded video.
+const splitVideoName = "split-tunnel.mp4"
 
 // Deps is everything New needs.
 type Deps struct {
@@ -263,7 +269,9 @@ type Deps struct {
 	Ops      Ops
 	Feedback Feedback
 	Sender   Sender
-	Notifier *notifier
+	// SplitVideo: the video on app split tunneling (data.SplitTunnel); empty = no such step.
+	SplitVideo []byte
+	Notifier   *notifier
 	// Config gives SupportContact (e.g. "@geoirb") and MaintenanceFlag (a
 	// file that exists while maintenance is on, so the state survives a
 	// restart; "" = kept in memory only).

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/irbgeo/go-tgbot"
 	"github.com/stretchr/testify/require"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
@@ -21,17 +20,14 @@ func keyService() *fakeService {
 	}
 }
 
-func videoUpdate(fileID string) tgbot.Update {
-	u := startUpdate("")
-	u.Message.Video = &tgbot.Video{
-		FileID: fileID,
-	}
-	return u
+// withVideo gives the router a video, as main does with the embedded file.
+func withVideo(r *router) {
+	r.splitVideo = newVideoFile([]byte("mp4"))
 }
 
 func TestCreateKeyStepThreeAsksTheDevice(t *testing.T) {
 	r, s := newRouter(keyService())
-	r.splitVideo = "VID1"
+	withVideo(r)
 	ctx := context.Background()
 
 	require.NoError(t, r.Handle(ctx, press("key:issue")))
@@ -59,14 +55,14 @@ func TestNoStepThreeWithoutAVideo(t *testing.T) {
 	require.Len(t, s.sent, 2, "the name question, then step 2 as the last one")
 	require.True(t, hasMenuButton(s.sent[1].Keyboard))
 
-	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)), "a button from before the video was removed")
+	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
 	require.Len(t, s.sent, 2)
 	require.Empty(t, s.videos)
 }
 
 func TestAndroidAndWindowsGetTheVideo(t *testing.T) {
 	r, s := newRouter(&fakeService{})
-	r.splitVideo = "VID1"
+	withVideo(r)
 
 	require.NoError(t, r.Handle(context.Background(), press(cbSplitVideo)))
 
@@ -75,13 +71,28 @@ func TestAndroidAndWindowsGetTheVideo(t *testing.T) {
 	require.True(t, hasMenuButton(s.sent[0].Keyboard))
 	require.Len(t, s.videos, 1)
 	require.Equal(t, int64(42), s.videos[0].ChatID)
-	require.Equal(t, "VID1", s.videos[0].FileID, "sent by its Telegram ID, not uploaded again")
+	require.Equal(t, "mp4", string(s.videos[0].Data), "the first send uploads the file")
+	require.Equal(t, splitVideoName, s.videos[0].Name)
 	require.NotEmpty(t, s.videos[0].Caption)
+}
+
+func TestVideoIsUploadedOnlyOnce(t *testing.T) {
+	r, s := newRouter(&fakeService{})
+	withVideo(r)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+	require.NoError(t, r.Handle(ctx, press(cbSplitVideo)))
+
+	require.Len(t, s.videos, 2)
+	require.Empty(t, s.videos[0].FileID)
+	require.Equal(t, "VID1", s.videos[1].FileID, "then by the ID Telegram gave it")
+	require.Empty(t, s.videos[1].Data, "no second upload")
 }
 
 func TestOtherDevicesGetANote(t *testing.T) {
 	r, s := newRouter(&fakeService{})
-	r.splitVideo = "VID1"
+	withVideo(r)
 
 	require.NoError(t, r.Handle(context.Background(), press(cbSplitNone)))
 
@@ -89,48 +100,6 @@ func TestOtherDevicesGetANote(t *testing.T) {
 	require.Contains(t, s.sent[0].Text, "iPhone")
 	require.True(t, hasMenuButton(s.sent[0].Keyboard))
 	require.Empty(t, s.videos)
-}
-
-func TestAdminVideoGetsItsID(t *testing.T) {
-	r, s := newRouter(
-		&fakeService{
-			role: service.RoleAdmin,
-		},
-	)
-
-	require.NoError(t, r.Handle(context.Background(), videoUpdate("VID9")))
-
-	require.Len(t, s.sent, 1)
-	require.Contains(t, s.sent[0].Text, "VID9")
-	require.Contains(t, s.sent[0].Text, "SPLIT_VIDEO_FILE_ID")
-}
-
-func TestUserVideoIsNotAnswered(t *testing.T) {
-	r, s := newRouter(
-		&fakeService{
-			role: service.RoleUser,
-		},
-	)
-
-	require.NoError(t, r.Handle(context.Background(), videoUpdate("VID9")))
-
-	require.Empty(t, s.sent, "the ID is for admins only")
-}
-
-// A user who is asked for a key name and sends a video is asked again, as
-// with any other message without text.
-func TestUserVideoStillAnswersThePendingQuestion(t *testing.T) {
-	svc := &fakeService{
-		role: service.RoleUser,
-	}
-	r, s := newRouter(svc)
-	ctx := context.Background()
-
-	require.NoError(t, r.Handle(ctx, press("key:issue")))
-	require.NoError(t, r.Handle(ctx, videoUpdate("VID9")))
-
-	require.Empty(t, svc.createdWith)
-	require.Equal(t, "key:noname", s.sent[len(s.sent)-1].Keyboard.InlineKeyboard[0][0].CallbackData)
 }
 
 func TestMenuHasTheAppsButtonOnlyWithAVideo(t *testing.T) {
@@ -146,7 +115,7 @@ func TestMenuHasTheAppsButtonOnlyWithAVideo(t *testing.T) {
 		require.NotEqual(t, cbSplitAsk, row[0].CallbackData, "no video, no button")
 	}
 
-	r.splitVideo = "VID1"
+	withVideo(r)
 	require.NoError(t, r.Handle(ctx, startUpdate("/menu")))
 	require.Equal(t, cbSplitAsk, s.sent[1].Keyboard.InlineKeyboard[3][0].CallbackData, "after buy, before support")
 

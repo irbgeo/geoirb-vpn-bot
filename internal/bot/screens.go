@@ -123,13 +123,6 @@ func splitAskKeyboard() *tgbot.InlineKeyboardMarkup {
 	)
 }
 
-// videoIDText tells an admin how to make a video they sent the step-3 video.
-func videoIDText(fileID string) string {
-	return "ID этого видео:\n" + fileID + "\n\n" +
-		"Чтобы бот показывал его на шаге 3 (Android и Windows), впишите в .env:\n" +
-		"SPLIT_VIDEO_FILE_ID=" + fileID + "\nи сделайте make deploy."
-}
-
 // msk: dates are shown in Moscow time (fixed zone, no tzdata needed).
 var msk = time.FixedZone("MSK", 3*60*60)
 

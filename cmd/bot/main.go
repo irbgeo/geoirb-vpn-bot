@@ -11,6 +11,7 @@ import (
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
+	"github.com/irbgeo/geoirb-vpn-bot/data"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/bot"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/config"
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
@@ -95,15 +96,17 @@ func main() {
 		load,
 		cfg.RUNetsStamp,
 	)
+	splitVideo := data.SplitTunnel()
 	deps := bot.Deps{
-		Users:    svc,
-		Keys:     svc,
-		Billing:  svc,
-		Ops:      svc,
-		Feedback: svc,
-		Sender:   sender,
-		Notifier: notifier,
-		Config:   cfg,
+		Users:      svc,
+		Keys:       svc,
+		Billing:    svc,
+		Ops:        svc,
+		Feedback:   svc,
+		Sender:     sender,
+		SplitVideo: splitVideo,
+		Notifier:   notifier,
+		Config:     cfg,
 	}
 	router := bot.New(&deps)
 

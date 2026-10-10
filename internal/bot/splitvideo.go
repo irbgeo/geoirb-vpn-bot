@@ -2,17 +2,13 @@ package bot
 
 import (
 	"context"
-
-	"github.com/irbgeo/go-tgbot"
-
-	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
 // The last step of getting a key, also a menu button: apps that refuse to
 // work while the tunnel is on (banks, Gosuslugi). AmneziaVPN can route
 // chosen apps around the tunnel on Android and Windows only, and one video
-// shows how. Both the step and the button exist only while
-// SPLIT_VIDEO_FILE_ID is set.
+// (data/SplitTunnel.mp4, built into the binary) shows how. Without a video
+// there is neither the step nor the button.
 
 // askDevice asks which device the user has: the video fits two of them.
 func (s *router) askDevice(ctx context.Context, chatID int64) error {
@@ -25,9 +21,10 @@ func (s *router) askDevice(ctx context.Context, chatID int64) error {
 }
 
 // sendSplitVideo answers "Android" and "Windows": the steps in words, then
-// the video. A button pressed after the video was switched off does nothing.
+// the video. The first send uploads the file; later ones reuse the ID
+// Telegram gave it.
 func (s *router) sendSplitVideo(ctx context.Context, chatID int64) error {
-	if s.splitVideo == "" {
+	if s.splitVideo.empty() {
 		return nil
 	}
 	outMessage := outMessage{
@@ -41,10 +38,19 @@ func (s *router) sendSplitVideo(ctx context.Context, chatID int64) error {
 	}
 	outVideo := outVideo{
 		ChatID:  chatID,
-		FileID:  s.splitVideo,
+		FileID:  s.splitVideo.fileID(),
 		Caption: splitVideoCaption,
 	}
-	return s.send.SendVideo(ctx, outVideo)
+	if outVideo.FileID == "" {
+		outVideo.Name = splitVideoName
+		outVideo.Data = s.splitVideo.data
+	}
+	id, err := s.send.SendVideo(ctx, &outVideo)
+	if err != nil {
+		return err
+	}
+	s.splitVideo.remember(id)
+	return nil
 }
 
 // splitNone answers every other device: the app has no such setting there.
@@ -55,19 +61,4 @@ func (s *router) splitNone(ctx context.Context, chatID int64) error {
 		Keyboard: menuKeyboard(),
 	}
 	return s.send.Send(ctx, outMessage)
-}
-
-// adminVideo tells an admin the Telegram ID of a video they sent, to put
-// into SPLIT_VIDEO_FILE_ID. It reports false for everyone else, so their
-// message is handled as before.
-func (s *router) adminVideo(ctx context.Context, m *tgbot.Message) (bool, error) {
-	u, err := s.users.User(ctx, m.From.ID)
-	if err != nil || u.Role != service.RoleAdmin {
-		return false, nil //nolint:nilerr // not an admin: not a video for the bot
-	}
-	outMessage := outMessage{
-		ChatID: m.Chat.ID,
-		Text:   videoIDText(m.Video.FileID),
-	}
-	return true, s.send.Send(ctx, outMessage)
 }
