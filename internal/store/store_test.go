@@ -17,10 +17,14 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// testStore connects to MONGO_URI (default localhost) and wipes the test
-// database. Only a Mongo that does not answer a ping skips the test (and
-// with REQUIRE_MONGO=1 even that fails it): any other Connect error is a
-// bug in the store and must fail.
+// testDB is the database the store tests use and drop.
+const testDB = "geoirb_vpn_test"
+
+// testStore wipes the test database at MONGO_URI (default localhost) and
+// connects to it. Only a Mongo that does not answer a ping skips the test
+// (and with REQUIRE_MONGO=1 even that fails it): any other error is a bug
+// in the store and must fail. The wipe comes before Connect, so rows left
+// by the last test (e.g. unreadable ones) can't fail Connect's key check.
 func testStore(t *testing.T) *store {
 	t.Helper()
 	uri := os.Getenv("MONGO_URI")
@@ -30,36 +34,41 @@ func testStore(t *testing.T) *store {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	err := pingMongo(ctx, uri)
+	client, err := dialMongo(ctx, uri)
 	if err != nil && os.Getenv("REQUIRE_MONGO") == "1" {
 		t.Fatalf("mongo not reachable at %s: %v", uri, err)
 	}
 	if err != nil {
 		t.Skipf("mongo not reachable at %s: %v", uri, err)
 	}
+	require.NoError(t, client.Database(testDB).Drop(ctx))
+	require.NoError(t, client.Disconnect(ctx))
+
 	s, err := Connect(
 		ctx,
 		&config.Config{
 			MongoURI:  uri,
-			MongoDB:   "geoirb_vpn_test",
+			MongoDB:   testDB,
 			SecretKey: testKey,
 		},
 	)
 	require.NoError(t, err)
-	require.NoError(t, s.db.Drop(ctx))
-	require.NoError(t, s.ensureIndexes(ctx))
 	t.Cleanup(func() { _ = s.Disconnect(context.Background()) })
 	return s
 }
 
-// pingMongo reports whether a Mongo answers at uri.
-func pingMongo(ctx context.Context, uri string) error {
+// dialMongo returns a client of a Mongo that answers a ping at uri.
+func dialMongo(ctx context.Context, uri string) (*mongo.Client, error) {
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer client.Disconnect(context.Background()) //nolint:errcheck
-	return client.Ping(ctx, nil)
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		_ = client.Disconnect(context.Background())
+		return nil, err
+	}
+	return client, nil
 }
 
 // ts is a Mongo-friendly timestamp: UTC, millisecond precision.
@@ -606,7 +615,7 @@ func TestConnectRefusesAWrongSecretKey(t *testing.T) {
 		context.Background(),
 		&config.Config{
 			MongoURI:  uri,
-			MongoDB:   "geoirb_vpn_test",
+			MongoDB:   testDB,
 			SecretKey: bytes.Repeat([]byte{9}, 32),
 		},
 	)
