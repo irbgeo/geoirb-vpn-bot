@@ -212,7 +212,6 @@ const pendingTTL = 10 * time.Minute
 // pendingInput is what the bot waits for in one chat.
 type pendingInput struct {
 	ChatID int64
-	UserID int64 // pendingKeyName: only this user answers
 	Kind   pendingKind
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)

@@ -28,22 +28,6 @@ func TestGroupChatsAreIgnored(t *testing.T) {
 	require.Empty(t, svc.registered)
 }
 
-func TestKeyNamePromptBelongsToTheUserWhoAsked(t *testing.T) {
-	svc := &fakeService{
-		created: &service.Peer{
-			PublicKey: "PUB=",
-		},
-	}
-	r, _ := newRouter(svc)
-	ctx := context.Background()
-	require.NoError(t, r.Handle(ctx, press("key:issue")))
-
-	other := startUpdate("iPhone")
-	other.Message.From.ID = 99
-	require.NoError(t, r.Handle(ctx, other))
-	require.Empty(t, svc.createdWith, "someone else's text is not the name")
-}
-
 func TestExpiredPreviewIsNotSent(t *testing.T) {
 	svc := adminService()
 	svc.recipients = []int64{

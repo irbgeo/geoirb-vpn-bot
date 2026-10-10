@@ -451,7 +451,6 @@ func (s *router) replyError(ctx context.Context, e userError) error {
 func (s *router) askKeyName(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	pendingInput := pendingInput{
 		ChatID: cq.ChatID(),
-		UserID: cq.SenderID(),
 		Kind:   pendingKeyName,
 	}
 	s.dialogs.set(pendingInput)
@@ -704,13 +703,9 @@ func (s *router) start(ctx context.Context, m *tgbot.Message) error {
 }
 
 // keyNamed creates the key with the name the user sent. A bad name asks
-// again and keeps waiting; anything else ends the question. Only the user
-// who asked answers.
+// again and keeps waiting; anything else ends the question. (Only private
+// chats are handled, so the chat is the user who was asked.)
 func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
-	p, _ := s.dialogs.peek(m.Chat.ID)
-	if p.UserID != m.From.ID {
-		return nil
-	}
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo: only "skip" means no name
 		outMessage := outMessage{
 			ChatID:   m.Chat.ID,
@@ -731,7 +726,6 @@ func (s *router) keyNamed(ctx context.Context, m *tgbot.Message) error {
 	}
 	pendingInput := pendingInput{
 		ChatID: m.Chat.ID,
-		UserID: m.From.ID,
 		Kind:   pendingKeyName,
 	}
 	s.dialogs.set(pendingInput)

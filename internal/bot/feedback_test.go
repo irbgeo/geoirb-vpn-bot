@@ -211,7 +211,6 @@ func TestFeedbackIsLimitedPerUser(t *testing.T) {
 		r.dialogs.set(
 			pendingInput{
 				ChatID: 43,
-				UserID: 43,
 				Kind:   pendingFeedback,
 			},
 		)

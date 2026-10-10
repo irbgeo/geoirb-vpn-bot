@@ -20,7 +20,6 @@ const feedbackPerHour = 5
 func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	pendingInput := pendingInput{
 		ChatID: cq.ChatID(),
-		UserID: cq.SenderID(),
 		Kind:   pendingFeedback,
 	}
 	s.dialogs.set(pendingInput)
@@ -35,12 +34,8 @@ func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error
 // feedbackText saves the text the user sent after "Отзывы и предложения".
 // A message without text, a bad text and a save that failed keep the
 // question open, so the user can just send it again; a saved review (or
-// one over the hourly limit) ends it. Only the user who asked answers.
+// one over the hourly limit) ends it.
 func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
-	p, _ := s.dialogs.peek(m.Chat.ID)
-	if p.UserID != m.From.ID {
-		return nil
-	}
 	if strings.TrimSpace(m.Text) == "" { // a sticker or a photo
 		outMessage := outMessage{
 			ChatID:   m.Chat.ID,
