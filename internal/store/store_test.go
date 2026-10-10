@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -581,6 +582,27 @@ func TestPeerListsKeepUnreadableRowsWithoutSecrets(t *testing.T) {
 	ips, err := s.Peers.ServerIPs(ctx, "geoirb-vpn")
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"10.8.1.10", "10.8.1.11"}, ips, "its IP stays taken")
+}
+
+// A row without readable secrets is saved through setPeerMeta, a field
+// list kept by hand: a new peer field missing there would silently not be
+// saved for such rows.
+func TestSetPeerMetaCoversEveryPeerFieldButTheSecrets(t *testing.T) {
+	var want []string
+	typ := reflect.TypeFor[peer]()
+	for i := range typ.NumField() {
+		tag := typ.Field(i).Tag.Get("bson")
+		if tag != "_id" && tag != "private_key" && tag != "psk" {
+			want = append(want, tag)
+		}
+	}
+
+	set := setPeerMeta(&peer{})["$set"].(bson.M)
+	got := make([]string, 0, len(set))
+	for k := range set {
+		got = append(got, k)
+	}
+	require.ElementsMatch(t, want, got)
 }
 
 func TestUnreadablePeerIsLoggedOnce(t *testing.T) {
