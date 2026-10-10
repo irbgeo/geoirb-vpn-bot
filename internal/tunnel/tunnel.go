@@ -29,8 +29,10 @@ func New(
 	}
 }
 
-// Check reads the handshake, fixes the bot route on a change and reports it.
-// changed is false when the state is the same as last time (no alert).
+// Check reads the handshake and sets the bot route for the state it finds,
+// every time: someone else (a systemd-networkd restart) may have removed the
+// rules while the state stayed the same. changed is false when the state is
+// the same as last time (no alert).
 // On an error the state stays as it was and the next Check tries again.
 func (s *watcher) Check(ctx context.Context) (st State, changed bool, err error) {
 	last, err := s.net.LastHandshake(ctx)
@@ -44,13 +46,11 @@ func (s *watcher) Check(ctx context.Context) (st State, changed bool, err error)
 	if !last.IsZero() && time.Since(last) <= s.maxAge {
 		st = Up
 	}
-	if st == s.state {
-		return st, false, nil
-	}
 	err = s.net.RouteBot(ctx, st == Up)
 	if err != nil {
 		return s.state, false, err
 	}
+	changed = st != s.state
 	s.state = st
-	return st, true, nil
+	return st, changed, nil
 }

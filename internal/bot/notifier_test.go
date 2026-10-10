@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -299,11 +300,15 @@ type tunnelStep struct {
 }
 
 // fakeTunnel returns its steps one per Check, then the last one unchanged.
+// The watch goroutine and the test both touch steps, hence the lock.
 type fakeTunnel struct {
+	mu    sync.Mutex
 	steps []tunnelStep
 }
 
 func (s *fakeTunnel) Check(context.Context) (tunnel.State, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	st := s.steps[0]
 	if len(s.steps) > 1 {
 		s.steps = s.steps[1:]
@@ -311,6 +316,13 @@ func (s *fakeTunnel) Check(context.Context) (tunnel.State, bool, error) {
 		s.steps[0].changed = false
 	}
 	return st.st, st.changed, st.err
+}
+
+// left is how many steps are still to come.
+func (s *fakeTunnel) left() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.steps)
 }
 
 func watchTunnel(t *testing.T, steps []tunnelStep) []outMessage {
@@ -324,7 +336,7 @@ func watchTunnel(t *testing.T, steps []tunnelStep) []outMessage {
 	ctx, cancel := context.WithCancel(context.Background())
 	ft := &fakeTunnel{steps: steps}
 	r.notify.WatchTunnel(ctx, ft)
-	require.Len(t, ft.steps, max(len(steps)-1, 1), "the first check is done before WatchTunnel returns")
+	require.Equal(t, max(len(steps)-1, 1), ft.left(), "the first check is done before WatchTunnel returns")
 	time.Sleep(time.Duration(len(steps)) * time.Minute)
 	synctest.Wait()
 	cancel()

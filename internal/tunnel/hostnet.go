@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,49 +69,122 @@ func (s *hostNet) LastHandshake(ctx context.Context) (time.Time, error) {
 
 // RouteBot sends the bot's traffic through the tunnel or directly. Via the
 // tunnel IPv6 is unreachable for the bot, so Go falls back to IPv4 at once
-// instead of going around the tunnel.
+// instead of going around the tunnel. It is called on every check, so it
+// changes only what is wrong: a rule in place is never deleted and re-added
+// (that would open a gap each minute).
 func (s *hostNet) RouteBot(ctx context.Context, viaTunnel bool) error {
-	err := s.delRule(ctx, "rule", "del", "prio", exitPrio, "uidrange", s.uids)
-	if err != nil {
-		return err
+	exit := ipRule{
+		prio: exitPrio,
+		add: []string{
+			"lookup",
+			exitTable,
+			"prio",
+			exitPrio,
+		},
 	}
-	err = s.delRule(ctx, "-6", "rule", "del", "prio", exitPrio, "uidrange", s.uids)
-	if err != nil || !viaTunnel {
-		return err
+	exit6 := ipRule{
+		v6:   true,
+		prio: exitPrio,
+		add: []string{
+			"prio",
+			exitPrio,
+			"unreachable",
+		},
 	}
-	// Re-adding prio 100 makes sure it exists, without parsing `ip rule show`.
-	err = s.delRule(ctx, "rule", "del", "prio", keepLocalPrio, "uidrange", s.uids)
-	if err != nil {
-		return err
+	if !viaTunnel {
+		err := s.delRule(ctx, exit)
+		if err != nil {
+			return err
+		}
+		return s.delRule(ctx, exit6)
 	}
-	err = s.ip(ctx, "rule", "add", "uidrange", s.uids, "lookup", "main", "suppress_prefixlength", "0", "prio", keepLocalPrio)
-	if err != nil {
-		return err
+	keepLocal := ipRule{
+		prio: keepLocalPrio,
+		add: []string{
+			"lookup",
+			"main",
+			"suppress_prefixlength",
+			"0",
+			"prio",
+			keepLocalPrio,
+		},
 	}
-	err = s.ip(ctx, "rule", "add", "uidrange", s.uids, "lookup", exitTable, "prio", exitPrio)
-	if err != nil {
-		return err
+	rules := []ipRule{
+		keepLocal,
+		exit,
+		exit6,
 	}
-	return s.ip(ctx, "-6", "rule", "add", "uidrange", s.uids, "prio", exitPrio, "unreachable")
+	for _, r := range rules {
+		err := s.addRule(ctx, r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// delRule runs an `ip rule del`; a missing rule is fine.
-func (s *hostNet) delRule(ctx context.Context, args ...string) error {
-	err := s.ip(ctx, args...)
+// addRule adds the rule unless the bot already has it.
+func (s *hostNet) addRule(ctx context.Context, r ipRule) error {
+	has, err := s.hasRule(ctx, r)
+	if err != nil || has {
+		return err
+	}
+	base := []string{
+		"rule",
+		"add",
+		"uidrange",
+		s.uids,
+	}
+	args := slices.Concat(base, r.add)
+	_, err = s.ip(ctx, r.family(args))
+	return err
+}
+
+// delRule deletes the rule if the bot has it; gone in between is fine.
+func (s *hostNet) delRule(ctx context.Context, r ipRule) error {
+	has, err := s.hasRule(ctx, r)
+	if err != nil || !has {
+		return err
+	}
+	args := []string{
+		"rule",
+		"del",
+		"prio",
+		r.prio,
+		"uidrange",
+		s.uids,
+	}
+	_, err = s.ip(ctx, r.family(args))
 	if err != nil && strings.Contains(err.Error(), "No such file or directory") {
 		return nil
 	}
 	return err
 }
 
-// ip runs `ip <args>`. A host without IPv6 is fine: its error is logged once.
-func (s *hostNet) ip(ctx context.Context, args ...string) error {
-	_, err := s.exec(ctx, append([]string{"ip"}, args...)...)
+// hasRule reports whether a rule of the bot's uid sits at the rule's prio.
+func (s *hostNet) hasRule(ctx context.Context, r ipRule) (bool, error) {
+	args := []string{
+		"rule",
+		"show",
+		"prio",
+		r.prio,
+	}
+	out, err := s.ip(ctx, r.family(args))
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(strings.Fields(out), s.uids), nil
+}
+
+// ip runs `ip <args>`. A host without IPv6 is fine: its error is logged once
+// and the answer is empty.
+func (s *hostNet) ip(ctx context.Context, args []string) (string, error) {
+	out, err := s.exec(ctx, append([]string{"ip"}, args...)...)
 	if err != nil && strings.Contains(err.Error(), "Address family not supported") {
 		s.noIPv6.Do(func() { log.Printf("tunnel: no IPv6 on this host, IPv6 rules skipped: %v", err) })
-		return nil
+		return "", nil
 	}
-	return err
+	return out, err
 }
 
 // exec runs one command on the host and returns its stdout.
