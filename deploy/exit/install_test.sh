@@ -60,7 +60,7 @@ check "same conf again: tunnel not stopped, only made sure it runs" "0 1" \
   "$(grep -c '^systemctl stop geoirb-awg-exit' "$TMP/calls") $(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
 check "awg-tools built on other version" "1" "$(grep -c '^make .*install' "$TMP/calls")"
 check "build uses WITH_WGQUICK" "1" "$(grep -c 'WITH_WGQUICK=yes' "$TMP/calls")"
-check "build deps installed" "1" "$(grep -c '^apt-get install.*build-essential git' "$TMP/calls")"
+check "build deps installed, after an index update" "1 1" "$(grep -c '^apt-get install.*build-essential git' "$TMP/calls") $([[ "$(grep -n '^apt-get update' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^apt-get install' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"
 check "pinned tag cloned" "1" "$(grep -c "^git clone.*$TAG" "$TMP/calls")"
 check "pinned commit is a full hash" "40" "$(printf '%s' "$COMMIT" | tr -d -c '0-9a-f' | wc -c | tr -d ' ')"
 

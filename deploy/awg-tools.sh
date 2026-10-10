@@ -10,6 +10,7 @@ AWG_TOOLS_COMMIT="${AWG_TOOLS_COMMIT-ee0f0a9aa34ff0a0da4b3433b9512781cfe02843}"
 
 if awg --version 2>/dev/null | grep -qF "${AWG_TOOLS_TAG#v}"; then exit 0; fi
 
+apt-get update -qq # a host with an old package index fails the install
 apt-get install -y build-essential git
 src="$(mktemp -d)"
 trap 'rm -rf "$src"' EXIT
