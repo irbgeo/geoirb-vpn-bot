@@ -198,6 +198,28 @@ func TestPutPeerRefusesATakenIP(t *testing.T) {
 	require.Equal(t, serverConfText, b.files[confFile])
 }
 
+func TestPutPeerRefusesAnIPHeldInAnyForm(t *testing.T) {
+	for _, allowed := range []string{"10.8.1.5", "10.8.1.0/29", "fd00::5/128, 10.8.1.5/32"} {
+		b := newBox(t)
+		b.files[confFile] += "\n[Peer]\nPublicKey = OTHER=\nAllowedIPs = " + allowed + "\n"
+		before := b.files[confFile]
+		p := newPeer()
+		p.IP = "10.8.1.5"
+
+		require.ErrorIs(t, b.vpn.PutPeer(context.Background(), p), service.ErrIPTaken, allowed)
+		require.Equal(t, before, b.files[confFile])
+	}
+}
+
+func TestPutPeerRefusesABadIP(t *testing.T) {
+	b := newBox(t)
+	p := newPeer()
+	p.IP = "not-an-ip"
+
+	require.ErrorContains(t, b.vpn.PutPeer(context.Background(), p), "not-an-ip")
+	require.Equal(t, serverConfText, b.files[confFile])
+}
+
 func TestPutPeerIgnoresSimilarLookingIP(t *testing.T) {
 	b := newBox(t)
 	b.files[confFile] += "\n[Peer]\nPublicKey = OTHER=\nAllowedIPs = 110.8.1.5/32\n"

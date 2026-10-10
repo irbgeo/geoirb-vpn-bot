@@ -57,11 +57,18 @@ func (s *serverConf) addresses(reserved []netip.Addr) (netip.Prefix, map[netip.A
 	taken := map[netip.Addr]bool{
 		server.Addr(): true,
 	}
+	subnet := server.Masked()
 	for _, p := range s.Peers {
-		for _, allowed := range strings.Split(p.AllowedIPs, ",") {
-			pr, parseErr := netip.ParsePrefix(strings.TrimSpace(allowed))
-			if parseErr == nil {
+		for _, pr := range peerPrefixes(p.AllowedIPs) {
+			if pr.IsSingleIP() {
 				taken[pr.Addr()] = true
+				continue
+			}
+			// A wider prefix (a hand-made peer) holds every address in it.
+			for ip := subnet.Addr(); subnet.Contains(ip); ip = ip.Next() {
+				if pr.Contains(ip) {
+					taken[ip] = true
+				}
 			}
 		}
 	}
@@ -69,4 +76,23 @@ func (s *serverConf) addresses(reserved []netip.Addr) (netip.Prefix, map[netip.A
 		taken[ip] = true
 	}
 	return server, taken, nil
+}
+
+// peerPrefixes reads an AllowedIPs list ("10.8.1.2/32, fd00::2/128"). A bare
+// address is its single-address prefix; what is not an address is skipped.
+func peerPrefixes(allowed string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, entry := range strings.Split(allowed, ",") {
+		entry = strings.TrimSpace(entry)
+		pr, err := netip.ParsePrefix(entry)
+		if err != nil {
+			addr, addrErr := netip.ParseAddr(entry)
+			if addrErr != nil {
+				continue
+			}
+			pr = netip.PrefixFrom(addr, addr.BitLen())
+		}
+		out = append(out, pr.Masked())
+	}
+	return out
 }

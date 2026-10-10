@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"slices"
-	"strings"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
@@ -99,13 +98,18 @@ func (s *vpn) ReplacePeer(ctx context.Context, in *service.ReplacePeerInput) err
 // A failure takes the peer off again only if this call added it: a peer that
 // was there before stays.
 func (s *vpn) PutPeer(ctx context.Context, p *service.VPNPeer) error {
+	ip, err := netip.ParseAddr(p.IP)
+	if err != nil {
+		return fmt.Errorf("amnezia: peer IP: %w", err)
+	}
 	added := false
-	err := s.srv.Update(ctx, func(c *serverConf) error {
+	err = s.srv.Update(ctx, func(c *serverConf) error {
 		for _, other := range c.Peers {
 			if other.PublicKey == p.PublicKey {
 				return nil
 			}
-			if slices.Contains(allowedIPs(other.AllowedIPs), p.IP+"/32") {
+			holds := func(pr netip.Prefix) bool { return pr.Contains(ip) }
+			if slices.ContainsFunc(peerPrefixes(other.AllowedIPs), holds) {
 				return fmt.Errorf("%w: %s", service.ErrIPTaken, p.IP)
 			}
 		}
@@ -232,13 +236,4 @@ func (s *vpn) takeOff(ctx context.Context, in *takeOffInput) error {
 		c.RemovePeer(in.Peer.PublicKey)
 		return nil
 	})
-}
-
-// allowedIPs splits "10.8.1.2/32, fd00::2/128" into its entries.
-func allowedIPs(list string) []string {
-	parts := strings.Split(list, ",")
-	for i := range parts {
-		parts[i] = strings.TrimSpace(parts[i])
-	}
-	return parts
 }
