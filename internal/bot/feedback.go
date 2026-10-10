@@ -33,8 +33,9 @@ func (s *router) askFeedback(ctx context.Context, cq *tgbot.CallbackQuery) error
 }
 
 // feedbackText saves the text the user sent after "Отзывы и предложения".
-// A message without text or a bad text asks again; anything else ends the
-// question. Only the user who asked answers.
+// A message without text, a bad text and a save that failed keep the
+// question open, so the user can just send it again; a saved review (or
+// one over the hourly limit) ends it. Only the user who asked answers.
 func (s *router) feedbackText(ctx context.Context, m *tgbot.Message) error {
 	p, _ := s.dialogs.peek(m.Chat.ID)
 	if p.UserID != m.From.ID {

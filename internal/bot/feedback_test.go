@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -238,4 +239,20 @@ func TestRateLimitForgetsIdleKeys(t *testing.T) {
 		require.True(t, l.allow(0))
 		require.Len(t, l.seen, 1, "the idle keys are gone")
 	})
+}
+
+func TestFeedbackSaveErrorKeepsTheQuestionOpen(t *testing.T) {
+	svc := &fakeService{
+		feedbackErr: errors.New("mongo down"),
+	}
+	r, s := newRouter(svc)
+	ctx := context.Background()
+	require.NoError(t, r.Handle(ctx, press(cbFeedback)))
+
+	require.ErrorContains(t, r.Handle(ctx, startUpdate("отзыв")), "mongo down", "for the log")
+	require.Equal(t, feedbackFailedText, s.sent[len(s.sent)-1].Text)
+
+	svc.feedbackErr = nil
+	require.NoError(t, r.Handle(ctx, startUpdate("отзыв")))
+	require.Len(t, svc.feedback, 1, "sent again without pressing the button: saved")
 }
