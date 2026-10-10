@@ -205,12 +205,9 @@ func nextKeyNumber(in keyNumberInput) int {
 }
 
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the
-// trial as used. The caller holds s.mu.
+// trial as used. The caller holds s.mu and has checked canCreate.
 func (s *service) startTrial(ctx context.Context, in trialInput) (*Peer, error) {
 	u := in.User
-	if u.TrialUsed {
-		return nil, ErrTrialUsed
-	}
 	issueInput := IssueInput{
 		UserID: u.ID,
 		Name:   in.Name,
