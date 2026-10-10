@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 )
 
@@ -52,6 +53,10 @@ func (s *service) DeleteOwnKey(ctx context.Context, k UserKey) error {
 	}
 	if p.Blocked {
 		return ErrBlocked
+	}
+	err = s.closeTrial(ctx, k.UserID)
+	if err != nil {
+		return err
 	}
 	err = s.deletePeer(ctx, p)
 	if err != nil {
@@ -106,4 +111,21 @@ func (s *service) unswap(ctx context.Context, in PeerSwap) {
 	if err != nil {
 		log.Printf("service: undo reissue of %s: %v", in.Old.IP, err)
 	}
+}
+
+// closeTrial makes sure a plain user's trial is marked used before their
+// key goes: the mark made when the key was issued is best effort, and
+// after the delete nothing else would stop a second trial.
+func (s *service) closeTrial(ctx context.Context, userID int64) error {
+	u, err := s.User(ctx, userID)
+	if errors.Is(err, ErrNotFound) {
+		return nil // no user row: nobody to give a trial to
+	}
+	if err != nil {
+		return err
+	}
+	if u.Role != RoleUser || u.TrialUsed {
+		return nil
+	}
+	return s.users.SetTrialUsed(ctx, userID)
 }

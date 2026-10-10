@@ -220,7 +220,8 @@ func (s *service) startTrial(ctx context.Context, in trialInput) (*Peer, error) 
 	if err != nil {
 		return nil, err
 	}
-	// Best effort: the key exists, so ErrHasKey still blocks a second trial.
+	// Best effort: the key exists, so ErrHasKey blocks a second trial, and
+	// DeleteOwnKey marks it again before the key goes (closeTrial).
 	s.markTrialUsed(ctx, u.ID)
 	return p, nil
 }

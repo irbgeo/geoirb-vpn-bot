@@ -341,7 +341,8 @@ func (s *service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayRes
 }
 
 // markTrialUsed: after a purchase there is no free trial any more. A
-// failure only means a later trial check still sees the key.
+// failure is only logged: the key still stops a second trial, and
+// DeleteOwnKey marks it again before the key goes (closeTrial).
 func (s *service) markTrialUsed(ctx context.Context, userID int64) {
 	err := s.users.SetTrialUsed(ctx, userID)
 	if err != nil {

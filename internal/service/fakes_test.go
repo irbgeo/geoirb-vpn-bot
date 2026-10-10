@@ -12,7 +12,8 @@ import (
 // --- repositories: maps, copy on get/save so tests can't alias state ---
 
 type fakeUsers struct {
-	m map[int64]User
+	m        map[int64]User
+	trialErr error // SetTrialUsed fails
 }
 
 func (s *fakeUsers) Get(_ context.Context, id int64) (*User, error) {
@@ -54,6 +55,9 @@ func (s *fakeUsers) SetKeyCounts(_ context.Context, counts map[int64]int) error 
 }
 
 func (s *fakeUsers) SetTrialUsed(_ context.Context, id int64) error {
+	if s.trialErr != nil {
+		return s.trialErr
+	}
 	u := s.m[id]
 	u.TrialUsed = true
 	s.m[id] = u
