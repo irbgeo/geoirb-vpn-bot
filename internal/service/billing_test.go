@@ -460,6 +460,22 @@ func TestPurchaseForAnEnabledUnreadableKeyWorks(t *testing.T) {
 	})
 }
 
+// A charge recorded by someone else between Pay's lookup and its own
+// record must not be applied a second time.
+func TestPayDoesNotApplyAChargeSomeoneElseRecorded(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		key := e.seed(t, now.AddDate(0, 0, 10))
+		e.payments.addTaken = true
+
+		res := e.pay(t, "c1")
+
+		require.True(t, res.NeedsReview)
+		require.Equal(t, now.AddDate(0, 0, 10), e.peers.m[key.PublicKey].ExpiresAt, "no days added")
+	})
+}
+
 func TestUnfinishedPayments(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()

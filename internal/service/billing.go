@@ -118,9 +118,16 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		Days:      pu.Days,
 		CreatedAt: time.Now(),
 	}
-	_, err = s.payments.Add(ctx, pay)
+	added, err := s.payments.Add(ctx, pay)
 	if err != nil {
 		return nil, err
+	}
+	if !added {
+		// Recorded since the lookup above (not by this process: s.mu is
+		// held). Whoever wrote it applies it; a second time could double it.
+		return &PayResult{
+			NeedsReview: true,
+		}, nil
 	}
 
 	res, err := s.applyPurchase(ctx, pu)

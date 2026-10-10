@@ -187,11 +187,14 @@ type fakePayments struct {
 	m         map[string]Payment
 	saveErr   error
 	saveFails int // fail this many Saves, then work
+	// addTaken: Add finds the charge already recorded (someone else wrote
+	// it after Get saw nothing).
+	addTaken bool
 }
 
 func (s *fakePayments) Add(_ context.Context, p *Payment) (bool, error) {
 	_, ok := s.m[p.ChargeID]
-	if ok {
+	if ok || s.addTaken {
 		return false, nil
 	}
 	s.m[p.ChargeID] = *p
