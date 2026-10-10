@@ -103,9 +103,15 @@ const (
 	cbSplitNone  = "split:none"
 )
 
-// keyActionsPerMinute: how many reissues, deletes and config resends one
-// user may ask for in a minute (see costlyKeyAction).
-const keyActionsPerMinute = 5
+// keyActionsPerMinute: how many reissues and deletes one user may ask for in
+// a minute (each rewrites the server config). configsPerMinute: how many
+// "config again" presses (each only reads it) — looser and counted apart,
+// so fetching the configs of a few keys never blocks a reissue. See
+// overLimit.
+const (
+	keyActionsPerMinute = 5
+	configsPerMinute    = 20
+)
 
 // router turns Telegram updates into service calls and replies. Its own
 // state is kept in small types with their own locks (state.go).
@@ -131,8 +137,10 @@ type router struct {
 	refunds *inFlight
 	// feedbackLimit: reviews one user may send per hour.
 	feedbackLimit *rateLimit[int64]
-	// keyActions: reissues, deletes and config resends of one user per minute.
+	// keyActions: reissues and deletes of one user per minute.
 	keyActions *rateLimit[int64]
+	// configResends: "config again" presses of one user per minute.
+	configResends *rateLimit[int64]
 	// adminRepeats: admin buttons that add something on every press, by
 	// button data: one press per repeatPressGap.
 	adminRepeats *rateLimit[string]
@@ -157,6 +165,10 @@ func New(
 		keyActionsPerMinute,
 		time.Minute,
 	)
+	configResends := newRateLimit[int64](
+		configsPerMinute,
+		time.Minute,
+	)
 	adminRepeats := newRateLimit[string](
 		1,
 		repeatPressGap,
@@ -177,6 +189,7 @@ func New(
 		refunds:       refunds,
 		feedbackLimit: feedbackLimit,
 		keyActions:    keyActions,
+		configResends: configResends,
 		adminRepeats:  adminRepeats,
 		pause:         50 * time.Millisecond,
 	}
@@ -278,7 +291,7 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if err != nil {
 		log.Printf("bot: answer callback: %v", err)
 	}
-	if costlyKeyAction(cq.Data) && !s.keyActions.allow(cq.SenderID()) {
+	if s.overLimit(cq) {
 		outMessage := outMessage{
 			ChatID: cq.ChatID(),
 			Text:   tooOftenText,
@@ -335,11 +348,18 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	return nil
 }
 
-// costlyKeyAction: the button makes the server work for one user's key (a
-// reissue or delete rewrites the server config, a resend reads it). The
-// "are you sure" buttons (kr?:, kd?:) are not among them.
-func costlyKeyAction(data string) bool {
-	return strings.HasPrefix(data, cbReissue) || strings.HasPrefix(data, cbDelete) || strings.HasPrefix(data, cbConfig)
+// overLimit counts a press of a button that makes the server work for one
+// user's key, and says whether it is one too many: a reissue or delete
+// rewrites the server config (keyActions), a resend reads it
+// (configResends). The "are you sure" buttons (kr?:, kd?:) are not counted.
+func (s *router) overLimit(cq *tgbot.CallbackQuery) bool {
+	switch {
+	case strings.HasPrefix(cq.Data, cbReissue), strings.HasPrefix(cq.Data, cbDelete):
+		return !s.keyActions.allow(cq.SenderID())
+	case strings.HasPrefix(cq.Data, cbConfig):
+		return !s.configResends.allow(cq.SenderID())
+	}
+	return false
 }
 
 // start registers the user (first /start adds them to the bot) and sends

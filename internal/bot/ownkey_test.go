@@ -189,38 +189,69 @@ func TestSkipWithoutOpenNameDialogIssuesNothing(t *testing.T) {
 	require.NotNil(t, s.sent[0].Keyboard)
 }
 
-// Reissue, delete and "config again" make the server work (a reissue
-// rewrites its config under the service lock): one user can't loop them.
+// Reissue and delete rewrite the server config under the service lock: one
+// user can't loop them.
 func TestOwnKeyActionsAreLimitedPerUser(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		svc := adminService() // has the key PUB1=
+		svc.reissued = &service.Peer{
+			PublicKey: "PUB1=",
+		}
 		r, s := newRouter(svc)
 		ctx := context.Background()
 		for range keyActionsPerMinute {
-			require.NoError(t, r.Handle(ctx, press(cbConfig+"PUB1=")))
+			require.NoError(t, r.Handle(ctx, press(cbReissue+"PUB1=")))
 		}
-		files := len(s.files)
+		require.Len(t, svc.reissuedFor, keyActionsPerMinute)
 
 		for _, data := range []string{
-			cbConfig + "PUB1=",
 			cbReissue + "PUB1=",
 			cbDelete + "PUB1=",
 		} {
 			require.NoError(t, r.Handle(ctx, press(data)))
 			require.Equal(t, tooOftenText, s.sent[len(s.sent)-1].Text, data)
 		}
-		require.Len(t, s.files, files, "no config sent")
-		require.Empty(t, svc.reissuedFor)
+		require.Len(t, svc.reissuedFor, keyActionsPerMinute)
 		require.Empty(t, svc.deletedOwn)
 
 		require.NoError(t, r.Handle(ctx, press(cbReissueAsk+"PUB1=")))
 		require.NotEqual(t, tooOftenText, s.sent[len(s.sent)-1].Text, "asking costs nothing and is not limited")
-		require.NoError(t, r.Handle(ctx, pressFrom(43, cbConfig+"PUB1=")))
-		require.Greater(t, len(s.files), files, "another user is not held back")
+		require.NoError(t, r.Handle(ctx, pressFrom(43, cbDelete+"PUB1=")))
+		require.Len(t, svc.deletedOwn, 1, "another user is not held back")
 
 		time.Sleep(time.Minute)
 		require.NoError(t, r.Handle(ctx, press(cbDelete+"PUB1=")))
-		require.Len(t, svc.deletedOwn, 1, "a minute later it works again")
+		require.Len(t, svc.deletedOwn, 2, "a minute later it works again")
+	})
+}
+
+// "Config again" only reads: it has its own, looser limit, so fetching the
+// configs of three keys twice does not lock the user out of anything.
+func TestConfigAgainHasItsOwnLimit(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		svc := adminService()
+		svc.reissued = &service.Peer{
+			PublicKey: "PUB1=",
+		}
+		r, s := newRouter(svc)
+		ctx := context.Background()
+		for range configsPerMinute {
+			require.NoError(t, r.Handle(ctx, press(cbConfig+"PUB1=")))
+		}
+		require.Empty(t, s.sent, "every press got its config, none the refusal")
+		files := len(s.files)
+		require.GreaterOrEqual(t, files, configsPerMinute)
+
+		require.NoError(t, r.Handle(ctx, press(cbConfig+"PUB1=")))
+		require.Equal(t, tooOftenText, s.sent[len(s.sent)-1].Text)
+		require.Len(t, s.files, files, "no config sent")
+
+		require.NoError(t, r.Handle(ctx, press(cbReissue+"PUB1=")))
+		require.Len(t, svc.reissuedFor, 1, "config presses do not use up the reissue limit")
+
+		time.Sleep(time.Minute)
+		require.NoError(t, r.Handle(ctx, press(cbConfig+"PUB1=")))
+		require.Greater(t, len(s.files), files, "a minute later it works again")
 	})
 }
 
