@@ -93,15 +93,9 @@ func (s *service) Pay(ctx context.Context, in PaymentInput) (*PayResult, error) 
 		// the days already, so applying again could double them. Admins decide.
 		return &PayResult{NeedsReview: true}, nil
 	case pay != nil && pay.Applied:
-		// A repeat must never turn into a refund, so a failed lookup of the
-		// key (only shown, not needed) is logged, not returned.
-		p, err := s.peers.Get(ctx, pay.PeerKey)
-		if err != nil {
-			log.Printf("service: repeat of payment %s: key lookup: %v", in.ChargeID, err)
-		}
+		// Nothing is read or checked again: a repeat must never fail, or it
+		// would turn into a refund.
 		return &PayResult{
-			Peer:   p.public(),
-			Days:   pay.Days,
 			Repeat: true,
 		}, nil
 	case pay != nil && !pay.RefundedAt.IsZero():

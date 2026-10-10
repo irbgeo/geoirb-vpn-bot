@@ -180,7 +180,7 @@ type PayResult struct {
 	Peer   *Peer
 	Days   int  // days bought
 	NewKey bool // true: a new key was issued (send its config)
-	Repeat bool // true: this charge was already applied, nothing changed
+	Repeat bool // true: this charge was already applied, nothing changed; no other field is set
 
 	// NeedsReview: the charge has a record that is neither applied nor
 	// refunded; nothing was done, an admin must check the key.

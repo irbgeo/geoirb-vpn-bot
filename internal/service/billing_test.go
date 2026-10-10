@@ -235,7 +235,14 @@ func TestPaySameChargeTwiceExtendsOnce(t *testing.T) {
 
 		again := e.pay(t, "c1")
 
-		require.True(t, again.Repeat)
+		require.Equal(
+			t,
+			&PayResult{
+				Repeat: true,
+			},
+			again,
+			"a repeat reads nothing that could fail",
+		)
 		require.Equal(t, first.Peer.ExpiresAt, e.peers.m[first.Peer.PublicKey].ExpiresAt, "not extended twice")
 	})
 }
@@ -316,7 +323,7 @@ func TestPayRepeatSkipsPurchaseChecks(t *testing.T) {
 		)
 		require.NoError(t, err, "a repeat must not turn into a refund")
 		require.True(t, res.Repeat)
-		require.Equal(t, first.Peer.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, first.Peer.ExpiresAt, e.peers.m[first.Peer.PublicKey].ExpiresAt)
 	})
 }
 
