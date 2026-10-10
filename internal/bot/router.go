@@ -103,6 +103,10 @@ const (
 	cbSplitNone  = "split:none"
 )
 
+// keyActionsPerMinute: how many reissues, deletes and config resends one
+// user may ask for in a minute (see costlyKeyAction).
+const keyActionsPerMinute = 5
+
 // router turns Telegram updates into service calls and replies. Its own
 // state is kept in small types with their own locks (state.go).
 type router struct {
@@ -127,6 +131,8 @@ type router struct {
 	refunds *inFlight
 	// feedbackLimit: reviews one user may send per hour.
 	feedbackLimit *rateLimit[int64]
+	// keyActions: reissues, deletes and config resends of one user per minute.
+	keyActions *rateLimit[int64]
 	// pause between broadcast messages (Telegram allows ~30 per second).
 	pause time.Duration
 }
@@ -144,7 +150,12 @@ func New(
 		feedbackPerHour,
 		time.Hour,
 	)
+	keyActions := newRateLimit[int64](
+		keyActionsPerMinute,
+		time.Minute,
+	)
 	return &router{
+		keyActions:    keyActions,
 		users:         d.Users,
 		keys:          d.Keys,
 		billing:       d.Billing,
@@ -259,6 +270,13 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	if err != nil {
 		log.Printf("bot: answer callback: %v", err)
 	}
+	if costlyKeyAction(cq.Data) && !s.keyActions.allow(cq.SenderID()) {
+		outMessage := outMessage{
+			ChatID: cq.ChatID(),
+			Text:   tooOftenText,
+		}
+		return s.send.Send(ctx, outMessage)
+	}
 	switch {
 	case cq.Data == cbMenu:
 		return s.backToMenu(ctx, cq)
@@ -307,6 +325,13 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.admin(ctx, cq)
 	}
 	return nil
+}
+
+// costlyKeyAction: the button makes the server work for one user's key (a
+// reissue or delete rewrites the server config, a resend reads it). The
+// "are you sure" buttons (kr?:, kd?:) are not among them.
+func costlyKeyAction(data string) bool {
+	return strings.HasPrefix(data, cbReissue) || strings.HasPrefix(data, cbDelete) || strings.HasPrefix(data, cbConfig)
 }
 
 // backToMenu is the "◀️ Меню" button: it turns the same message back into
