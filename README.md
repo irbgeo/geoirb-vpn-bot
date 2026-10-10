@@ -249,7 +249,8 @@ systemctl restart geoirb-vpn-bot
 ## Разработка
 
 ```bash
-make test     # Go-тесты (store — нужен Mongo на localhost:27017) и тесты скриптов
+make test     # тесты скриптов, затем Go-тесты (store — нужен Mongo на localhost:27017)
+make test-sh  # только тесты скриптов (Mongo не нужен)
 make lint
 ```
 
