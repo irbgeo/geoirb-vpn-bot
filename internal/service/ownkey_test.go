@@ -77,6 +77,28 @@ func TestReissueFailureKeepsTheOldKey(t *testing.T) {
 	})
 }
 
+func TestReissueDBFailureKeepsTheOldKey(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		old := ownKey(t, e)
+		e.peers.replaceErr = errBoom
+		changes := e.vpn.changes
+
+		_, err := e.svc.ReissueKey(
+			context.Background(),
+			UserKey{
+				UserID:    42,
+				PublicKey: old.PublicKey,
+			},
+		)
+		require.ErrorIs(t, err, errBoom)
+		require.Equal(t, changes, e.vpn.changes, "the server is not touched")
+		require.True(t, e.vpn.hasPeer(old.PublicKey))
+		require.Len(t, e.peers.m, 1)
+		require.Equal(t, *old, e.peers.m[old.PublicKey], "the old record is back, secrets too")
+	})
+}
+
 func TestReissueUnreadableKeyRefused(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()

@@ -32,8 +32,8 @@ type CreateKeyInput struct {
 	Name   string
 }
 
-// swapInput is a key and its reissued replacement (same IP, new secrets).
-type swapInput struct {
+// PeerSwap is a key and its reissued replacement (same IP, new secrets).
+type PeerSwap struct {
 	Old *Peer
 	New *Peer
 }

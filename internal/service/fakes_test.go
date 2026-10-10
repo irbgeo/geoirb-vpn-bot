@@ -105,6 +105,9 @@ type fakePeers struct {
 	// saveLost: Save stores the row, then returns this (the reply was lost).
 	saveLost error
 	getErr   error
+	// replaceErr: the next Replace removes the old row, then fails (the
+	// worst case); the one after works.
+	replaceErr error
 }
 
 func (s *fakePeers) Get(_ context.Context, key string) (*Peer, error) {
@@ -132,6 +135,17 @@ func (s *fakePeers) Delete(ctx context.Context, key string) error {
 		return err // like a real DB call on a cancelled context
 	}
 	delete(s.m, key)
+	return nil
+}
+
+func (s *fakePeers) Replace(_ context.Context, in PeerSwap) error {
+	delete(s.m, in.Old.PublicKey)
+	err := s.replaceErr
+	s.replaceErr = nil
+	if err != nil {
+		return err
+	}
+	s.m[in.New.PublicKey] = *in.New
 	return nil
 }
 

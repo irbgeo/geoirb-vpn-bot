@@ -131,6 +131,18 @@ func setPeerMeta(d *peer) bson.M {
 	}
 }
 
+// replacePeer removes the old row, then stores the new one (BulkWrite runs
+// them in this order and stops at the first error).
+func replacePeer(in peerSwap) []mongo.WriteModel {
+	return []mongo.WriteModel{
+		mongo.NewDeleteOneModel().SetFilter(byID(in.OldKey)),
+		mongo.NewReplaceOneModel().
+			SetFilter(byID(in.New.PublicKey)).
+			SetReplacement(in.New).
+			SetUpsert(true),
+	}
+}
+
 func setTrialUsed() bson.M {
 	return bson.M{
 		"$set": bson.M{

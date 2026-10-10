@@ -67,6 +67,28 @@ func (s *peerRepo) Delete(ctx context.Context, publicKey string) error {
 	return nil
 }
 
+// Replace removes in.Old and stores in.New as one ordered bulk write: the
+// old row goes first because both hold the same server+IP (unique index).
+// It is one request, so stopping the bot can't leave the swap half done.
+func (s *peerRepo) Replace(ctx context.Context, in service.PeerSwap) error {
+	if in.New.PSK == "" {
+		return fmt.Errorf("store: replace peer %s: the new key has no secrets", in.New.IP)
+	}
+	d, err := s.encode(in.New)
+	if err != nil {
+		return err
+	}
+	peerSwap := peerSwap{
+		OldKey: in.Old.PublicKey,
+		New:    d,
+	}
+	_, err = s.coll.BulkWrite(ctx, replacePeer(peerSwap))
+	if err != nil {
+		return fmt.Errorf("store: replace peer %s: %w", in.New.IP, err)
+	}
+	return nil
+}
+
 // ByUser returns all peers of a Telegram user.
 func (s *peerRepo) ByUser(ctx context.Context, userID int64) ([]*service.Peer, error) {
 	return s.find(ctx, byUserID(userID))

@@ -295,6 +295,49 @@ func TestPeerIPUniquePerServer(t *testing.T) {
 	require.NoError(t, s.Peers.Save(ctx, clash), "same IP on another server is fine")
 }
 
+func TestPeerReplaceSwapsTheKeyOnTheSameIP(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	old := testPeer()
+	require.NoError(t, s.Peers.Save(ctx, old))
+	fresh := testPeer()
+	fresh.PublicKey = "NEW="
+	fresh.PrivateKey = "NEWPRIV="
+	fresh.PSK = "NEWPSK="
+
+	require.NoError(
+		t,
+		s.Peers.Replace(
+			ctx,
+			service.PeerSwap{
+				Old: old,
+				New: fresh,
+			},
+		),
+		"the unique server+IP index must not stop the swap",
+	)
+	gone, err := s.Peers.Get(ctx, "PUB=")
+	require.NoError(t, err)
+	require.Nil(t, gone)
+	got, err := s.Peers.Get(ctx, "NEW=")
+	require.NoError(t, err)
+	require.Equal(t, fresh, got)
+
+	blank := testPeer()
+	blank.PSK = ""
+	err = s.Peers.Replace(
+		ctx,
+		service.PeerSwap{
+			Old: fresh,
+			New: blank,
+		},
+	)
+	require.Error(t, err, "a key without secrets can't replace a working one")
+	got, err = s.Peers.Get(ctx, "NEW=")
+	require.NoError(t, err)
+	require.NotNil(t, got, "nothing was removed")
+}
+
 func TestPeersByUserAndServer(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
