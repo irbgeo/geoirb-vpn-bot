@@ -996,3 +996,47 @@ func TestMyAccessBuyButtonOnlyForTimedKeys(t *testing.T) {
 	require.NotContains(t, got, "buyk:PUB1=")
 	require.Contains(t, got, "buyk:PUB2=")
 }
+
+// CheckCreateKey passed at step 1, then the real CreateKey at step 2 says
+// no (a key got there in between, or the server failed).
+func TestCreateKeyErrorsAtTheCreateStep(t *testing.T) {
+	cases := map[string]struct {
+		err    error
+		text   string
+		logged bool
+	}{
+		"has a key": {
+			err:  service.ErrHasKey,
+			text: hasKeyText,
+		},
+		"trial used": {
+			err:  service.ErrTrialUsed,
+			text: trialUsedText,
+		},
+		"key limit": {
+			err:  service.ErrKeyLimit,
+			text: keyLimitText,
+		},
+		"server down": {
+			err:    errors.New("awg down"),
+			text:   internalErrorText,
+			logged: true,
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			svc := &fakeService{}
+			r, s := newRouter(svc)
+			ctx := context.Background()
+			require.NoError(t, r.Handle(ctx, press(cbIssueKey)))
+			svc.createErr = c.err
+
+			err := r.Handle(ctx, press(cbKeyNoName))
+
+			require.Len(t, svc.createdWith, 1, "it got to the real create")
+			require.Equal(t, c.logged, err != nil, "only an unexpected error is returned for the log")
+			require.Equal(t, c.text, s.sent[len(s.sent)-1].Text)
+			require.Empty(t, s.files)
+		})
+	}
+}
