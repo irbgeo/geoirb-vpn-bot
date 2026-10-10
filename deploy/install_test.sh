@@ -122,6 +122,13 @@ check "update: awg0.conf kept" "1" "$(cmp -s "$R/etc/amnezia/amneziawg/awg0.conf
 check "ufw inactive: no rules" "0" "$(grep -c '^ufw .*allow' "$TMP/calls")"
 check "packages present: no apt-get" "0" "$(grep -c '^apt-get' "$TMP/calls")"
 check "Address 10.8.0.1/22: no subnet warning" "0" "$(grep -c 'warning: Address in awg0.conf' "$TMP/out")"
+check "conf without hooks: no hook warning" "0" "$(grep -c 'warning: awg0 will NOT start' "$TMP/out")"
+
+# A hook line in the live conf: the awg0 unit would refuse it at its next start; the deploy says so and goes on.
+{ cat "$TMP/awg0.first"; echo "PostUp = id"; } >"$R/etc/amnezia/amneziawg/awg0.conf"
+run inactive DPKG_OK=1 ROUTES_ACTIVE=1 AWG0_ACTIVE=1
+check "hook line in awg0.conf: warned, the deploy goes on" "0 1" "$? $(grep -c 'warning: awg0 will NOT start again' "$TMP/out")"
+cp "$TMP/awg0.first" "$R/etc/amnezia/amneziawg/awg0.conf"
 
 # NAT, DNS and split routing are written for 10.8.0.0/22: a hand-widened Address is reported.
 sed 's|^Address = .*|Address = 10.8.0.1/21|' "$TMP/awg0.first" >"$R/etc/amnezia/amneziawg/awg0.conf"

@@ -28,7 +28,7 @@ install -m 644 "$S/99-geoirb-vpn.conf" "$ROOT/etc/sysctl.d/"
 # conntrack must be loaded before systemd-sysctl at boot, or the two
 # nf_conntrack settings fall back to the defaults after a reboot; the
 # modprobe file sets the hash size at the next load of the module. Warnings
-# only: the tunnel is stopped here and must come back up.
+# only: the tunnel may be stopped here and must come back up.
 install -m 644 "$S/nf_conntrack-modules.conf" "$ROOT/etc/modules-load.d/nf_conntrack.conf"
 install -m 644 "$S/nf_conntrack-modprobe.conf" "$ROOT/etc/modprobe.d/nf_conntrack.conf"
 modprobe nf_conntrack || echo "warning: module nf_conntrack not loaded" >&2

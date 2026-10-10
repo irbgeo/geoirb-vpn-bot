@@ -82,6 +82,10 @@ sysctl -q -p "$ROOT/etc/sysctl.d/99-geoirb-vpn.conf"
 
 # awg0.conf: created on the first install only, never overwritten.
 ROOT="$ROOT" bash "$S/awg0-init.sh"
+# geoirb-awg0.service refuses a conf with a hook line at its next start
+# (awg0-check.sh). Say it now, while awg0 still runs; never fatal here.
+bash "$S/awg0-check.sh" "$ROOT/etc/amnezia/amneziawg/awg0.conf" ||
+  echo "warning: awg0 will NOT start again (next reboot or restart) until that line is removed from awg0.conf" >&2
 # The client subnet is written in more places than awg0.conf: geoirb-vpn.nft
 # (mark, NAT), unbound-geoirb.conf, the ufw rule below and CLIENT_DNS
 # (scripts/server-env.sh). They do not follow a hand-changed Address.
