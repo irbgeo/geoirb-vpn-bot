@@ -1027,3 +1027,24 @@ func TestMaintenanceFlagFileTurnsOff(t *testing.T) {
 	gone := newMaintFlag(filepath.Join(t.TempDir(), "no-such-dir", "maintenance"))
 	require.Error(t, gone.set(true))
 }
+
+// After an action on a key the card of the key's OWNER (7) is redrawn, not
+// the card of the admin who pressed (42).
+func TestAdminKeyActionsRedrawTheOwnersCard(t *testing.T) {
+	for _, data := range []string{
+		"a:dis:PUB1=",
+		"a:en:PUB1=",
+		"a:ext:PUB1=",
+		"a:delok:PUB1=",
+	} {
+		svc := adminService()
+		r, s := newRouter(svc)
+
+		require.NoError(t, r.Handle(context.Background(), press(data)))
+
+		require.Len(t, s.edits, 1, data)
+		require.Equal(t, []int64{42, 7}, svc.askedUsers, "%s: the admin's role, then the owner", data)
+		require.Equal(t, []int64{7}, svc.askedAccess, data)
+		require.Equal(t, []int64{7}, svc.askedPayments, data)
+	}
+}

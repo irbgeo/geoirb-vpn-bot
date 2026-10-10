@@ -140,6 +140,11 @@ func (s *fakeSender) setFail(chatID int64, fail bool) {
 }
 
 type fakeService struct {
+	// askedUsers / askedAccess / askedPayments: the user IDs User, Access
+	// and Payments were called with, in order.
+	askedUsers    []int64
+	askedAccess   []int64
+	askedPayments []int64
 	userErr       error // User fails
 	usersErr      error // Users fails
 	reissued      *service.Peer
@@ -203,7 +208,8 @@ func (s *fakeService) UnfinishedPayments(context.Context) ([]*service.Payment, e
 	return s.unfinished, nil
 }
 
-func (s *fakeService) Payments(context.Context, int64) ([]*service.Payment, error) {
+func (s *fakeService) Payments(_ context.Context, userID int64) ([]*service.Payment, error) {
+	s.askedPayments = append(s.askedPayments, userID)
 	return s.payments, nil
 }
 
@@ -264,6 +270,7 @@ func (s *fakeService) Issue(_ context.Context, in service.IssueInput) (*service.
 }
 
 func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
+	s.askedUsers = append(s.askedUsers, id)
 	if s.userErr != nil {
 		return nil, s.userErr
 	}
@@ -331,7 +338,8 @@ func (s *fakeService) DeleteOwnKey(_ context.Context, k service.UserKey) error {
 	return nil
 }
 
-func (s *fakeService) Access(context.Context, int64) ([]service.KeyInfo, error) {
+func (s *fakeService) Access(_ context.Context, userID int64) ([]service.KeyInfo, error) {
+	s.askedAccess = append(s.askedAccess, userID)
 	return s.access, nil
 }
 
