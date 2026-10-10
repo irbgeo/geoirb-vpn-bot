@@ -11,8 +11,19 @@ check() { # check <name> <expected> <actual>
 }
 
 mkdir "$TMP/bin"
-# nft: logs; fails on the saved set when $BAD_SET is set.
-printf '#!/usr/bin/env bash\necho "nft $*" >>"$CALLS"\n[[ -z "${BAD_SET:-}" || "$2" != *ru4.nft ]]\n' >"$TMP/bin/nft"
+# nft: logs; fails on the saved set when $BAD_SET is set; `list chain` prints
+# the mark rule as real nft does when $HAS_TABLE is set, else fails (no table).
+cat >"$TMP/bin/nft" <<'EOF2'
+#!/usr/bin/env bash
+echo "nft $*" >>"$CALLS"
+if [[ "$1" == list ]]; then
+  [[ -n "${HAS_TABLE:-}" ]] || { echo "Error: No such file or directory" >&2; exit 1; }
+  printf 'table inet geoirb {\n\tchain pre {\n\t\ttype filter hook prerouting priority mangle; policy accept;\n'
+  printf '\t\tiifname "awg0" ip daddr != @ru4 ip daddr != 10.8.0.0/22 meta mark set 0x00000001\n\t}\n}\n'
+  exit
+fi
+[[ -z "${BAD_SET:-}" || "$2" != *ru4.nft ]]
+EOF2
 # ip: logs; `rule show` prints the rule when $HAS_RULE is set.
 cat >"$TMP/bin/ip" <<'EOF2'
 #!/usr/bin/env bash
@@ -61,15 +72,21 @@ check "tunnel link not up yet: rule and unreachable still set" "1 1" "$(n '^ip r
 
 # `rules` mode (the every-minute check): only ip rule/routes, no nft reload.
 MODE=rules
-run HAS_EXIT=1
+run HAS_EXIT=1 HAS_TABLE=1
 check "rules mode: exits 0" "0" "$?"
-check "rules mode: nft untouched" "0" "$(n '^nft ')"
+check "rules mode: nft only looked at, not loaded" "1 0" "$(n '^nft list chain inet geoirb pre$') $(n '^nft -f')"
 check "rules mode: rule, unreachable and exit route ensured" "1 1 1" \
   "$(n '^ip rule add fwmark 0x1 lookup 100 prio 110$') $(n '^ip route replace unreachable default metric 4096 table 100$') $(n '^ip route replace default dev awg-exit table 100$')"
 check "rules mode: a missing rule is reported" "1" "$(grep -c 'warning: split-routing rule was missing' "$TMP/err")"
-run HAS_EXIT=1 HAS_RULE=1
+run HAS_EXIT=1 HAS_RULE=1 HAS_TABLE=1
 check "rules mode: nothing deleted, rule not re-added" "0 0" "$(n '^ip rule del') $(n '^ip rule add')"
 check "rules mode: quiet when all is in place" "0" "$(wc -c <"$TMP/err" | tr -d ' ')"
+# The nft table is gone (`nft flush ruleset`): loaded again with the saved set.
+run HAS_EXIT=1 HAS_RULE=1
+check "rules mode, no nft table: exits 0" "0" "$?"
+check "rules mode, no nft table: table and saved set loaded" "nft -f $R/etc/geoirb-vpn/geoirb-vpn.nft
+nft -f $R/var/lib/geoirb-vpn-bot/ru4.nft" "$(grep '^nft -f' "$TMP/calls")"
+check "rules mode, no nft table: reported" "1" "$(grep -c 'warning: nft table inet geoirb was missing' "$TMP/err")"
 MODE=""
 
 # The check unit hides systemd's "Started/Finished" each minute, not the script's errors.

@@ -6,12 +6,20 @@
 # `vpn-routes.sh rules` (geoirb-vpn-routes-check.timer, every minute) only
 # re-asserts the ip rule and the routes: systemd-networkd or a manual
 # `netplan apply` may drop them, and without the rule client traffic would
-# leave from the RU address. ROOT is a path prefix for tests.
+# leave from the RU address. It loads the nft table only when that is gone.
+# ROOT is a path prefix for tests.
 set -euo pipefail
 ROOT="${ROOT:-}"
 SAVED="$ROOT/var/lib/geoirb-vpn-bot/ru4.nft"
 
-if [[ "${1:-}" != rules ]]; then
+mode="${1:-}"
+# An `nft flush ruleset` or a start of nftables.service removes the table:
+# client packets are then neither marked nor filtered. Load it as at start.
+if [[ "$mode" == rules ]] && ! nft list chain inet geoirb pre 2>/dev/null | grep 'mark set' >/dev/null; then
+  echo "warning: nft table inet geoirb was missing, loaded again" >&2
+  mode=""
+fi
+if [[ "$mode" != rules ]]; then
   nft -f "$ROOT/etc/geoirb-vpn/geoirb-vpn.nft"
   # The RU set from the last good ru-nets run: an empty set after a reboot
   # would send RU traffic through the exit until the timer runs. A bad file
