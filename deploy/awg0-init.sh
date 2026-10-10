@@ -18,9 +18,9 @@ fi
 rand() { echo $(($(od -An -N4 -tu4 /dev/urandom) % ($2 - $1 + 1) + $1)); } # modulo bias is irrelevant here
 hex() { od -An -tx1 -N"$1" /dev/urandom | tr -d ' \n'; }
 
+# AmneziaWG wants S1 + 56 != S2; with both in 15..60 that always holds.
 s1="$(rand 15 60)"
 s2="$(rand 15 60)"
-while [[ $((s1 + 56)) -eq "$s2" ]]; do s2="$(rand 15 60)"; done
 
 # H1-H4: one range in each quarter of 5..2^32-1, so they never overlap.
 # Ranges `a-b` are accepted by amneziawg-tools v3.1.20260812 (src/type.c).

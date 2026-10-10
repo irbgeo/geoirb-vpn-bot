@@ -24,9 +24,9 @@ keypair() {
   echo "$1_public: $(base64 -d <<<"$der" | openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64)"
 }
 
+# AmneziaWG wants S1 + 56 != S2; with both in 15..60 that always holds.
 s1="$(rand 15 60)"
 s2="$(rand 15 60)"
-while [[ $((s1 + 56)) -eq "$s2" ]]; do s2="$(rand 15 60)"; done
 hs=()
 while [[ ${#hs[@]} -lt 4 ]]; do
   h="$(rand 5 4294967295)"

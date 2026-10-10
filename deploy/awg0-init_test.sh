@@ -39,7 +39,6 @@ check "Jmax" "70" "$(val Jmax)"
 s1="$(val S1)"; s2="$(val S2)"; s3="$(val S3)"; s4="$(val S4)"
 check "S1 15-60" "1" "$([[ "$s1" -ge 15 && "$s1" -le 60 ]] && echo 1)"
 check "S2 15-60" "1" "$([[ "$s2" -ge 15 && "$s2" -le 60 ]] && echo 1)"
-check "S1+56 != S2" "1" "$([[ $((s1 + 56)) -ne "$s2" ]] && echo 1)"
 check "S3 8-32" "1" "$([[ "$s3" -ge 8 && "$s3" -le 32 ]] && echo 1)"
 check "S4 8-32" "1" "$([[ "$s4" -ge 8 && "$s4" -le 32 ]] && echo 1)"
 # H1-H4: ranges a-b, a > 4, a < b <= 2^32-1, not overlapping.
