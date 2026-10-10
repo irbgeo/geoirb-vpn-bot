@@ -102,7 +102,9 @@ func (s *fakeFeedback) List(_ context.Context, p Page) ([]*Feedback, int64, erro
 type fakePeers struct {
 	m       map[string]Peer
 	saveErr error
-	getErr  error
+	// saveLost: Save stores the row, then returns this (the reply was lost).
+	saveLost error
+	getErr   error
 }
 
 func (s *fakePeers) Get(_ context.Context, key string) (*Peer, error) {
@@ -121,7 +123,7 @@ func (s *fakePeers) Save(_ context.Context, p *Peer) error {
 		return s.saveErr
 	}
 	s.m[p.PublicKey] = *p
-	return nil
+	return s.saveLost
 }
 
 func (s *fakePeers) Delete(ctx context.Context, key string) error {

@@ -322,6 +322,42 @@ func TestPaySaveFailureAfterApplyIsNotAnError(t *testing.T) {
 	})
 }
 
+// A write whose reply was lost (shutdown, network cut) is still stored: the
+// days are given, so Pay must not report an error that ends in a refund.
+func TestPayIsNotAnErrorWhenTheExtendWasStoredButItsReplyLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		e.register(t, RoleUser)
+		key := e.seed(t, now.AddDate(0, 0, 10))
+		e.peers.saveLost = errBoom
+
+		res := e.pay(t, "c1")
+
+		require.Equal(t, key.PublicKey, res.Peer.PublicKey)
+		require.Equal(t, now.AddDate(0, 0, 40), e.peers.m[key.PublicKey].ExpiresAt)
+		require.True(t, e.payments.m["c1"].Applied)
+	})
+}
+
+func TestExtendOfADisabledKeyStaysOnWhenTheSaveReplyWasLost(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		p := expiredKey(t, e)
+		e.peers.saveLost = errBoom
+
+		_, err := e.svc.Extend(
+			context.Background(),
+			ExtendInput{
+				PublicKey: p.PublicKey,
+				Days:      30,
+			},
+		)
+		require.NoError(t, err)
+		require.True(t, e.peers.m[p.PublicKey].Enabled)
+		require.True(t, e.vpn.hasPeer(p.PublicKey), "the DB says enabled, so the server runs it")
+	})
+}
+
 func TestUnfinishedPayments(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newEnv()
