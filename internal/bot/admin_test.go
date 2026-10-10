@@ -1002,3 +1002,15 @@ func TestAdminTextReturnsADatabaseError(t *testing.T) {
 	svc.userErr = service.ErrNotFound
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")), "an unknown user is just not an admin")
 }
+
+func TestAdminUsersErrorIsExplained(t *testing.T) {
+	svc := adminService()
+	svc.usersErr = errors.New("mongo down")
+	r, s := newRouter(svc)
+
+	err := r.Handle(context.Background(), press("a:users:0"))
+	require.ErrorContains(t, err, "mongo down", "for the log")
+	require.Len(t, s.sentTo(42), 1, "the admin is told, like after every other admin button")
+	require.Contains(t, s.sentTo(42)[0].Text, "Не получилось")
+	require.NotContains(t, s.sentTo(42)[0].Text, "mongo")
+}

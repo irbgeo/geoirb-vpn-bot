@@ -188,7 +188,7 @@ func (s *router) adminUsers(ctx context.Context, a adminAction) error {
 	}
 	users, total, err := s.users.Users(ctx, servicePage)
 	if err != nil {
-		return err
+		return s.reportError(ctx, a.failed(err))
 	}
 	v := usersView{
 		Users: users,

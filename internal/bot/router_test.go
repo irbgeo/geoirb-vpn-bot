@@ -279,6 +279,9 @@ func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
 }
 
 func (s *fakeService) Users(_ context.Context, p service.Page) ([]*service.User, int64, error) {
+	if s.usersErr != nil {
+		return nil, 0, s.usersErr
+	}
 	end := min(p.Skip+p.Limit, int64(len(s.users)))
 	return s.users[min(p.Skip, end):end], int64(len(s.users)), nil
 }
