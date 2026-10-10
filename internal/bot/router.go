@@ -101,6 +101,9 @@ const (
 	cbSplitAsk   = "split:ask"
 	cbSplitVideo = "split:video"
 	cbSplitNone  = "split:none"
+	// cbSplitIPhone: iPhone and iPad. Messages sent before this guide carry
+	// one button for iPhone, iPad, Mac and Linux with cbSplitNone.
+	cbSplitIPhone = "split:iphone"
 )
 
 // keyActionsPerMinute: how many reissues and deletes one user may ask for in
@@ -124,8 +127,11 @@ type router struct {
 	send     Sender
 	notify   *notifier
 	support  string // support contact
-	// splitVideo: the video on app split tunneling; empty = no such step.
-	splitVideo *videoFile
+	// splitVideo: the guide on app split tunneling (Android, Windows); no
+	// video = no such step.
+	splitVideo *videoGuide
+	// iphoneVideo: the guide for iPhone and iPad; no video = text only.
+	iphoneVideo *videoGuide
 
 	// dialogs: what each chat's next input is (a broadcast text, a key
 	// name). In memory only: after a restart the button is pressed again.
@@ -156,7 +162,18 @@ func New(
 	jobs := newJobs()
 	maint := newMaintFlag(d.Config.MaintenanceFlag)
 	refunds := newInFlight()
-	splitVideo := newVideoFile(d.SplitVideo)
+	splitVideo := newVideoGuide(
+		d.SplitVideo,
+		splitVideoName,
+		splitVideoCaption,
+		splitHowToText,
+	)
+	iphoneVideo := newVideoGuide(
+		d.IPhoneVideo,
+		iphoneVideoName,
+		iphoneVideoCaption,
+		iphoneHowToText,
+	)
 	feedbackLimit := newRateLimit[int64](
 		feedbackPerHour,
 		time.Hour,
@@ -182,6 +199,7 @@ func New(
 		send:          d.Sender,
 		support:       d.Config.SupportContact,
 		splitVideo:    splitVideo,
+		iphoneVideo:   iphoneVideo,
 		notify:        d.Notifier,
 		dialogs:       dialogs,
 		jobs:          jobs,
@@ -321,6 +339,8 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.askDevice(ctx, cq.ChatID())
 	case cq.Data == cbSplitVideo:
 		return s.sendSplitVideo(ctx, cq.ChatID())
+	case cq.Data == cbSplitIPhone:
+		return s.sendIPhoneGuide(ctx, cq.ChatID())
 	case cq.Data == cbSplitNone:
 		return s.splitNone(ctx, cq.ChatID())
 	case cq.Data == cbSupport, cq.Data == cbTerms:
@@ -455,7 +475,7 @@ func (s *router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, e
 	menuView := menuView{
 		Role:        u.Role,
 		Maintenance: u.Role == service.RoleAdmin && s.maint.on(),
-		SplitVideo:  !s.splitVideo.empty(),
+		SplitVideo:  !s.splitVideo.file.empty(),
 	}
 	return &menuScreen{
 		Text:     greeting(u),
@@ -657,7 +677,7 @@ func (s *router) deliverKey(ctx context.Context, d keyDelivery) error {
 		ChatID: d.ChatID,
 		Text:   importText,
 	}
-	if s.splitVideo.empty() {
+	if s.splitVideo.file.empty() {
 		outMessage.Keyboard = menuKeyboard()
 		return s.send.Send(ctx, outMessage)
 	}

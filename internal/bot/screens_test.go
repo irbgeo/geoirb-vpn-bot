@@ -24,6 +24,12 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 		"DefaultVPN", "",
 		"org.amnezia.vpn", "",
 		"geoirb-vpn-bot", "", // systemd unit in an admin hint
+		// what iOS itself shows (the iPhone guide)
+		"наберите VPN", "",
+		"действие про VPN", "",
+		"«Настроить VPN»", "",
+		"«VPN»", "",
+		"значок VPN", "",
 	)
 	ast.Inspect(file, func(n ast.Node) bool {
 		_, ok := n.(*ast.ImportSpec)

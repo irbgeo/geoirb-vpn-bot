@@ -311,8 +311,29 @@ const (
 	videoLater                   // an upload just failed: none for videoCoolDown
 )
 
-// splitVideoName is the file name users see for the uploaded video.
-const splitVideoName = "split-tunnel.mp4"
+// The file names users see for the uploaded videos.
+const (
+	splitVideoName  = "split-tunnel.mp4"
+	iphoneVideoName = "iphone-automation.mp4"
+)
+
+// videoGuide is a how-to text with a video: everything that differs
+// between the guides (Android/Windows, iPhone/iPad). Each has its own file,
+// so its own Telegram file ID, upload in flight and cool-down.
+type videoGuide struct {
+	file    *videoFile
+	name    string // the file name users see
+	caption string
+	text    string // the how-to, sent before the video
+}
+
+// videoRequest is one user's request for the video of a guide.
+type videoRequest struct {
+	guide  *videoGuide
+	chatID int64
+	// fileID: the Telegram file ID to send by (videoByID); "" elsewhere.
+	fileID string
+}
 
 // Deps is everything New needs.
 type Deps struct {
@@ -324,7 +345,10 @@ type Deps struct {
 	Sender   Sender
 	// SplitVideo: the video on app split tunneling (data.SplitTunnel); empty = no such step.
 	SplitVideo []byte
-	Notifier   *notifier
+	// IPhoneVideo: the video for the iPhone guide (data.IPhoneAutomation);
+	// empty = the guide is text only.
+	IPhoneVideo []byte
+	Notifier    *notifier
 	// Config gives SupportContact (e.g. "@geoirb") and MaintenanceFlag (a
 	// file that exists while maintenance is on, so the state survives a
 	// restart; "" = kept in memory only).

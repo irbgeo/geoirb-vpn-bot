@@ -96,16 +96,18 @@ func main() {
 		load,
 	)
 	splitVideo := data.SplitTunnel()
+	iphoneVideo := data.IPhoneAutomation()
 	deps := bot.Deps{
-		Users:      svc,
-		Keys:       svc,
-		Billing:    svc,
-		Ops:        svc,
-		Feedback:   svc,
-		Sender:     sender,
-		SplitVideo: splitVideo,
-		Notifier:   notifier,
-		Config:     cfg,
+		Users:       svc,
+		Keys:        svc,
+		Billing:     svc,
+		Ops:         svc,
+		Feedback:    svc,
+		Sender:      sender,
+		SplitVideo:  splitVideo,
+		IPhoneVideo: iphoneVideo,
+		Notifier:    notifier,
+		Config:      cfg,
 	}
 	router := bot.New(&deps)
 

@@ -416,6 +416,22 @@ func newVideoFile(
 	}
 }
 
+// newVideoGuide creates a guide; data is its video, empty = text only.
+func newVideoGuide(
+	data []byte,
+	name string,
+	caption string,
+	text string,
+) *videoGuide {
+	file := newVideoFile(data)
+	return &videoGuide{
+		file:    file,
+		name:    name,
+		caption: caption,
+		text:    text,
+	}
+}
+
 func (s *videoFile) empty() bool {
 	return len(s.data) == 0
 }
