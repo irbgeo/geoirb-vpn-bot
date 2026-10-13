@@ -31,7 +31,7 @@ type Config struct {
 	ClientMTU int `envconfig:"CLIENT_MTU"`
 	// Tariffs: days of access → price in Telegram Stars, e.g.
 	// TARIFFS=30:150,90:400,365:1500.
-	Tariffs map[int]int `envconfig:"TARIFFS" default:"30:150,90:400,365:1500"`
+	Tariffs map[int]int `envconfig:"TARIFFS" default:"30:50,90:100,365:500"`
 	// SupportContact: where users write for help (/support, /paysupport, /terms).
 	SupportContact string `envconfig:"SUPPORT_CONTACT" default:"@geoirb"`
 	// BackupStamp: a file the server backup touches after every good run
