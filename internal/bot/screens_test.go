@@ -50,7 +50,16 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 // TestImportTextDefaultVPNFileOnly: DefaultVPN has no QR import, so step 2
 // sends its users to the .conf file.
 func TestImportTextDefaultVPNFileOnly(t *testing.T) {
-	require.Contains(t, importText, "DefaultVPN: только файл .conf")
+	require.Contains(t, importText, "DefaultVPN не умеет читать QR, поэтому используйте файл.")
+}
+
+// TestImportTextCheckNamesNoCountry: the check sends users to a foreign site
+// (a Russian one goes direct and keeps showing Russia) and names no country.
+func TestImportTextCheckNamesNoCountry(t *testing.T) {
+	require.Contains(t, importText, "ipinfo.io")
+	require.Contains(t, importText, "местоположение")
+	require.NotContains(t, importText, "2ip.ru")
+	require.NotContains(t, importText, "Нидерланд")
 }
 
 func TestConfigFileName(t *testing.T) {

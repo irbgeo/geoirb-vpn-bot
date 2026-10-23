@@ -214,7 +214,7 @@ func TestPaymentNeedsReviewTellsUserAndAdmins(t *testing.T) {
 	require.NoError(t, r.Handle(context.Background(), paid()))
 	require.Len(t, s.sent, 2, "a note for the user, one alert for the admin")
 	require.Equal(t, int64(42), s.sent[0].ChatID)
-	require.Equal(t, "✅ Оплата получена. Администратор проверит её и продлит ключ в ближайшее время.", s.sent[0].Text)
+	require.Equal(t, paidUnderReviewText, s.sent[0].Text)
 	require.Equal(t, int64(1), s.sent[1].ChatID)
 	require.Contains(t, s.sent[1].Text, "charge1")
 	require.Contains(t, s.sent[1].Text, "150 ⭐")
@@ -255,7 +255,7 @@ func TestPaymentFailureRefunds(t *testing.T) {
 		svc.refundedAs,
 		"with the payer and the amount: the record may have to be created",
 	)
-	require.Contains(t, s.sent[0].Text, "звёзды возвращены")
+	require.Contains(t, s.sent[0].Text, "звёзды вернулись")
 }
 
 func TestPaymentRefundFailureAsksToContact(t *testing.T) {
@@ -444,7 +444,7 @@ func TestPaymentRefundNotRecordedIsToldToAdmins(t *testing.T) {
 	require.Contains(t, alert, "звёзды возвращены")
 	require.Contains(t, alert, "не записан")
 	require.Contains(t, alert, "mongo down")
-	require.Contains(t, s.sentTo(42)[0].Text, "звёзды возвращены", "for the user it is a plain refund")
+	require.Contains(t, s.sentTo(42)[0].Text, "звёзды вернулись", "for the user it is a plain refund")
 }
 
 func TestInvoiceErrorsExplained(t *testing.T) {
@@ -506,7 +506,7 @@ func TestPaidButDeliveryFailedStillTellsTheUser(t *testing.T) {
 
 	require.Error(t, r.Handle(context.Background(), paid()))
 	require.Equal(t, int64(42), s.sent[0].ChatID)
-	require.Contains(t, s.sent[0].Text, "Оплата получена")
+	require.Contains(t, s.sent[0].Text, "Оплата прошла")
 	require.Contains(t, s.sent[0].Text, "Мой доступ")
 	require.Contains(t, s.sent[1].Text, "awg timeout", "admins see why")
 }

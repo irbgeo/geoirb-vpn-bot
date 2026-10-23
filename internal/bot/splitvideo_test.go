@@ -128,7 +128,7 @@ func TestAskTextTellsIPhoneUsersThereIsAWay(t *testing.T) {
 func TestIPhoneGuideFitsOneMessage(t *testing.T) {
 	require.Len(t, tgbot.SplitText(iphoneHowToText), 1)
 	require.True(t, strings.HasPrefix(iphoneHowToText, "🍏 iPhone и iPad: банк и Госуслуги"))
-	require.True(t, strings.HasSuffix(iphoneHowToText, "Вопросы — в /support."))
+	require.True(t, strings.HasSuffix(iphoneHowToText, "пишите в /support."))
 	require.Contains(t, iphoneHowToText, "11. Нажмите «Готово».\n\nПРОВЕРКА\n")
 	require.NotContains(t, iphoneHowToText, "ШАГ 2", "the owner dropped the switch-back automation")
 	require.Contains(t, iphoneHowToText, "СОВЕТУЕМ ЕЩЁ\n", "a second automation: connect when an app that needs it opens")

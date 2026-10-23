@@ -713,7 +713,7 @@ func TestCreateKeyForeverCaption(t *testing.T) {
 func TestCreateKeyErrorsExplained(t *testing.T) {
 	for err, want := range map[error]string{
 		service.ErrHasKey:    "уже есть ключ",
-		service.ErrTrialUsed: "Пробный период уже использован",
+		service.ErrTrialUsed: "Пробный период вы уже использовали",
 		service.ErrKeyLimit:  "максимум — 3",
 	} {
 		r, s := newRouter(
@@ -851,7 +851,7 @@ func TestConfigOfImportedKeyExplains(t *testing.T) {
 
 	require.NoError(t, r.Handle(context.Background(), press("cfg:NOPRIV=")))
 	require.Empty(t, s.files)
-	require.Contains(t, s.sent[0].Text, "только на устройстве")
+	require.Contains(t, s.sent[0].Text, "только на том устройстве")
 }
 
 func TestUnknownUpdateIsIgnored(t *testing.T) {

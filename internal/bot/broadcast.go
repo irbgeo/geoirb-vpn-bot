@@ -14,13 +14,15 @@ func (s *router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
 		ChatID: a.ChatID,
 		Kind:   pendingBroadcast,
 	}
+	text := askBroadcastText
 	if a.Name == actBroadcastU {
 		pendingInput.PlainOnly = true
+		text = askBroadcastPlainText
 	}
 	s.dialogs.set(pendingInput)
 	outMessage := outMessage{
 		ChatID:   a.ChatID,
-		Text:     askBroadcastText,
+		Text:     text,
 		Keyboard: cancelKeyboard(),
 	}
 	return s.send.Send(ctx, outMessage)

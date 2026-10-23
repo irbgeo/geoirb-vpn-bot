@@ -24,7 +24,7 @@ func TestAdminErrorText(t *testing.T) {
 		},
 		"no private key": {
 			err:   service.ErrNoPrivateKey,
-			word:  "только на устройстве",
+			word:  "только на том устройстве",
 			known: true,
 		},
 		"not found": {

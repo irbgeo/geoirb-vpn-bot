@@ -417,6 +417,7 @@ func TestAdminBroadcastToPlainUsersOnly(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, press("a:bcu")))
 	require.Contains(t, s.sent[0].Text, "Напишите текст")
+	require.Contains(t, s.sent[0].Text, "даже без ключа")
 
 	require.NoError(t, r.Handle(ctx, startUpdate("Скидка на продление")))
 	require.Contains(t, s.sent[1].Text, "1 обычным пользователям")
@@ -606,7 +607,7 @@ func TestAdminUpdateConfigs(t *testing.T) {
 	require.Contains(t, s.sent[1].Text, "Рассылаю", "the admin is told at once")
 	notice := s.sent[2]
 	require.Equal(t, int64(7), notice.ChatID)
-	require.Contains(t, notice.Text, "обновите ключ")
+	require.Contains(t, notice.Text, "ключ в приложении нужно обновить")
 	require.Contains(t, notice.Text, "📋 Мой доступ")
 	require.Contains(t, notice.Text, "📄 Конфиг")
 	require.Equal(t, cbMyAccess, notice.Keyboard.InlineKeyboard[0][0].CallbackData, "opens My access")
@@ -632,7 +633,7 @@ func TestAdminUpdateConfigsOnlyOnceAtATime(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	r.Wait()
 	require.Empty(t, s.sentTo(7), "nothing sent while another run is going")
-	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже идёт")
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "Уже идёт другая рассылка")
 
 	r.jobs.release()
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
@@ -1152,7 +1153,7 @@ func TestAdminConfigOfImportedKeyExplains(t *testing.T) {
 
 	require.NoError(t, r.Handle(context.Background(), press("a:cfg:PUB1=")))
 	require.Empty(t, s.files)
-	require.Contains(t, s.sent[0].Text, "только на устройстве")
+	require.Contains(t, s.sent[0].Text, "только на том устройстве")
 }
 
 func TestExpiredKeyHasNoEnableButton(t *testing.T) {
@@ -1329,7 +1330,7 @@ func TestOnlyOneMassSendAtATime(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	require.Empty(t, s.sentTo(7))
-	require.Contains(t, s.sent[len(s.sent)-1].Text, "уже идёт")
+	require.Contains(t, s.sent[len(s.sent)-1].Text, "Уже идёт другая рассылка")
 
 	r.jobs.release()
 	r.pause = 0
