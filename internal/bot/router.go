@@ -60,7 +60,7 @@ type Billing interface {
 type Ops interface {
 	Reconcile(ctx context.Context) (*service.ReconcileReport, error)
 	Stats(ctx context.Context) (*service.Stats, error)
-	BroadcastRecipients(ctx context.Context) ([]int64, error)
+	BroadcastRecipients(ctx context.Context, role service.Role) ([]int64, error)
 }
 
 // Feedback is users' reviews and suggestions.

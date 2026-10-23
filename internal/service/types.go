@@ -164,7 +164,8 @@ type Tariff struct {
 }
 
 // PurchaseInput is what a user wants to buy. PublicKey picks the key to
-// extend; empty = their key (or a new one if they have none).
+// extend; empty = their key (or a new one if they have none); BuyNewKey =
+// one more key.
 type PurchaseInput struct {
 	UserID    int64
 	Days      int
@@ -401,6 +402,12 @@ type logKey struct {
 type maintainStep struct {
 	Peer   *Peer
 	Report *Maintenance
+}
+
+// userKeys is a user and their keys, for numberedKeyName.
+type userKeys struct {
+	User *User
+	Keys []*Peer
 }
 
 // keyNumberInput is the names taken and the base name for nextKeyNumber.

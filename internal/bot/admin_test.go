@@ -406,6 +406,35 @@ func TestAdminBroadcast(t *testing.T) {
 	require.Len(t, s.sent, sent, "a second press sends nothing")
 }
 
+func TestAdminBroadcastToPlainUsersOnly(t *testing.T) {
+	svc := adminService()
+	svc.recipients = []int64{
+		7,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("a:bcu")))
+	require.Contains(t, s.sent[0].Text, "Напишите текст")
+
+	require.NoError(t, r.Handle(ctx, startUpdate("Скидка на продление")))
+	require.Contains(t, s.sent[1].Text, "1 обычным пользователям")
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	require.Equal(t, int64(7), s.sent[3].ChatID)
+	require.Equal(t, "Скидка на продление", s.sent[3].Text)
+	require.Equal(t, []service.Role{service.RoleUser, service.RoleUser}, svc.recipientsRoles, "the preview and the send count the same users")
+}
+
+func TestAdminMenuHasPlainUsersBroadcast(t *testing.T) {
+	r, s := newRouter(adminService())
+
+	require.NoError(t, r.Handle(context.Background(), startUpdate("/start")))
+	require.Contains(t, buttons(editMessage{Keyboard: s.sent[0].Keyboard}), "a:bcu")
+}
+
 func TestAdminBroadcastCancel(t *testing.T) {
 	svc := adminService()
 	svc.recipients = []int64{

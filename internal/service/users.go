@@ -14,14 +14,19 @@ import (
 // MaxUnlimitedKeys is how many keys a RoleUnlimited user may create.
 const MaxUnlimitedKeys = 3
 
+// MaxUserKeys is how many keys a RoleUser may have: the trial key plus
+// bought ones, each with its own term.
+const MaxUserKeys = 3
+
 // MaxKeyNameLen is the longest key name a user may give, in letters: it
 // shows on buttons and in the Amnezia app.
 const MaxKeyNameLen = 32
 
 var (
-	// ErrKeyLimit: an unlimited user already has MaxUnlimitedKeys keys.
+	// ErrKeyLimit: an unlimited user already has MaxUnlimitedKeys keys, or a
+	// plain user MaxUserKeys.
 	ErrKeyLimit = errors.New("service: key limit reached")
-	// ErrHasKey: a plain user already has their key.
+	// ErrHasKey: a plain user already has a key; more keys are bought.
 	ErrHasKey = errors.New("service: user already has a key")
 	// ErrTrialUsed: a plain user without a key already had the trial; they
 	// need to pay.
@@ -56,7 +61,7 @@ func (s *service) Admins(ctx context.Context) ([]*User, error) {
 
 // CreateKey creates the user's own key, by role:
 //   - RoleUser: the first key starts the free trial (TrialDays), once;
-//     one key per user.
+//     more keys are bought (Invoice with BuyNewKey).
 //   - RoleUnlimited: up to MaxUnlimitedKeys never-expiring keys; disabled
 //     keys count too (they keep their slot and IP).
 //   - RoleAdmin: never-expiring keys, no limit.
@@ -93,16 +98,11 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	}
 	if u.Role == RoleUnlimited || u.Role == RoleAdmin {
 		if name == "" {
-			base := "tg:" + displayName(u)
-			names := make([]string, 0, len(have))
-			for _, h := range have {
-				names = append(names, h.Name)
+			userKeys := userKeys{
+				User: u,
+				Keys: have,
 			}
-			keyNumberInput := keyNumberInput{
-				Names: names,
-				Base:  base,
-			}
-			name = fmt.Sprintf("%s #%d", base, nextKeyNumber(keyNumberInput))
+			name = numberedKeyName(userKeys)
 		}
 		issueInput := IssueInput{
 			UserID: userID,
@@ -191,6 +191,22 @@ func displayName(u *User) string {
 		return u.Username
 	}
 	return strconv.FormatInt(u.ID, 10)
+}
+
+// numberedKeyName is "tg:<name> #n" with the smallest n no key of the
+// user has yet.
+func numberedKeyName(in userKeys) string {
+	base := "tg:" + displayName(in.User)
+	names := make([]string, 0, len(in.Keys))
+	for _, h := range in.Keys {
+		names = append(names, h.Name)
+	}
+	keyNumberInput := keyNumberInput{
+		Names: names,
+		Base:  base,
+	}
+	n := nextKeyNumber(keyNumberInput)
+	return fmt.Sprintf("%s #%d", base, n)
 }
 
 // nextKeyNumber returns the smallest n >= 1 such that "base #n" is not in names.

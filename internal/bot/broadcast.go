@@ -7,11 +7,15 @@ import (
 	"time"
 )
 
-// adminBroadcastAsk waits for the broadcast text.
+// adminBroadcastAsk waits for the broadcast text; "bcu" sends it to plain
+// users only.
 func (s *router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
 	pendingInput := pendingInput{
 		ChatID: a.ChatID,
 		Kind:   pendingBroadcast,
+	}
+	if a.Name == actBroadcastU {
+		pendingInput.PlainOnly = true
 	}
 	s.dialogs.set(pendingInput)
 	outMessage := outMessage{
@@ -41,7 +45,7 @@ func (s *router) adminMaintenance(ctx context.Context, a adminAction) error {
 // waits for "send" or "cancel". p is the admin chat, the text and what
 // sending does to the maintenance state.
 func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
-	ids, err := s.ops.BroadcastRecipients(ctx)
+	ids, err := s.ops.BroadcastRecipients(ctx, p.role())
 	if err != nil {
 		errorReport := errorReport{
 			ChatID: p.ChatID,
@@ -59,6 +63,7 @@ func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 	preview := broadcastView{
 		Recipients: len(ids),
 		Text:       p.Text,
+		Role:       p.role(),
 	}
 	outMessage := outMessage{
 		ChatID:   p.ChatID,
@@ -93,6 +98,7 @@ func (s *router) adminBroadcast(ctx context.Context, a adminAction) error {
 	}
 	massSend := massSend{
 		AdminChat: a.ChatID,
+		Role:      p.role(),
 		Started:   broadcastStartedText,
 		Before: func() error {
 			if p.Maint == maintKeep {
@@ -155,7 +161,7 @@ func (s *router) startMassSend(ctx context.Context, m massSend) (started bool, e
 		}
 		return false, s.send.Send(ctx, outMessage)
 	}
-	ids, err := s.ops.BroadcastRecipients(ctx)
+	ids, err := s.ops.BroadcastRecipients(ctx, m.Role)
 	if err == nil && m.Before != nil {
 		err = m.Before()
 	}

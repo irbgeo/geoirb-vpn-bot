@@ -26,6 +26,11 @@ const unfinishedLookbackDays = 30
 // payloadVersion starts every invoice payload: "v1|user|days|stars|key".
 const payloadVersion = "v1"
 
+// BuyNewKey as PurchaseInput.PublicKey buys one more key instead of
+// extending one. A real public key is 44 base64 characters, so it never
+// looks like this.
+const BuyNewKey = "new"
+
 // Tariffs lists what a RoleUser can buy.
 func (s *service) Tariffs() []Tariff {
 	return s.cfg.Tariffs
@@ -214,6 +219,9 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) (*Peer, erro
 	if u.Role != RoleUser {
 		return nil, ErrNotForSale
 	}
+	if in.PublicKey == BuyNewKey {
+		return nil, s.checkNewKey(ctx, in.UserID)
+	}
 	if in.PublicKey == "" {
 		// Buying extends one of their keys that can end; with keys but
 		// none of them timed, there is nothing to pay for.
@@ -236,6 +244,25 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) (*Peer, erro
 		return nil, ErrUnreadable
 	}
 	return p, nil
+}
+
+// checkNewKey: a plain user may buy keys up to MaxUserKeys; disabled keys
+// count too (they keep their IP). A user with a key an admin blocked gets
+// no new one: it would get round the block.
+func (s *service) checkNewKey(ctx context.Context, userID int64) error {
+	keys, err := s.peers.ByUser(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, p := range keys {
+		if p.Blocked {
+			return ErrBlocked
+		}
+	}
+	if len(keys) >= MaxUserKeys {
+		return ErrKeyLimit
+	}
+	return nil
 }
 
 // chooseKey picks the key a no-key purchase extends: the unblocked key
@@ -312,6 +339,7 @@ func (s *service) purchase(ctx context.Context, in PaymentInput) (*PurchaseInput
 	if err != nil {
 		return nil, err
 	}
+	pu.PublicKey = "" // a new key
 	if key != nil {
 		pu.PublicKey = key.PublicKey
 	}
@@ -334,17 +362,38 @@ func (s *service) applyPurchase(ctx context.Context, pu *PurchaseInput) (*PayRes
 		res.Peer, err = s.extend(ctx, extendInput)
 	} else {
 		res.NewKey = true
-		issueInput := IssueInput{
-			UserID: pu.UserID,
-			Days:   pu.Days,
-		}
-		res.Peer, err = s.issue(ctx, issueInput)
+		res.Peer, err = s.issueBought(ctx, pu)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("service: apply purchase: %w", err)
 	}
 	s.markTrialUsed(ctx, pu.UserID)
 	return res, nil
+}
+
+// issueBought issues a paid new key. The first key keeps the plain
+// "tg:<name>"; later ones are numbered, so they differ on buttons.
+func (s *service) issueBought(ctx context.Context, pu *PurchaseInput) (*Peer, error) {
+	u, err := s.User(ctx, pu.UserID)
+	if err != nil {
+		return nil, err
+	}
+	have, err := s.peers.ByUser(ctx, pu.UserID)
+	if err != nil {
+		return nil, err
+	}
+	issueInput := IssueInput{
+		UserID: pu.UserID,
+		Days:   pu.Days,
+	}
+	if len(have) > 0 {
+		userKeys := userKeys{
+			User: u,
+			Keys: have,
+		}
+		issueInput.Name = numberedKeyName(userKeys)
+	}
+	return s.issue(ctx, issueInput)
 }
 
 // markTrialUsed: after a purchase there is no free trial any more. A

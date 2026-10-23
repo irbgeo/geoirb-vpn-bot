@@ -220,6 +220,7 @@ type previewButtons struct {
 // told to the admin, Deliver runs per user and Report words the result.
 type massSend struct {
 	AdminChat int64
+	Role      service.Role // only users of this role; "" = everyone
 	Started   string
 	Before    func() error
 	Deliver   func(ctx context.Context, userID int64) error
@@ -237,10 +238,21 @@ type pendingInput struct {
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
 	Maint  maintChange
+	// PlainOnly: the broadcast goes to RoleUser only (a bool, not a Role,
+	// keeps this struct small enough to pass by value).
+	PlainOnly bool
 	// Token ties a preview (readyBroadcast, readyConfigs) to the "send" and
 	// "cancel" buttons under it: a button of an older preview does not
 	// match. 0 = not a preview.
 	Token uint32
+}
+
+// role is who a broadcast goes to: RoleUser, or "" = everyone.
+func (s pendingInput) role() service.Role {
+	if s.PlainOnly {
+		return service.RoleUser
+	}
+	return ""
 }
 
 // token is Token as the buttons carry it; "" when there is none.
@@ -264,6 +276,7 @@ const (
 type broadcastView struct {
 	Recipients int
 	Text       string
+	Role       service.Role
 }
 
 // broadcastJob is confirmed work to do for many users in the background

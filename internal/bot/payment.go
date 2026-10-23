@@ -13,11 +13,16 @@ import (
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// buyMenu shows the tariffs; "buyk:<key>" makes them extend that key.
+// buyMenu shows the tariffs; "buyk:<key>" makes them extend that key,
+// "buyk:new" buy one more key.
 func (s *router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	key := ""
 	if strings.HasPrefix(cq.Data, cbBuyKey) {
 		key = strings.TrimPrefix(cq.Data, cbBuyKey)
+	}
+	text := buyText
+	if key == service.BuyNewKey {
+		text = newKeyBuyText
 	}
 	tariffsView := tariffsView{
 		Tariffs:   s.billing.Tariffs(),
@@ -25,7 +30,7 @@ func (s *router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	}
 	outMessage := outMessage{
 		ChatID:   cq.ChatID(),
-		Text:     buyText,
+		Text:     text,
 		Keyboard: tariffsKeyboard(tariffsView),
 	}
 	return s.send.Send(ctx, outMessage)
@@ -54,10 +59,14 @@ func (s *router) invoice(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		}
 		return s.replyError(ctx, userError)
 	}
+	description := invoiceDescription(inv.Days)
+	if key == service.BuyNewKey {
+		description = newKeyInvoiceDescription(inv.Days)
+	}
 	outInvoice := outInvoice{
 		ChatID:      cq.ChatID(),
 		Title:       invoiceTitle(inv.Days),
-		Description: invoiceDescription(inv.Days),
+		Description: description,
 		Payload:     inv.Payload,
 		Label:       tariffLabel(inv.Days),
 		Stars:       inv.Stars,
@@ -246,6 +255,8 @@ func invoiceErrorText(err error) (text string, known bool) {
 		return noTariffText, true
 	case errors.Is(err, service.ErrNotFound):
 		return keyNotFoundText, true
+	case errors.Is(err, service.ErrKeyLimit):
+		return userKeyLimitText, true
 	}
 	return invoiceFailedText, false
 }
@@ -258,6 +269,8 @@ func preCheckoutErrorText(err error) string {
 		return blockedKeyText
 	case errors.Is(err, service.ErrUnreadable):
 		return unreadableKeyBuyText
+	case errors.Is(err, service.ErrKeyLimit):
+		return userKeyLimitText
 	}
 	return staleInvoiceText
 }

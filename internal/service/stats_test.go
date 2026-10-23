@@ -101,8 +101,33 @@ func TestBroadcastRecipients(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		ids, err := e.svc.BroadcastRecipients(ctx)
+		ids, err := e.svc.BroadcastRecipients(ctx, "")
 		require.NoError(t, err)
 		require.Equal(t, []int64{a.UserID}, ids, "one per user, enabled keys only, no keys without Telegram")
+	})
+}
+
+func TestBroadcastRecipientsOfOneRole(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		e.register(t, RoleUser)
+		plain := e.seed(t, now.AddDate(0, 0, 30)) // user 42
+		other := e.seed(t, now.AddDate(0, 0, 30))
+		stored := e.peers.m[other.PublicKey]
+		stored.UserID = 7
+		e.peers.m[other.PublicKey] = stored
+		e.users().m[7] = User{
+			ID:   7,
+			Role: RoleUnlimited,
+		}
+
+		ids, err := e.svc.BroadcastRecipients(ctx, RoleUser)
+		require.NoError(t, err)
+		require.Equal(t, []int64{plain.UserID}, ids)
+
+		ids, err = e.svc.BroadcastRecipients(ctx, "")
+		require.NoError(t, err)
+		require.Equal(t, []int64{7, 42}, ids, "no role = everyone")
 	})
 }

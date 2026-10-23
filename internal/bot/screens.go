@@ -168,7 +168,7 @@ func splitAskKeyboard() *tgbot.InlineKeyboardMarkup {
 var msk = time.FixedZone("MSK", 3*60*60)
 
 const (
-	hasKeyText             = "У вас уже есть ключ — он в «📋 Мой доступ»: там можно получить конфиг ещё раз и продлить срок."
+	hasKeyText             = "У вас уже есть ключ — он в «📋 Мой доступ»: там можно получить конфиг ещё раз, продлить срок или купить ещё ключ (пробный период — только для первого)."
 	trialUsedText          = "Пробный период уже использован. Чтобы подключиться, нажмите «💳 Купить / продлить» в /menu."
 	internalErrorText      = "Не получилось создать ключ. Попробуйте позже — админ уже знает."
 	invoiceFailedText      = "Не получилось выставить счёт. Попробуйте позже или напишите в /support."
@@ -185,6 +185,7 @@ const (
 	blockedKeyDeleteText   = "Этот ключ отключил администратор, удалить его нельзя. Напишите в /support."
 	noPrivateKeyText       = "Этот ключ создан в приложении Amnezia: его конфиг есть только на устройстве, где ключ создан. Нужен файл — получите новый ключ."
 	buyText                = "💳 Выберите срок. Оплата — Telegram Stars. Если ключ уже есть, срок прибавится к нему."
+	newKeyBuyText          = "➕ Новый ключ: выберите срок. Оплата — Telegram Stars. У каждого ключа свой срок, продлевается он отдельно."
 	notForSaleText         = "Вам платить не нужно: ваш доступ бессрочный."
 	noTariffText           = "Этот тариф больше недоступен. Откройте «Купить / продлить» ещё раз."
 	staleInvoiceText       = "Счёт устарел. Откройте «Купить / продлить» и оплатите новый — деньги не списаны."
@@ -229,6 +230,7 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
 			tgbot.Row(tgbot.Button("💡 Отзывы", cbAdminFb+"0")),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
+			tgbot.Row(tgbot.Button("📣 Рассылка обычным", cbAdminBcU)),
 			tgbot.Row(tgbot.Button("🔄 Обновить конфиги", cbAdminCfgs)),
 			tgbot.Row(tgbot.Button(maintButtonText(v.Maintenance), cbAdminMnt)),
 		)
@@ -266,6 +268,9 @@ func accessKeyboard(v accessView) *tgbot.InlineKeyboardMarkup {
 			),
 		)
 	}
+	if v.CanBuy && len(v.Keys) < service.MaxUserKeys {
+		rows = append(rows, tgbot.Row(tgbot.Button("➕ Купить ещё ключ", cbBuyKey+service.BuyNewKey)))
+	}
 	rows = append(rows, menuRow())
 	return tgbot.InlineKeyboard(rows...)
 }
@@ -290,6 +295,11 @@ func invoiceTitle(days int) string {
 
 func invoiceDescription(days int) string {
 	return "Доступ к сервису на " + tariffLabel(days) + ". Если ключ уже есть, срок прибавится к нему. " +
+		"Оплачивая, вы принимаете условия: /terms"
+}
+
+func newKeyInvoiceDescription(days int) string {
+	return "Ещё один, новый ключ на " + tariffLabel(days) + ", со своим сроком. " +
 		"Оплачивая, вы принимаете условия: /terms"
 }
 
@@ -461,7 +471,11 @@ const (
 )
 
 func broadcastPreviewText(v broadcastView) string {
-	return fmt.Sprintf("📣 Отправить это %d пользователям?\n\n%s", v.Recipients, v.Text)
+	who := "пользователям"
+	if v.Role == service.RoleUser {
+		who = "обычным пользователям"
+	}
+	return fmt.Sprintf("📣 Отправить это %d %s?\n\n%s", v.Recipients, who, v.Text)
 }
 
 // sendCancelKeyboard is a preview's keyboard: its "send" button and
@@ -540,8 +554,9 @@ var badFeedbackText = fmt.Sprintf(
 )
 
 var (
-	keyLimitText   = fmt.Sprintf("Больше ключей создать нельзя: максимум — %d.", service.MaxUnlimitedKeys)
-	askKeyNameText = "✍️ Как назвать ключ? Напишите, например, «iPhone» или «Ноутбук» — " +
+	keyLimitText     = fmt.Sprintf("Больше ключей создать нельзя: максимум — %d.", service.MaxUnlimitedKeys)
+	userKeyLimitText = fmt.Sprintf("Больше ключей купить нельзя: максимум — %d. Продлите или удалите один из своих в «📋 Мой доступ».", service.MaxUserKeys)
+	askKeyNameText   = "✍️ Как назвать ключ? Напишите, например, «iPhone» или «Ноутбук» — " +
 		"так будет проще отличать ключи. Или нажмите «Пропустить»."
 	badKeyNameText = fmt.Sprintf(
 		"Имя не подходит: нужна одна строка до %d символов. Напишите другое или нажмите «Пропустить».",

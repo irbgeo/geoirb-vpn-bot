@@ -31,6 +31,7 @@ const (
 	actIssueDays   = "issd"   // + user ID + ":" + days (0 = never expires)
 	actStats       = "stats"  //
 	actBroadcast   = "bc"     // asks for the broadcast text
+	actBroadcastU  = "bcu"    // asks for the text of a broadcast to plain users only
 	actBroadcastOK = "bcok"   // + preview token: sends the previewed broadcast
 	actCancel      = "cancel" // drops what the bot waits for (broadcast text)
 	actFeedback    = "fb"     // + page (from 0): reviews and suggestions
@@ -55,6 +56,7 @@ const (
 	cbAdminIssD  = cbAdmin + actIssueDays + ":"
 	cbAdminStats = cbAdmin + actStats
 	cbAdminBc    = cbAdmin + actBroadcast
+	cbAdminBcU   = cbAdmin + actBroadcastU
 	cbAdminBcOK  = cbAdmin + actBroadcastOK
 	cbAdminCanc  = cbAdmin + actCancel
 	cbAdminFb    = cbAdmin + actFeedback + ":"
@@ -122,7 +124,7 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.adminFeedback(ctx, a)
 	case actStats:
 		return s.adminStats(ctx, a)
-	case actBroadcast:
+	case actBroadcast, actBroadcastU:
 		return s.adminBroadcastAsk(ctx, a)
 	case actBroadcastOK:
 		return s.adminBroadcast(ctx, a)
@@ -171,9 +173,10 @@ func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 		return s.send.Send(ctx, outMessage)
 	}
 	pendingInput := pendingInput{
-		ChatID: m.Chat.ID,
-		Text:   text,
-		Maint:  p.Maint,
+		ChatID:    m.Chat.ID,
+		Text:      text,
+		Maint:     p.Maint,
+		PlainOnly: p.PlainOnly,
 	}
 	return s.adminBroadcastPreview(ctx, pendingInput)
 }
