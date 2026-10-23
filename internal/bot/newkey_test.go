@@ -79,3 +79,36 @@ func callbacks(kb [][]tgbot.InlineKeyboardButton) []string {
 	}
 	return got
 }
+
+func TestBuyWithSeveralKeysAsksWhichKey(t *testing.T) {
+	in := time.Now().Add(24 * time.Hour)
+	r, s := newRouter(
+		&fakeService{
+			role: service.RoleUser,
+			access: []service.KeyInfo{
+				{Peer: &service.Peer{PublicKey: "PUB1=", ExpiresAt: in}},
+				{Peer: &service.Peer{PublicKey: "PUB2=", ExpiresAt: in}},
+			},
+		},
+	)
+
+	require.NoError(t, r.Handle(context.Background(), press("buy")))
+	got := callbacks(s.sent[0].Keyboard.InlineKeyboard)
+	require.Contains(t, got, "buyk:PUB1=")
+	require.Contains(t, got, "buyk:PUB2=")
+	require.NotContains(t, got, "buy:30", "no tariff that would pick a key on its own")
+}
+
+func TestBuyWithOneKeyShowsTariffs(t *testing.T) {
+	r, s := newRouter(
+		&fakeService{
+			role: service.RoleUser,
+			access: []service.KeyInfo{
+				{Peer: &service.Peer{PublicKey: "PUB1=", ExpiresAt: time.Now().Add(time.Hour)}},
+			},
+		},
+	)
+
+	require.NoError(t, r.Handle(context.Background(), press("buy")))
+	require.Equal(t, "buy:30", s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData)
+}

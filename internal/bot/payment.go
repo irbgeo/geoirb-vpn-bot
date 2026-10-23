@@ -14,11 +14,21 @@ import (
 )
 
 // buyMenu shows the tariffs; "buyk:<key>" makes them extend that key,
-// "buyk:new" buy one more key.
+// "buyk:new" buy one more key. A plain "buy" from a user with several
+// keys opens "My access" instead, so they pick the key to extend.
 func (s *router) buyMenu(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	key := ""
 	if strings.HasPrefix(cq.Data, cbBuyKey) {
 		key = strings.TrimPrefix(cq.Data, cbBuyKey)
+	}
+	if key == "" {
+		keys, err := s.keys.Access(ctx, cq.SenderID())
+		if err != nil {
+			return err
+		}
+		if len(keys) > 1 {
+			return s.myAccess(ctx, cq)
+		}
 	}
 	text := buyText
 	if key == service.BuyNewKey {
