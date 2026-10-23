@@ -63,44 +63,38 @@ func (s *service) Stats(ctx context.Context) (*Stats, error) {
 	return st, nil
 }
 
-// BroadcastRecipients returns every Telegram user with an enabled key,
-// once; a role keeps only the users of that role ("" = everyone).
+// BroadcastRecipients returns, once each, every Telegram user with an
+// enabled key (role ""), or every user of the role, with a key or not:
+// news for plain users also reaches those whose access ended.
 func (s *service) BroadcastRecipients(ctx context.Context, role Role) ([]int64, error) {
+	if role != "" {
+		return s.roleIDs(ctx, role)
+	}
 	ps, err := s.peers.ByServer(ctx, s.cfg.ServerID)
 	if err != nil {
 		return nil, err
 	}
-	var ofRole map[int64]bool
-	if role != "" {
-		ofRole, err = s.roleIDs(ctx, role)
-		if err != nil {
-			return nil, err
-		}
-	}
 	var ids []int64
 	for _, p := range ps {
-		if !p.Enabled || p.UserID == 0 || slices.Contains(ids, p.UserID) {
-			continue
+		if p.Enabled && p.UserID != 0 && !slices.Contains(ids, p.UserID) {
+			ids = append(ids, p.UserID)
 		}
-		if ofRole != nil && !ofRole[p.UserID] {
-			continue
-		}
-		ids = append(ids, p.UserID)
 	}
 	slices.Sort(ids)
 	return ids, nil
 }
 
-// roleIDs is the set of IDs of the users with role r.
-func (s *service) roleIDs(ctx context.Context, r Role) (map[int64]bool, error) {
+// roleIDs is the sorted IDs of the users with role r.
+func (s *service) roleIDs(ctx context.Context, r Role) ([]int64, error) {
 	us, err := s.users.ByRole(ctx, r)
 	if err != nil {
 		return nil, err
 	}
-	ids := make(map[int64]bool, len(us))
+	ids := make([]int64, 0, len(us))
 	for _, u := range us {
-		ids[u.ID] = true
+		ids = append(ids, u.ID)
 	}
+	slices.Sort(ids)
 	return ids, nil
 }
 

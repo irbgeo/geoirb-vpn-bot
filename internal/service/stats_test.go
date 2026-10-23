@@ -121,10 +121,14 @@ func TestBroadcastRecipientsOfOneRole(t *testing.T) {
 			ID:   7,
 			Role: RoleUnlimited,
 		}
+		e.users().m[5] = User{
+			ID:   5,
+			Role: RoleUser,
+		}
 
 		ids, err := e.svc.BroadcastRecipients(ctx, RoleUser)
 		require.NoError(t, err)
-		require.Equal(t, []int64{plain.UserID}, ids)
+		require.Equal(t, []int64{5, plain.UserID}, ids, "every plain user, with a key or not")
 
 		ids, err = e.svc.BroadcastRecipients(ctx, "")
 		require.NoError(t, err)
