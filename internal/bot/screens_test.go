@@ -22,7 +22,7 @@ func TestScreensDoNotSayVPN(t *testing.T) {
 	allowed := strings.NewReplacer(
 		"AmneziaVPN", "",
 		"DefaultVPN", "",
-		"org.amnezia.vpn", "",
+		"github.com/amnezia-vpn/", "", // the release link (not shown, only behind a button)
 		"geoirb-vpn-bot", "", // systemd unit in an admin hint
 		// what iOS itself shows (the iPhone guide)
 		"наберите VPN", "",

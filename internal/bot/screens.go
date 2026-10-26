@@ -75,20 +75,21 @@ func ReconcileText(r *service.ReconcileReport) string {
 	return b.String()
 }
 
-// Store links for step 1 (checked 2026-09-27).
+// Download links for step 1. Android and computers get the AmneziaVPN
+// release on GitHub (APKs and installers in one place): pin the newest
+// stable tag, not a pre-release (checked 2026-10-26: 5.0.3.0).
 const (
-	urlAppStore   = "https://apps.apple.com/app/id1600529900"
-	urlGooglePlay = "https://play.google.com/store/apps/details?id=org.amnezia.vpn"
-	urlDownloads  = "https://amnezia.org/ru/downloads"
+	urlAppStore = "https://apps.apple.com/app/id1600529900"
+	urlRelease  = "https://github.com/amnezia-vpn/amnezia-client/releases/tag/5.0.3.0"
 )
 
 func appsKeyboard() *tgbot.InlineKeyboardMarkup {
 	return tgbot.InlineKeyboard(
 		tgbot.Row(
 			tgbot.URLButton("📱 iPhone / iPad", urlAppStore),
-			tgbot.URLButton("🤖 Android", urlGooglePlay),
+			tgbot.URLButton("🤖 Android", urlRelease),
 		),
-		tgbot.Row(tgbot.URLButton("💻 Компьютер и другие", urlDownloads)),
+		tgbot.Row(tgbot.URLButton("💻 Компьютер и другие", urlRelease)),
 		tgbot.Row(tgbot.Button("➡️ Приложение установлено — дальше", cbIssueKey)),
 		menuRow(),
 	)

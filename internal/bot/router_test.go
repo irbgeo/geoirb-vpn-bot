@@ -572,7 +572,9 @@ func TestCreateKeyStepOneAsksToInstallAnApp(t *testing.T) {
 	}
 	kb := s.sent[0].Keyboard.InlineKeyboard
 	require.Equal(t, "https://apps.apple.com/app/id1600529900", kb[0][0].URL)
-	require.Equal(t, "https://play.google.com/store/apps/details?id=org.amnezia.vpn", kb[0][1].URL)
+	release := "https://github.com/amnezia-vpn/amnezia-client/releases/tag/5.0.3.0"
+	require.Equal(t, release, kb[0][1].URL, "Android: the release on GitHub")
+	require.Equal(t, release, kb[1][0].URL, "computers: the same release")
 	require.Equal(t, "key:issue", kb[len(kb)-2][0].CallbackData, "next step")
 	require.Equal(t, cbMenu, kb[len(kb)-1][0].CallbackData, "then back to the menu")
 }
