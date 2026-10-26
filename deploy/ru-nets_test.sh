@@ -15,13 +15,27 @@ ripencc|RU|asn|8359|1|20100101|allocated
 X
 
 mkdir "$TMP/bin"
-# fake curl: writes the fixture to the -o file, or fails when $CURL_FAIL is set.
+# fake curl: writes the fixture to the -o file, or RIPE's md5 line of it
+# for the .md5 URL ($MD5_BAD: a wrong sum); fails when $CURL_FAIL is set.
 cat >"$TMP/bin/curl" <<'X'
 #!/usr/bin/env bash
 [[ -z "${CURL_FAIL:-}" ]] || exit 22
-while [[ $# -gt 0 ]]; do [[ "$1" == -o ]] && out="$2"; shift; done
+url=""
+while [[ $# -gt 0 ]]; do [[ "$1" == -o ]] && { out="$2"; shift; }; [[ "$1" == http* ]] && url="$1"; shift; done
+if [[ "$url" == *.md5 ]]; then
+  sum="$(md5sum "$FIXTURE" | cut -d' ' -f1)"
+  [[ -z "${MD5_BAD:-}" ]] || sum=00000000000000000000000000000000
+  echo "MD5 (delegated-ripencc-latest) = $sum" >"$out"
+  exit 0
+fi
 cp "$FIXTURE" "$out"
 X
+# md5sum as on the server (macOS has only md5).
+if ! command -v md5sum >/dev/null 2>&1; then
+  printf '#!/usr/bin/env bash
+echo "$(md5 -q "$1")  $1"
+' >"$TMP/bin/md5sum"
+fi
 # fake nft: logs the call and keeps a copy of its -f input; fails with $NFT_FAIL.
 cat >"$TMP/bin/nft" <<'X'
 #!/usr/bin/env bash
@@ -87,5 +101,18 @@ run RU_NETS_MIN=3 NFT_FAIL=1
 check "nft failure fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 check "nft failure: stamp kept, saved set kept, no temp file" "1 1 " \
   "$([[ "$STAMP" -ot "$TMP/saved.first" ]] && echo 1) $(cmp -s "$SAVED" "$TMP/saved.first" && echo 1) $(ls "$(dirname "$SAVED")" | grep -v -e '^ru4.nft$' -e '^ru-nets.stamp$')"
+
+# audit 2026-10-26: a download that does not match RIPE's md5, or that
+# makes a network wider than /8, keeps the old set.
+run RU_NETS_MIN=3 MD5_BAD=1
+check "wrong md5 fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "wrong md5: nft not called" "0" "$(grep -c . "$TMP/calls")"
+
+cp "$TMP/ripe" "$TMP/ripe.good"
+echo 'ripencc|RU|ipv4|0.0.0.0|2147483648|20100101|allocated' >>"$TMP/ripe"
+run RU_NETS_MIN=3
+check "a /1 from one bad row fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
+check "a /1: nft not called" "0" "$(grep -c . "$TMP/calls")"
+cp "$TMP/ripe.good" "$TMP/ripe"
 
 finish

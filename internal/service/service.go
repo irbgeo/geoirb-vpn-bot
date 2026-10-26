@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"sync"
+	"time"
 )
 
 // ErrNotFound: the key is not in the bot's database. Peers created by hand
@@ -42,6 +43,9 @@ type service struct {
 	mu sync.Mutex
 	// skipLogged keeps the log to one line per skipped key and error kind.
 	skipLogged logOnce
+	// trials: when the trials of the last hour started (MaxTrialsPerHour).
+	// In memory: a restart forgets them, which only lets one more hour in.
+	trials []time.Time
 }
 
 // New creates a service.

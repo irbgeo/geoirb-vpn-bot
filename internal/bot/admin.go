@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -384,7 +385,7 @@ func (s *router) adminIssue(ctx context.Context, a adminAction) error {
 	idText, daysText, _ := strings.Cut(a.Arg, ":")
 	id, err1 := strconv.ParseInt(idText, 10, 64)
 	days, err2 := strconv.Atoi(daysText)
-	if err1 != nil || err2 != nil || id <= 0 {
+	if err1 != nil || err2 != nil || id <= 0 || !slices.Contains(issueDays, days) {
 		return fmt.Errorf("bot: bad issue button %q", a.Arg)
 	}
 	issueInput := service.IssueInput{

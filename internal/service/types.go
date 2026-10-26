@@ -36,7 +36,10 @@ type User struct {
 // Company is a client that pays for its staff's access. Its members
 // (RoleMember) get free keys that end at PaidUntil.
 type Company struct {
-	ID            string // also the invite code: t.me/<bot>?start=c_<ID>
+	ID string
+	// Invite is the code of the invite link t.me/<bot>?start=c_<Invite>;
+	// the leader or an admin can replace it (RotateInvite).
+	Invite        string
 	Name          string
 	LeaderID      int64 // a member too; sees the staff and removes them
 	PaidUntil     time.Time
@@ -75,7 +78,13 @@ type CreateCompanyInput struct {
 
 // JoinCompanyInput is a user opening a company's invite link.
 type JoinCompanyInput struct {
-	UserID    int64
+	UserID int64
+	Invite string
+}
+
+// RotateInviteInput is the leader (or an admin) replacing the invite link.
+type RotateInviteInput struct {
+	ActorID   int64
 	CompanyID string
 }
 
@@ -518,6 +527,13 @@ type maintainStep struct {
 type companyReminders struct {
 	Companies []*Company
 	Report    *Maintenance
+}
+
+// companyManager is someone changing a company: they must be an admin or
+// its leader (canManage).
+type companyManager struct {
+	ActorID int64
+	Company *Company
 }
 
 // companyEntry is a user entering a company (create or join).

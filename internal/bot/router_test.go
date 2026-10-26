@@ -193,6 +193,7 @@ type fakeService struct {
 	createdCo   []service.CreateCompanyInput
 	extendedCo  []service.ExtendCompanyInput
 	removed     []service.RemoveMemberInput
+	rotated     []service.RotateInviteInput
 	removeErr   error
 }
 
@@ -1149,7 +1150,16 @@ func (s *fakeService) JoinCompany(_ context.Context, in service.JoinCompanyInput
 		return nil, s.joinErr
 	}
 	s.role = service.RoleMember
-	s.companyID = in.CompanyID
+	s.companyID = s.company.Company.ID
+	return s.company.Company, nil
+}
+
+func (s *fakeService) RotateInvite(_ context.Context, in service.RotateInviteInput) (*service.Company, error) {
+	s.rotated = append(s.rotated, in)
+	if s.removeErr != nil {
+		return nil, s.removeErr
+	}
+	s.company.Company.Invite = "new23456"
 	return s.company.Company, nil
 }
 

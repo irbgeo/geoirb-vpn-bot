@@ -6,7 +6,7 @@ lint:
 # Known vulnerabilities in the Go version and in every package the bot uses
 # (golangci-lint cannot check that). Scans the build that runs on the server.
 vuln:
-	go install golang.org/x/vuln/cmd/govulncheck@latest
+	go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 	GOOS=linux GOARCH=amd64 "$$(go env GOPATH)/bin/govulncheck" ./...
 
 # The script tests, then the Go tests (store tests need Mongo on
@@ -20,6 +20,7 @@ test-sh:
 	./scripts/server-env_test.sh
 	./scripts/tunnel-keys_test.sh
 	./deploy/awg-module_test.sh
+	./deploy/awg0-run_test.sh
 	./deploy/exit/install_test.sh
 	./deploy/exit/exit-fw_test.sh
 	./deploy/install_test.sh

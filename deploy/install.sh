@@ -42,9 +42,10 @@ if [[ "$first" == 0 ]]; then
 fi
 
 bash "$S/awg-module.sh"
-if ! dpkg -s unbound nftables >/dev/null 2>&1; then
+# age: deploy/backup.sh encrypts the backups with it (BACKUP_AGE_RECIPIENT)
+if ! dpkg -s unbound nftables age >/dev/null 2>&1; then
   apt-get update -qq
-  apt-get install -y -qq unbound nftables
+  apt-get install -y -qq unbound nftables age
 fi
 bash "$S/awg-tools.sh"
 
@@ -54,7 +55,7 @@ install -d -m 755 "$OPT"
 install -d -m 755 "$STATE"
 chown root:root "$STATE"
 install -m 750 "$S/backup.sh" "$S/ru-nets.sh" "$S/vpn-routes.sh" "$S/import-peers.sh" \
-  "$S/awg0-check.sh" "$OPT/"
+  "$S/awg0-check.sh" "$S/awg0-run.sh" "$OPT/"
 install -d -m 750 "$ROOT/etc/geoirb-vpn-bot"
 chown root:vpnbot "$ROOT/etc/geoirb-vpn-bot"
 install -m 640 "$S/env" "$E"

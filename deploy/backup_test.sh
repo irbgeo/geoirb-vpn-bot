@@ -14,6 +14,13 @@ cat >"$CALLS.stdin"
 printf DUMP
 [[ -z "${DOCKER_FAIL:-}" ]]
 X
+# age -r <recipient> -o <out>: logs the recipient, writes "AGE" + stdin.
+cat >"$TMP/bin/age" <<'X'
+#!/usr/bin/env bash
+echo "age $*" >>"$CALLS"
+while [[ $# -gt 0 ]]; do [[ "$1" == -o ]] && out="$2"; shift; done
+{ printf AGE; cat; } >"$out"
+X
 chmod +x "$TMP/bin"/*
 
 R="$TMP/root"
@@ -67,6 +74,21 @@ run
 check "planted stamp symlink: replaced by a file, target untouched" "0 1 1 keep" \
   "$? $([[ -f "$STAMP" && ! -L "$STAMP" ]] && echo 1) $([[ "$TMP/victim" -ot "$TMP/env" ]] && echo 1) $(cat "$TMP/victim")"
 check "no temp stamp left" "last-backup" "$(ls "$(dirname "$STAMP")")"
+before="$(archives)"
+
+# audit 2026-10-26: with BACKUP_AGE_RECIPIENT the archive is encrypted on
+# the server; nothing readable is written next to it.
+rm -rf "$D"
+cp "$TMP/env" "$TMP/env.age"
+echo "BACKUP_AGE_RECIPIENT=age1testrecipient" >>"$TMP/env.age"
+run ENV_FILE="$TMP/env.age"
+check "encrypted backup exits 0" "0" "$?"
+check "encrypted: one .tar.gz.age, no plain archive" "1 0" "$(ls "$D" | grep -cE '^geoirb-vpn-[0-9]{8}-[0-9]{6}\.tar\.gz\.age$') $(ls "$D" | grep -cE '\.tar\.gz$')"
+check "encrypted for the recipient" "1" "$(grep -c '^age -r age1testrecipient -o ' "$TMP/calls")"
+check "encrypted archive is root only" "600" "$(mode "$D"/*.age)"
+check "the encrypted file holds the archive" "AGE" "$(head -c 3 "$D"/*.age)"
+run
+check "unencrypted backup is warned about" "1" "$(grep -c 'not encrypted' "$TMP/out")"
 before="$(archives)"
 
 grep -v '^MONGO_URI=' "$TMP/env" >"$TMP/env.nouri"

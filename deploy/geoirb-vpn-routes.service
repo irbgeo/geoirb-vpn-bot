@@ -8,6 +8,8 @@
 [Unit]
 Description=Split routing of VPN clients: Russian networks direct, the rest via awg-exit
 Before=geoirb-awg0.service geoirb-awg-exit.service
+# nftables.service flushes the whole ruleset when it starts: load ours after it
+After=nftables.service
 
 [Service]
 Type=oneshot

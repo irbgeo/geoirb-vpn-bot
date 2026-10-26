@@ -54,10 +54,14 @@ echo "▶ Installing on $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
 # One connection: the package goes through stdin (secrets never in argv),
 # deploy/install.sh runs from it as root, then the status: exit 1 with the
 # log when the bot is not up or restarted.
+# Unpacked as root: owners and modes from this machine (uid 501 on a Mac)
+# must not carry over, or a server user with that uid could read the secrets
+# or change install.sh before root runs it.
 tar -C "$TMP/pkg" -cz . | remote "sudo LOCAL_HASH=$LOCAL_HASH FORCE=${FORCE:-} bash -euo pipefail -c '
 S=\$(mktemp -d /tmp/geoirb-vpn-bot-deploy.XXXXXX)
 trap \"rm -rf \$S\" EXIT
-tar -xz -C \$S
+tar --no-same-owner --no-same-permissions -xz -C \$S
+chmod 700 \$S
 bash \$S/install.sh
 echo \"▶ Status\"
 sleep 8

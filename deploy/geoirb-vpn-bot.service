@@ -34,6 +34,21 @@ PrivateTmp=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
+# Less for a compromised bot to reach (audit 2026-10-26). Netlink stays:
+# `awg` and `ip` change awg0 and the bot's routing rules through it.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+RestrictNamespaces=yes
+PrivateDevices=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+ProtectProc=invisible
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

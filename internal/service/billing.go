@@ -257,10 +257,8 @@ func (s *service) checkNewKey(ctx context.Context, userID int64) error {
 	if err != nil {
 		return err
 	}
-	for _, p := range keys {
-		if p.Blocked {
-			return ErrBlocked
-		}
+	if hasBlocked(keys) {
+		return ErrBlocked
 	}
 	if len(keys) >= MaxUserKeys {
 		return ErrKeyLimit

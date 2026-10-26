@@ -32,6 +32,24 @@ func byRole(r service.Role) bson.M {
 	}
 }
 
+// byInvite matches a company's invite code; a company stored before
+// invites existed has no invite field and is found by its ID.
+func byInvite(invite string) bson.M {
+	return bson.M{
+		"$or": bson.A{
+			bson.M{
+				"invite": invite,
+			},
+			bson.M{
+				"_id": invite,
+				"invite": bson.M{
+					"$exists": false,
+				},
+			},
+		},
+	}
+}
+
 func byCompany(companyID string) bson.M {
 	return bson.M{
 		"company_id": companyID,
@@ -308,6 +326,25 @@ func roleRank() bson.M {
 // --- indexes ---
 
 // peerServerIPIndex: one IP per server, so two peers never share an address.
+// ascIndex is a plain lookup index on one field.
+func ascIndex(field string) mongo.IndexModel {
+	return mongo.IndexModel{
+		Keys: bson.D{
+			{Key: field, Value: 1},
+		},
+	}
+}
+
+// inviteIndex: one company per invite code; old companies have none.
+func inviteIndex() mongo.IndexModel {
+	return mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "invite", Value: 1},
+		},
+		Options: options.Index().SetUnique(true).SetSparse(true),
+	}
+}
+
 func peerServerIPIndex() mongo.IndexModel {
 	return mongo.IndexModel{
 		Keys: bson.D{

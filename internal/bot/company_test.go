@@ -16,6 +16,7 @@ func romashka() *service.CompanyInfo {
 	return &service.CompanyInfo{
 		Company: &service.Company{
 			ID:            "abcd2345",
+			Invite:        "inv23456",
 			Name:          "Ромашка",
 			LeaderID:      42,
 			PaidUntil:     time.Date(2027, 4, 26, 9, 0, 0, 0, time.UTC),
@@ -43,10 +44,10 @@ func TestInviteLinkJoinsTheCompany(t *testing.T) {
 	}
 	r, s := newRouter(svc)
 
-	require.NoError(t, r.Handle(context.Background(), startUpdate("/start c_abcd2345")))
+	require.NoError(t, r.Handle(context.Background(), startUpdate("/start c_inv23456")))
 
 	require.Len(t, svc.registered, 1, "registered before joining")
-	require.Equal(t, []service.JoinCompanyInput{{UserID: 42, CompanyID: "abcd2345"}}, svc.joined)
+	require.Equal(t, []service.JoinCompanyInput{{UserID: 42, Invite: "inv23456"}}, svc.joined)
 	require.Contains(t, s.sent[0].Text, "«Ромашка»")
 	require.Contains(t, s.sent[0].Text, "26.04.2027")
 	got := callbacksOf(s.sent[0].Keyboard)
@@ -70,7 +71,7 @@ func TestInviteLinkErrorsExplained(t *testing.T) {
 			},
 		)
 
-		require.NoError(t, r.Handle(context.Background(), startUpdate("/start c_abcd2345")), "expected: not logged")
+		require.NoError(t, r.Handle(context.Background(), startUpdate("/start c_inv23456")), "expected: not logged")
 		require.Equal(t, want, s.sent[0].Text)
 	}
 }
@@ -118,7 +119,7 @@ func TestLeaderCardShowsTheLinkAndTheStaff(t *testing.T) {
 
 	text := s.sent[0].Text
 	require.Contains(t, text, "«Ромашка»")
-	require.Contains(t, text, "https://t.me/testbot?start=c_abcd2345")
+	require.Contains(t, text, "https://t.me/testbot?start=c_inv23456")
 	require.Contains(t, text, "1 из 20")
 	require.Contains(t, text, "@ivan")
 	got := callbacksOf(s.sent[0].Keyboard)
@@ -175,7 +176,7 @@ func TestAdminCreatesACompanyFromTheUserCard(t *testing.T) {
 
 	require.NoError(t, r.Handle(ctx, startUpdate("Ромашка")))
 	require.Equal(t, []service.CreateCompanyInput{{LeaderID: 7, Name: "Ромашка", Months: 6}}, svc.createdCo)
-	require.Contains(t, s.sent[1].Text, "https://t.me/testbot?start=c_abcd2345")
+	require.Contains(t, s.sent[1].Text, "https://t.me/testbot?start=c_inv23456")
 	require.Contains(t, callbacksOf(s.sent[1].Keyboard), cbAdminCoExt+"abcd2345:6")
 }
 
@@ -297,7 +298,7 @@ func TestEndedCompanyCardAndEmptyList(t *testing.T) {
 	info.Members = info.Members[:1]
 	v := companyView{
 		Info: info,
-		Link: "/start c_abcd2345",
+		Link: "/start c_inv23456",
 	}
 
 	text := companyText(v)

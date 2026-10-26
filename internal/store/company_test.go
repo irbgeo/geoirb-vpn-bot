@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
@@ -15,6 +16,7 @@ func TestCompanyRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	c := &service.Company{
 		ID:            "abcd2345",
+		Invite:        "inv23456",
 		Name:          "Ромашка",
 		LeaderID:      42,
 		PaidUntil:     ts("2027-04-26T10:00:00Z"),
@@ -31,6 +33,13 @@ func TestCompanyRoundTrip(t *testing.T) {
 	got, err := s.Companies.Get(ctx, c.ID)
 	require.NoError(t, err)
 	require.Equal(t, c, got)
+
+	byInvite, err := s.Companies.ByInvite(ctx, "inv23456")
+	require.NoError(t, err)
+	require.Equal(t, c, byInvite)
+	none, err := s.Companies.ByInvite(ctx, "abcd2345")
+	require.NoError(t, err)
+	require.Nil(t, none, "the ID is not an invite")
 
 	c.PaidUntil = ts("2027-10-26T10:00:00Z")
 	c.Reminded3d = true
@@ -84,4 +93,48 @@ func TestSetMembershipAndByCompany(t *testing.T) {
 	require.NoError(t, s.Users.coll.FindOne(ctx, byID(int64(7))).Decode(&raw))
 	require.NotContains(t, raw, "company_id", "leaving unsets the field")
 	require.Equal(t, "user", raw["role"])
+}
+
+// A company stored before invites were apart from IDs: its ID is its link.
+func TestCompanyWithoutInviteIsFoundByID(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.Companies.coll.InsertOne(
+		ctx,
+		bson.M{
+			"_id":  "old23456",
+			"name": "Старая",
+		},
+	)
+	require.NoError(t, err)
+
+	got, err := s.Companies.ByInvite(ctx, "old23456")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "old23456", got.Invite, "the old link keeps working")
+}
+
+func TestLookupIndexesExist(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	names := func(coll interface {
+		Indexes() mongo.IndexView
+	}) []string {
+		cur, err := coll.Indexes().List(ctx)
+		require.NoError(t, err)
+		var out []string
+		for cur.Next(ctx) {
+			var ix bson.M
+			require.NoError(t, cur.Decode(&ix))
+			out = append(out, ix["name"].(string))
+		}
+		return out
+	}
+
+	require.Contains(t, names(s.Peers.coll), "user_id_1")
+	require.Contains(t, names(s.Users.coll), "role_1")
+	require.Contains(t, names(s.Users.coll), "company_id_1")
+	require.Contains(t, names(s.Payments.coll), "user_id_1")
+	require.Contains(t, names(s.Payments.coll), "created_at_1")
+	require.Contains(t, names(s.Companies.coll), "invite_1")
 }

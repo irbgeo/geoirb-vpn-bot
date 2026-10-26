@@ -40,6 +40,9 @@ var (
 	ErrCompanyPaid = errors.New("service: the company pays for this user's access")
 	// ErrBadCompany: an empty or too long name, or a term under a month.
 	ErrBadCompany = errors.New("service: bad company name or term")
+	// ErrCompanyKeys: the user has more keys than a seat holds
+	// (KeysPerMember); they delete the extra ones first.
+	ErrCompanyKeys = errors.New("service: more keys than a company seat holds")
 )
 
 // CreateCompany makes a user the leader of a new company paid for
@@ -66,9 +69,14 @@ func (s *service) CreateCompany(ctx context.Context, in CreateCompanyInput) (*Co
 	if err != nil {
 		return nil, err
 	}
+	invite, err := inviteCode()
+	if err != nil {
+		return nil, err
+	}
 	now := time.Now()
 	c := &Company{
 		ID:            id,
+		Invite:        invite,
 		Name:          name,
 		LeaderID:      u.ID,
 		PaidUntil:     now.AddDate(0, in.Months, 0),
@@ -95,12 +103,14 @@ func (s *service) CreateCompany(ctx context.Context, in CreateCompanyInput) (*Co
 // JoinCompany puts a user into the company of an invite link: they become
 // a member (no trial, no buying) and their keys end with the company. The
 // same link again is fine; an admin, a member of another company, an
-// ended or a full company is refused.
+// ended or a full company is refused, and so is a user with an
+// admin-blocked key (a company must not lift the block) or with more keys
+// than a seat holds.
 func (s *service) JoinCompany(ctx context.Context, in JoinCompanyInput) (*Company, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	c, err := s.company(ctx, in.CompanyID)
+	c, err := s.companyByInvite(ctx, in.Invite)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +138,16 @@ func (s *service) JoinCompany(ctx context.Context, in JoinCompanyInput) (*Compan
 	}
 	if info.Employees() >= c.MaxMembers {
 		return nil, ErrCompanyFull
+	}
+	keys, err := s.peers.ByUser(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	if hasBlocked(keys) {
+		return nil, ErrBlocked
+	}
+	if len(keys) > c.KeysPerMember {
+		return nil, ErrCompanyKeys
 	}
 
 	companyEntry := companyEntry{
@@ -187,7 +207,8 @@ func (s *service) ExtendCompany(ctx context.Context, in ExtendCompanyInput) (*Co
 
 // RemoveMember takes an employee out of the company (the leader or an
 // admin asks): their keys are deleted, the seat is free, and they are a
-// plain user again, without a trial.
+// plain user again, without a trial. Admin-blocked keys stay, so the
+// block still stops them from buying new ones.
 func (s *service) RemoveMember(ctx context.Context, in RemoveMemberInput) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -196,12 +217,13 @@ func (s *service) RemoveMember(ctx context.Context, in RemoveMemberInput) error 
 	if err != nil {
 		return err
 	}
-	actor, err := s.User(ctx, in.ActorID)
+	companyManager := companyManager{
+		ActorID: in.ActorID,
+		Company: c,
+	}
+	err = s.canManage(ctx, companyManager)
 	if err != nil {
 		return err
-	}
-	if actor.Role != RoleAdmin && actor.ID != c.LeaderID {
-		return ErrNotLeader
 	}
 	if in.UserID == c.LeaderID {
 		return ErrIsLeader
@@ -219,6 +241,9 @@ func (s *service) RemoveMember(ctx context.Context, in RemoveMemberInput) error 
 		return err
 	}
 	for _, p := range keys {
+		if p.Blocked {
+			continue
+		}
 		err = s.deletePeer(ctx, p)
 		if err != nil {
 			return err
@@ -229,6 +254,36 @@ func (s *service) RemoveMember(ctx context.Context, in RemoveMemberInput) error 
 		Role:   RoleUser,
 	}
 	return s.users.SetMembership(ctx, membership)
+}
+
+// RotateInvite gives the company a new invite code (the leader or an
+// admin asks): the old link stops working, people already in stay.
+func (s *service) RotateInvite(ctx context.Context, in RotateInviteInput) (*Company, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	c, err := s.company(ctx, in.CompanyID)
+	if err != nil {
+		return nil, err
+	}
+	companyManager := companyManager{
+		ActorID: in.ActorID,
+		Company: c,
+	}
+	err = s.canManage(ctx, companyManager)
+	if err != nil {
+		return nil, err
+	}
+	invite, err := inviteCode()
+	if err != nil {
+		return nil, err
+	}
+	c.Invite = invite
+	err = s.companies.Save(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // MyCompany is the leader's view of their company; anyone else gets
@@ -286,6 +341,44 @@ func (s *service) company(ctx context.Context, id string) (*Company, error) {
 		return nil, ErrNoCompany
 	}
 	return c, nil
+}
+
+// companyByInvite loads the company of an invite code, or ErrNoCompany.
+func (s *service) companyByInvite(ctx context.Context, invite string) (*Company, error) {
+	if invite == "" {
+		return nil, ErrNoCompany
+	}
+	c, err := s.companies.ByInvite(ctx, invite)
+	if err != nil {
+		return nil, err
+	}
+	if c == nil {
+		return nil, ErrNoCompany
+	}
+	return c, nil
+}
+
+// canManage: only an admin or the company's leader may change who is in
+// it or its link.
+func (s *service) canManage(ctx context.Context, in companyManager) error {
+	actor, err := s.User(ctx, in.ActorID)
+	if err != nil {
+		return err
+	}
+	if actor.Role != RoleAdmin && actor.ID != in.Company.LeaderID {
+		return ErrNotLeader
+	}
+	return nil
+}
+
+// hasBlocked: one of the keys was disabled by an admin.
+func hasBlocked(keys []*Peer) bool {
+	for _, p := range keys {
+		if p.Blocked {
+			return true
+		}
+	}
+	return false
 }
 
 // canJoin: admins stay admins, and a user is in one company at most.
@@ -349,6 +442,9 @@ func (s *service) redateKeys(ctx context.Context, in keysUntil) error {
 // issueMemberKey issues a member's key, ending with their company. The
 // caller holds s.mu.
 func (s *service) issueMemberKey(ctx context.Context, in memberKeyInput) (*Peer, error) {
+	if hasBlocked(in.Have) {
+		return nil, ErrBlocked
+	}
 	keyQuota := keyQuota{
 		User: in.User,
 		Keys: len(in.Have),

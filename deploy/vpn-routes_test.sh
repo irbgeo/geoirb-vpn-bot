@@ -101,5 +101,12 @@ check "loopback is never masqueraded" "1" "$(grep -c 'oifname != "lo"' "$NFT")"
 check "client to client dropped" "1" "$(grep -cx $'\t\tiifname "awg0" oifname "awg0" drop' "$NFT")"
 check "marked traffic not leaving through the tunnel is dropped" "1" "$(grep -cx $'\t\tiifname "awg0" meta mark 0x1 oifname != "awg-exit" drop' "$NFT")"
 check "private ranges dropped" "1" "$(grep -cx $'\t\tiifname "awg0" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } drop' "$NFT")"
+# audit 2026-10-26: client IPv6 never forwarded; clients reach only DNS, the
+# site and ssh on the host itself
+check "client IPv6 dropped in forward and input" "2" "$(grep -cx $'\t\tiifname "awg0" meta nfproto ipv6 drop' "$NFT")"
+check "vpn_input hook, flushed on reload" "1 1" "$(grep -c 'type filter hook input priority filter;' "$NFT") $(grep -cx 'flush chain inet geoirb vpn_input' "$NFT")"
+check "vpn_input: DNS on 10.8.0.1 allowed" "1" "$(grep -cx $'\t\tiifname "awg0" ip daddr 10.8.0.1 meta l4proto { tcp, udp } th dport 53 accept' "$NFT")"
+check "vpn_input: replies, ping, ssh and the site allowed" "3" "$(grep -cE $'^\t\tiifname "awg0" (ct state established,related|icmp type echo-request|tcp dport \\{ 22, 80, 443 \\}) accept$' "$NFT")"
+check "vpn_input: everything else from clients dropped, as the last rule" $'\t\tiifname "awg0" drop' "$(awk '/chain vpn_input \{/{f=1; next} f && /^\t}$/{f=0; last=prev} f{prev=$0} END{print last}' "$NFT")"
 
 finish

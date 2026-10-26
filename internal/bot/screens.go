@@ -416,7 +416,8 @@ func madeForeverText(p *service.Peer) string {
 }
 
 func expiredText(p *service.Peer) string {
-	return "⛔️ Срок ключа " + p.Name + " закончился, и он отключён. После продления заработает этот же ключ, заново ничего настраивать не придётся."
+	return "⛔️ Срок ключа " + p.Name + " закончился, и он отключён. После продления заработает этот же ключ, заново ничего настраивать не придётся. " +
+		"Если не продлить за 30 дней, ключ удалится."
 }
 
 func remind3dText(p *service.Peer) string {
@@ -1183,7 +1184,7 @@ func adminErrorText(err error) (text string, known bool) {
 	case errors.Is(err, service.ErrInCompany):
 		return "⚠️ Пользователь уже в компании.", true
 	case errors.Is(err, service.ErrBadCompany):
-		return "⚠️ Нужно название компании, до 64 символов.", true
+		return "⚠️ Нужно название компании до 64 символов и срок от 1 месяца.", true
 	case errors.Is(err, service.ErrNoCompany):
 		return "⚠️ Компания не найдена.", true
 	}
@@ -1245,6 +1246,10 @@ const (
 	memberGoneText       = "Этого сотрудника уже нет в компании."
 	companyPaysText      = "Ваш доступ оплачивает компания, платить не нужно."
 	companyEndedKeyText  = "Доступ компании закончился, новые ключи выдать нельзя. Напишите руководителю."
+	blockedJoinText      = "Ваш ключ отключил администратор, вступить в компанию нельзя. Напишите в /support."
+	companyKeysText      = "У вас больше ключей, чем можно в компании. Удалите лишние в «📋 Мой доступ» и откройте ссылку снова."
+	trialBusyText        = "Сейчас подключается слишком много новых людей. Попробуйте через час."
+	blockedNewKeyText    = "Ваш ключ отключил администратор, новый выдать нельзя. Напишите в /support."
 	askCompanyNameText   = "✍️ Как называется компания? Это название увидят сотрудники."
 )
 
@@ -1261,6 +1266,10 @@ func companyJoinErrorText(err error) (text string, known bool) {
 		return inOtherCompanyText, true
 	case errors.Is(err, service.ErrCompanyRole):
 		return adminNoCompanyText, true
+	case errors.Is(err, service.ErrBlocked):
+		return blockedJoinText, true
+	case errors.Is(err, service.ErrCompanyKeys):
+		return companyKeysText, true
 	}
 	return internalErrorText, false
 }
@@ -1335,6 +1344,7 @@ func companyKeyboard(v companyView) *tgbot.InlineKeyboardMarkup {
 		}
 		rows = append(rows, tgbot.Row(tgbot.Button("🚫 Убрать: "+userLabel(u), cbCompanyRemoveAsk+ref.String())))
 	}
+	rows = append(rows, tgbot.Row(tgbot.Button("🔄 Новая ссылка", cbCompanyRotate+c.ID)))
 	if !v.Admin {
 		rows = append(rows, menuRow())
 		return tgbot.InlineKeyboard(rows...)

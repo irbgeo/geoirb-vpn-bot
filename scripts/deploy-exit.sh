@@ -21,10 +21,14 @@ echo "▶ Installing on $SERVER_USER@$SERVER_HOST:$SERVER_PORT"
 # One ssh login (the server throttles quick repeated ones). The package, with
 # the private key, goes through stdin, never argv. The last lines print the
 # status; a service that is not active or an interface that is missing fails.
+# Unpacked as root: owners and modes from this machine (uid 501 on a Mac)
+# must not carry over, or a server user with that uid could read the secrets
+# or change install.sh before root runs it.
 tar -C "$TMP/pkg" -cz . | remote "sudo bash -euo pipefail -c '
 S=\$(mktemp -d /tmp/geoirb-awg-exit.XXXXXX)
 trap \"rm -rf \$S\" EXIT
-tar -xz -C \$S
+tar --no-same-owner --no-same-permissions -xz -C \$S
+chmod 700 \$S
 bash \$S/install.sh
 sleep 3
 st=\$(systemctl is-active geoirb-awg-exit.service || true)

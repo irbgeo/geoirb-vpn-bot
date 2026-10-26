@@ -60,8 +60,7 @@ check "check: a commented hook passes" "0" "$?"
 bash "$DIR/awg0-check.sh" "$TMP/none.conf" 2>/dev/null
 check "check: a missing conf fails" "1" "$([[ $? -ne 0 ]] && echo 1)"
 U="$DIR/geoirb-awg0.service"
-check "unit: the check is the first ExecStartPre and ExecStop, not optional" "ExecStartPre=/opt/geoirb-vpn-bot/awg0-check.sh /etc/amnezia/amneziawg/awg0.conf
-ExecStop=/opt/geoirb-vpn-bot/awg0-check.sh /etc/amnezia/amneziawg/awg0.conf" "$(grep -m1 '^ExecStartPre=' "$U"; grep -m1 '^ExecStop=' "$U")"
+check "unit: awg-quick only through the checking wrapper (deploy/awg0-run_test.sh)" "0" "$(grep -c '/usr/bin/awg-quick' "$U")"
 
 # awg genkey fails: no conf with an empty key.
 printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/bin/awg"

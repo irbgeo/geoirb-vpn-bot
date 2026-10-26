@@ -104,7 +104,9 @@ func (s *router) preCheckout(ctx context.Context, q *tgbot.PreCheckoutQuery) err
 	return s.send.AnswerPreCheckout(ctx, a)
 }
 
-// paid applies a successful payment. If it can't be applied, the Stars
+// paid applies a successful payment. Every answer goes to the payer's own
+// chat (From), never to the chat the payment came from: a key's config
+// must not land in a group. If it can't be applied, the Stars
 // go back: a user is never charged for nothing.
 func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 	sp := m.SuccessfulPayment
@@ -136,12 +138,12 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 			Stars:    int(sp.TotalAmount),
 		}
 		outMessage := outMessage{
-			ChatID: m.Chat.ID,
+			ChatID: m.From.ID,
 			Text:   paidUnderReviewText,
 		}
 		err = s.send.Send(ctx, outMessage)
 		if err != nil {
-			log.Printf("bot: tell %d the payment is under review: %v", m.Chat.ID, err)
+			log.Printf("bot: tell %d the payment is under review: %v", m.From.ID, err)
 		}
 		s.notify.NotifyAdmins(ctx, paymentReviewText(reviewInput))
 		return nil
@@ -149,13 +151,13 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 	// The user first: they are waiting for the result of their payment.
 	if res.NewKey {
 		keyDelivery := keyDelivery{
-			ChatID: m.Chat.ID,
+			ChatID: m.From.ID,
 			Peer:   res.Peer,
 		}
 		err = s.deliverKey(ctx, keyDelivery)
 	} else {
 		outMessage := outMessage{
-			ChatID: m.Chat.ID,
+			ChatID: m.From.ID,
 			Text:   extendedText(res.Peer),
 		}
 		err = s.send.Send(ctx, outMessage)
@@ -172,12 +174,12 @@ func (s *router) paid(ctx context.Context, m *tgbot.Message) error {
 		// the payment worked and where the key is.
 		ctx = context.WithoutCancel(ctx)
 		outMessage := outMessage{
-			ChatID: m.Chat.ID,
+			ChatID: m.From.ID,
 			Text:   paidDeliveryFailedText,
 		}
 		sendErr := s.send.Send(ctx, outMessage)
 		if sendErr != nil {
-			log.Printf("bot: tell %d the payment worked: %v", m.Chat.ID, sendErr)
+			log.Printf("bot: tell %d the payment worked: %v", m.From.ID, sendErr)
 		}
 	}
 	s.notify.NotifyAdmins(ctx, paymentAlertText(alert))
@@ -213,7 +215,7 @@ func (s *router) refund(ctx context.Context, f failedPayment) error {
 	}
 	s.notify.NotifyAdmins(ctx, refundAlertText(a))
 	outMessage := outMessage{
-		ChatID: m.Chat.ID,
+		ChatID: m.From.ID,
 		Text:   text,
 	}
 	sendErr := s.send.Send(ctx, outMessage)

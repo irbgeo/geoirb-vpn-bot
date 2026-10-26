@@ -18,6 +18,10 @@ const MaxUnlimitedKeys = 3
 // bought ones, each with its own term.
 const MaxUserKeys = 3
 
+// MaxTrialsPerHour: free trials started per hour by all users together, so
+// a mass of new accounts can't fill the subnet in one go.
+const MaxTrialsPerHour = 30
+
 // MaxKeyNameLen is the longest key name a user may give, in letters: it
 // shows on buttons and in the Amnezia app.
 const MaxKeyNameLen = 32
@@ -30,6 +34,9 @@ var (
 	// ErrTrialUsed: a plain user without a key already had the trial; they
 	// need to pay.
 	ErrTrialUsed = errors.New("service: trial already used")
+	// ErrTrialBusy: MaxTrialsPerHour trials started within the last hour;
+	// the user tries later (their trial is not used up).
+	ErrTrialBusy = errors.New("service: too many new trials right now")
 	// ErrBadKeyName: the name is too long or has line breaks / control
 	// characters.
 	ErrBadKeyName = errors.New("service: bad key name")
@@ -145,6 +152,9 @@ func (s *service) CheckCreateKey(ctx context.Context, userID int64) error {
 		User: u,
 		Keys: len(have),
 	}
+	if u.Role == RoleMember && hasBlocked(have) {
+		return ErrBlocked
+	}
 	if u.Role == RoleMember {
 		_, err = s.checkMemberKey(ctx, keyQuota)
 		return err
@@ -239,6 +249,16 @@ func nextKeyNumber(in keyNumberInput) int {
 // startTrial issues a plain user's first (and only) key for TrialDays and marks the
 // trial as used. The caller holds s.mu and has checked canCreate.
 func (s *service) startTrial(ctx context.Context, in trialInput) (*Peer, error) {
+	recent := s.trials[:0]
+	for _, t := range s.trials {
+		if time.Since(t) < time.Hour {
+			recent = append(recent, t)
+		}
+	}
+	s.trials = recent
+	if len(s.trials) >= MaxTrialsPerHour {
+		return nil, ErrTrialBusy
+	}
 	u := in.User
 	issueInput := IssueInput{
 		UserID: u.ID,
@@ -249,6 +269,7 @@ func (s *service) startTrial(ctx context.Context, in trialInput) (*Peer, error) 
 	if err != nil {
 		return nil, err
 	}
+	s.trials = append(s.trials, time.Now())
 	// Best effort: the key exists, so ErrHasKey blocks a second trial, and
 	// DeleteOwnKey marks it again before the key goes (closeTrial).
 	s.markTrialUsed(ctx, u.ID)

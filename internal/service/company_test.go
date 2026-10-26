@@ -33,6 +33,8 @@ func TestCreateCompanyMakesTheLeaderAMemberAndDatesTheirKeys(t *testing.T) {
 		require.Equal(t, CompanySeats, c.MaxMembers)
 		require.Equal(t, CompanyKeysPerMember, c.KeysPerMember)
 		require.Len(t, c.ID, inviteCodeLen)
+		require.Len(t, c.Invite, inviteCodeLen)
+		require.NotEqual(t, c.ID, c.Invite, "the link is not the company's ID")
 		leader := e.users().m[42]
 		require.Equal(t, RoleMember, leader.Role)
 		require.Equal(t, c.ID, leader.CompanyID)
@@ -79,8 +81,8 @@ func TestEmployeeJoinsAndGetsTwoKeysUntilTheCompanyDate(t *testing.T) {
 		got, err := e.svc.JoinCompany(
 			ctx,
 			JoinCompanyInput{
-				UserID:    7,
-				CompanyID: c.ID,
+				UserID: 7,
+				Invite: c.Invite,
 			},
 		)
 		require.NoError(t, err)
@@ -134,24 +136,24 @@ func TestJoinCompanyRefusals(t *testing.T) {
 		e.addUser(User{ID: 7, Role: RoleUser})
 		e.addUser(User{ID: 8, Role: RoleUser})
 
-		require.ErrorIs(t, join(JoinCompanyInput{UserID: 7, CompanyID: "nope"}), ErrNoCompany)
-		require.ErrorIs(t, join(JoinCompanyInput{UserID: 1, CompanyID: c.ID}), ErrCompanyRole, "admins stay admins")
+		require.ErrorIs(t, join(JoinCompanyInput{UserID: 7, Invite: "nope"}), ErrNoCompany)
+		require.ErrorIs(t, join(JoinCompanyInput{UserID: 1, Invite: c.Invite}), ErrCompanyRole, "admins stay admins")
 
 		full := e.companies.m[c.ID]
 		full.MaxMembers = 1
 		e.companies.m[c.ID] = full
-		require.NoError(t, join(JoinCompanyInput{UserID: 7, CompanyID: c.ID}))
-		require.NoError(t, join(JoinCompanyInput{UserID: 7, CompanyID: c.ID}), "the same link again is fine")
-		require.ErrorIs(t, join(JoinCompanyInput{UserID: 8, CompanyID: c.ID}), ErrCompanyFull, "the leader takes no seat, the employee does")
+		require.NoError(t, join(JoinCompanyInput{UserID: 7, Invite: c.Invite}))
+		require.NoError(t, join(JoinCompanyInput{UserID: 7, Invite: c.Invite}), "the same link again is fine")
+		require.ErrorIs(t, join(JoinCompanyInput{UserID: 8, Invite: c.Invite}), ErrCompanyFull, "the leader takes no seat, the employee does")
 
 		other := e.createCompanyFor(8)
-		require.ErrorIs(t, join(JoinCompanyInput{UserID: 7, CompanyID: other.ID}), ErrInCompany)
+		require.ErrorIs(t, join(JoinCompanyInput{UserID: 7, Invite: other.Invite}), ErrInCompany)
 
 		time.Sleep(time.Until(sixMonths) + time.Minute)
 		e.addUser(User{ID: 9, Role: RoleUser})
 		full.MaxMembers = 20
 		e.companies.m[c.ID] = full
-		require.ErrorIs(t, join(JoinCompanyInput{UserID: 9, CompanyID: c.ID}), ErrCompanyEnded)
+		require.ErrorIs(t, join(JoinCompanyInput{UserID: 9, Invite: c.Invite}), ErrCompanyEnded)
 	})
 }
 
@@ -160,9 +162,9 @@ func TestExtendCompanyRedatesEveryKeyAndBringsEndedOnesBack(t *testing.T) {
 		e := newEnv()
 		e.register(t, RoleVIP)
 		c := e.createCompany(t)
-		staff := e.joinWithKey(t, c.ID)
+		staff := e.joinWithKey(t, c.Invite)
 		ctx := context.Background()
-		blocked := e.joinWithKey(t, c.ID)
+		blocked := e.joinWithKey(t, c.Invite)
 		require.NoError(t, e.svc.Disable(ctx, blocked.PublicKey))
 
 		time.Sleep(time.Until(sixMonths) + time.Minute)
@@ -205,7 +207,7 @@ func TestRemoveMember(t *testing.T) {
 		e := newEnv()
 		e.register(t, RoleVIP)
 		c := e.createCompany(t)
-		k := e.joinWithKey(t, c.ID)
+		k := e.joinWithKey(t, c.Invite)
 		ctx := context.Background()
 		e.addUser(User{ID: 1, Role: RoleAdmin})
 		remove := func(in RemoveMemberInput) error {
@@ -225,7 +227,7 @@ func TestRemoveMember(t *testing.T) {
 		require.Empty(t, u.CompanyID)
 		require.True(t, u.TrialUsed)
 
-		again := e.joinWithKey(t, c.ID)
+		again := e.joinWithKey(t, c.Invite)
 		require.NoError(t, remove(RemoveMemberInput{ActorID: 1, UserID: again.UserID}), "an admin may remove too")
 	})
 }
@@ -235,7 +237,7 @@ func TestCompanyRemindersGoOncePerCompanyNotPerKey(t *testing.T) {
 		e := newEnv()
 		e.register(t, RoleVIP)
 		c := e.createCompany(t)
-		e.joinWithKey(t, c.ID)
+		e.joinWithKey(t, c.Invite)
 		ctx := context.Background()
 
 		time.Sleep(time.Until(sixMonths) - 70*time.Hour)
@@ -263,7 +265,7 @@ func TestMyCompanyIsForTheLeader(t *testing.T) {
 		e := newEnv()
 		e.register(t, RoleVIP)
 		c := e.createCompany(t)
-		k := e.joinWithKey(t, c.ID)
+		k := e.joinWithKey(t, c.Invite)
 		ctx := context.Background()
 
 		info, err := e.svc.MyCompany(ctx, 42)
@@ -308,8 +310,8 @@ func (s *env) createCompanyFor(leaderID int64) *Company {
 	return c
 }
 
-// joinWithKey adds a new employee to the company and gives them one key.
-func (s *env) joinWithKey(t *testing.T, companyID string) *Peer {
+// joinWithKey adds a new employee by the invite and gives them one key.
+func (s *env) joinWithKey(t *testing.T, invite string) *Peer {
 	t.Helper()
 	id := int64(100 + len(s.users().m))
 	s.addUser(User{ID: id, Role: RoleUser})
@@ -317,8 +319,8 @@ func (s *env) joinWithKey(t *testing.T, companyID string) *Peer {
 	_, err := s.svc.JoinCompany(
 		ctx,
 		JoinCompanyInput{
-			UserID:    id,
-			CompanyID: companyID,
+			UserID: id,
+			Invite: invite,
 		},
 	)
 	require.NoError(t, err)

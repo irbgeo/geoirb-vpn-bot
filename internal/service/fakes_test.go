@@ -498,3 +498,12 @@ func (s *fakeCompanies) List(context.Context) ([]*Company, error) {
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }
+
+func (s *fakeCompanies) ByInvite(_ context.Context, invite string) (*Company, error) {
+	for _, c := range s.m {
+		if c.Invite == invite {
+			return &c, nil
+		}
+	}
+	return nil, nil
+}

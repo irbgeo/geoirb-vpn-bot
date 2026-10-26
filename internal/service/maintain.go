@@ -13,6 +13,11 @@ const (
 	remind1d = 24 * time.Hour
 )
 
+// staleKeyAge: a key that ended this long ago and was not extended is
+// deleted, so its IP goes back to the subnet (a mass of old trials would
+// otherwise fill it for good). Admin-blocked keys stay: the block must last.
+const staleKeyAge = 30 * 24 * time.Hour
+
 // Maintain is the periodic job: it disables keys whose term ended, picks
 // keys that need a "3 days" / "1 day" reminder, and measures the subnet.
 // Each reminder is marked sent before it is returned: a failed send loses
@@ -250,6 +255,13 @@ func skipKind(err error) string {
 // run must stop.
 func (s *service) maintainTerm(ctx context.Context, in maintainStep) bool {
 	p := in.Peer
+	if !p.Enabled && !p.Blocked && !p.ExpiresAt.IsZero() && time.Since(p.ExpiresAt) > staleKeyAge {
+		err := s.deletePeer(ctx, p) // off the server already: only the DB row goes
+		if err != nil {
+			log.Printf("service: delete stale key %s: %v", p.IP, err)
+		}
+		return false
+	}
 	if !p.Enabled || p.ExpiresAt.IsZero() {
 		return false
 	}

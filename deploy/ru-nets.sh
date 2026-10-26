@@ -18,8 +18,17 @@ STAMP="$STATE/ru-nets.stamp"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-if ! curl -fsS --max-time 60 --retry 3 -o "$tmp/ripe" "$URL"; then
+if ! curl -fsS --max-time 60 --retry 3 -o "$tmp/ripe" "$URL" ||
+  ! curl -fsS --max-time 60 --retry 3 -o "$tmp/ripe.md5" "$URL.md5"; then
   echo "ru-nets: download of $URL failed, the old set is kept" >&2
+  exit 1
+fi
+# RIPE publishes "MD5 (<file>) = <sum>" next to the file: a broken or
+# changed download must not decide which traffic skips the exit tunnel.
+want="$(awk '{print $NF}' "$tmp/ripe.md5")"
+got="$(md5sum "$tmp/ripe" | cut -d' ' -f1)"
+if [[ -z "$want" || "$want" != "$got" ]]; then
+  echo "ru-nets: $URL does not match its md5, the old set is kept" >&2
   exit 1
 fi
 
@@ -36,6 +45,13 @@ awk -F'|' '$2 == "RU" && $3 == "ipv4" {
     start += size; left -= size
   }
 }' "$tmp/ripe" >"$tmp/cidrs"
+
+# No Russian network is wider than /8: one bad row (a huge count) would
+# turn into 0.0.0.0/1 and send most client traffic out from the RU IP.
+if grep -qE '/[0-7]$' "$tmp/cidrs"; then
+  echo "ru-nets: a prefix wider than /8 in $URL, the old set is kept" >&2
+  exit 1
+fi
 
 n="$(wc -l <"$tmp/cidrs" | tr -d ' ')"
 if [[ "$n" -lt "$MIN" ]]; then

@@ -91,14 +91,24 @@ func (s *store) Disconnect(ctx context.Context) error {
 	return s.client.Disconnect(ctx)
 }
 
-// ensureIndexes creates the indexes correctness depends on. Payments need
-// none: _id is the charge ID, which already makes them unique.
-// ponytail: no lookup indexes — at most 254 peers per server and few
-// payments; add user_id / created_at indexes if listing gets slow.
+// ensureIndexes creates the indexes correctness depends on (one IP per
+// server, one company per invite) and the lookup indexes of every key
+// press and maintenance run: anyone can add user rows with /start, so a
+// scan would grow with them.
 func (s *store) ensureIndexes(ctx context.Context) error {
-	_, err := s.Peers.coll.Indexes().CreateOne(ctx, peerServerIPIndex())
-	if err != nil {
-		return fmt.Errorf("store: create peers index: %w", err)
+	for _, ix := range []indexSpec{
+		{Coll: s.Peers.coll, Model: peerServerIPIndex()},
+		{Coll: s.Peers.coll, Model: ascIndex("user_id")},
+		{Coll: s.Users.coll, Model: ascIndex("role")},
+		{Coll: s.Users.coll, Model: ascIndex("company_id")},
+		{Coll: s.Payments.coll, Model: ascIndex("user_id")},
+		{Coll: s.Payments.coll, Model: ascIndex("created_at")},
+		{Coll: s.Companies.coll, Model: inviteIndex()},
+	} {
+		_, err := ix.Coll.Indexes().CreateOne(ctx, ix.Model)
+		if err != nil {
+			return fmt.Errorf("store: create index on %s: %w", ix.Coll.Name(), err)
+		}
 	}
 	return nil
 }

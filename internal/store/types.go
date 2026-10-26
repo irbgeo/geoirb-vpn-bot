@@ -3,6 +3,8 @@ package store
 import (
 	"time"
 
+	"go.mongodb.org/mongo-driver/mongo"
+
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
@@ -27,8 +29,15 @@ type user struct {
 	CreatedAt time.Time `bson:"created_at"`
 }
 
+// indexSpec is one index of one collection (ensureIndexes).
+type indexSpec struct {
+	Coll  *mongo.Collection
+	Model mongo.IndexModel
+}
+
 type company struct {
 	ID            string    `bson:"_id"`
+	Invite        string    `bson:"invite,omitempty"`
 	Name          string    `bson:"name"`
 	LeaderID      int64     `bson:"leader_id"`
 	PaidUntil     time.Time `bson:"paid_until"`
@@ -42,6 +51,7 @@ type company struct {
 func companyToStore(c *service.Company) *company {
 	return &company{
 		ID:            c.ID,
+		Invite:        c.Invite,
 		Name:          c.Name,
 		LeaderID:      c.LeaderID,
 		PaidUntil:     c.PaidUntil,
@@ -53,9 +63,16 @@ func companyToStore(c *service.Company) *company {
 	}
 }
 
+// toService: a company stored before invites were apart from IDs has none;
+// its ID was its link, so that stays its invite.
 func (s *company) toService() *service.Company {
+	invite := s.Invite
+	if invite == "" {
+		invite = s.ID
+	}
 	return &service.Company{
 		ID:            s.ID,
+		Invite:        invite,
 		Name:          s.Name,
 		LeaderID:      s.LeaderID,
 		PaidUntil:     s.PaidUntil.UTC(),

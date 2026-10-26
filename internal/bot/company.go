@@ -5,12 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 
 	tgbot "github.com/irbgeo/go-tgbot"
 
 	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
+)
+
+// The values the admin keyboards offer; a forged button with any other
+// value is refused.
+var (
+	companyTerms = []int{1, 3, 6, 12} // months of a new company
+	extendMonths = []int{1, 6}        // months added by «➕»
+	issueDays    = []int{0, 7, 30, 90, 365}
 )
 
 // joinCompany handles /start with an invite code: the user is registered,
@@ -26,8 +35,8 @@ func (s *router) joinCompany(ctx context.Context, in joinRequest) error {
 		return err
 	}
 	joinCompanyInput := service.JoinCompanyInput{
-		UserID:    m.From.ID,
-		CompanyID: in.Code,
+		UserID: m.From.ID,
+		Invite: in.Code,
 	}
 	c, err := s.companies.JoinCompany(ctx, joinCompanyInput)
 	if err != nil {
@@ -208,7 +217,7 @@ func (s *router) sendCompanyCard(ctx context.Context, c companyCard) error {
 
 // companyView is what a company card shows, with its invite link.
 func (s *router) companyView(c companyCard) companyView {
-	link := s.inviteLink(c.Info.Company.ID)
+	link := s.inviteLink(c.Info.Company.Invite)
 	v := companyView{
 		Info:  c.Info,
 		Link:  link,
@@ -217,13 +226,50 @@ func (s *router) companyView(c companyCard) companyView {
 	return v
 }
 
-// inviteLink is t.me/<bot>?start=c_<id>, or the /start command when the
-// bot's username is unknown.
-func (s *router) inviteLink(companyID string) string {
+// inviteLink is t.me/<bot>?start=c_<invite>, or the /start command when
+// the bot's username is unknown.
+func (s *router) inviteLink(invite string) string {
 	if s.botUsername == "" {
-		return "/start " + companyStartPrefix + companyID
+		return "/start " + companyStartPrefix + invite
 	}
-	return "https://t.me/" + s.botUsername + "?start=" + companyStartPrefix + companyID
+	return "https://t.me/" + s.botUsername + "?start=" + companyStartPrefix + invite
+}
+
+// companyRotate replaces the invite link (the leader or an admin) and
+// shows the card with the new one.
+func (s *router) companyRotate(ctx context.Context, cq *tgbot.CallbackQuery) error {
+	companyID := strings.TrimPrefix(cq.Data, cbCompanyRotate)
+	rotateInviteInput := service.RotateInviteInput{
+		ActorID:   cq.SenderID(),
+		CompanyID: companyID,
+	}
+	_, err := s.companies.RotateInvite(ctx, rotateInviteInput)
+	if err != nil {
+		failure := errorReport{
+			ChatID: cq.ChatID(),
+			Err:    err,
+		}
+		return s.companyError(ctx, failure)
+	}
+
+	companyAccess := companyAccess{
+		ActorID:   cq.SenderID(),
+		CompanyID: companyID,
+	}
+	info, admin, err := s.companyFor(ctx, companyAccess)
+	if err != nil {
+		failure := errorReport{
+			ChatID: cq.ChatID(),
+			Err:    err,
+		}
+		return s.companyError(ctx, failure)
+	}
+	companyCard := companyCard{
+		ChatID: cq.ChatID(),
+		Info:   info,
+		Admin:  admin,
+	}
+	return s.sendCompanyCard(ctx, companyCard)
 }
 
 // adminCompany handles the admin's company buttons.
@@ -324,6 +370,13 @@ func (s *router) adminCompanyNamed(ctx context.Context, in companyNaming) error 
 	if err != nil {
 		return fmt.Errorf("bot: bad company prompt %q: %w", in.Arg, err)
 	}
+	if !slices.Contains(companyTerms, months) {
+		errorReport := errorReport{
+			ChatID: in.ChatID,
+			Err:    service.ErrBadCompany,
+		}
+		return s.reportError(ctx, errorReport)
+	}
 	createCompanyInput := service.CreateCompanyInput{
 		LeaderID: leader,
 		Name:     in.Name,
@@ -358,8 +411,8 @@ func (s *router) adminCompanyNamed(ctx context.Context, in companyNaming) error 
 func (s *router) adminCompanyExtend(ctx context.Context, a adminAction) error {
 	id, monthsText, _ := strings.Cut(a.Arg, ":")
 	months, err := strconv.Atoi(monthsText)
-	if err != nil {
-		return fmt.Errorf("bot: bad months in button %q: %w", a.Arg, err)
+	if err != nil || !slices.Contains(extendMonths, months) {
+		return fmt.Errorf("bot: bad months in button %q", a.Arg)
 	}
 	extendCompanyInput := service.ExtendCompanyInput{
 		CompanyID: id,

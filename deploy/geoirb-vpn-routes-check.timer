@@ -1,10 +1,13 @@
 [Unit]
-Description=Check the VPN split-routing rule and routes every minute
+Description=Check the VPN split-routing rule, routes and nft table every 15 seconds
 
+# A lost nft table (an `nft flush ruleset`, a start of nftables.service)
+# takes both fail-closed locks with it; this check puts it back, so the gap
+# is at most this long.
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=1min
-AccuracySec=5s
+OnUnitActiveSec=15s
+AccuracySec=1s
 
 [Install]
 WantedBy=timers.target

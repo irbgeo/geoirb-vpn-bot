@@ -39,6 +39,20 @@ func (s *companyRepo) Get(ctx context.Context, id string) (*service.Company, err
 	return c, nil
 }
 
+// ByInvite returns the company of an invite code, or (nil, nil).
+func (s *companyRepo) ByInvite(ctx context.Context, invite string) (*service.Company, error) {
+	var d company
+	err := s.coll.FindOne(ctx, byInvite(invite)).Decode(&d)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("store: company by invite: %w", err)
+	}
+	c := d.toService()
+	return c, nil
+}
+
 // Save replaces a stored company.
 func (s *companyRepo) Save(ctx context.Context, c *service.Company) error {
 	doc := companyToStore(c)

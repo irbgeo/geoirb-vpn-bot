@@ -74,6 +74,7 @@ type Feedback interface {
 type Companies interface {
 	CreateCompany(ctx context.Context, in service.CreateCompanyInput) (*service.Company, error)
 	JoinCompany(ctx context.Context, in service.JoinCompanyInput) (*service.Company, error)
+	RotateInvite(ctx context.Context, in service.RotateInviteInput) (*service.Company, error)
 	ExtendCompany(ctx context.Context, in service.ExtendCompanyInput) (*service.Company, error)
 	RemoveMember(ctx context.Context, in service.RemoveMemberInput) error
 	MyCompany(ctx context.Context, userID int64) (*service.CompanyInfo, error)
@@ -121,6 +122,7 @@ const (
 	cbMyCompany        = "co"
 	cbCompanyRemoveAsk = "cor?:"
 	cbCompanyRemove    = "cor:"
+	cbCompanyRotate    = "coi:" // + company ID: a new invite link
 	// companyStartPrefix starts the /start parameter of an invite link.
 	companyStartPrefix = "c_"
 )
@@ -133,6 +135,8 @@ const (
 const (
 	keyActionsPerMinute = 5
 	configsPerMinute    = 20
+	// joinsPerMinute: invite links one user may open in a minute.
+	joinsPerMinute = 5
 )
 
 // router turns Telegram updates into service calls and replies. Its own
@@ -167,8 +171,11 @@ type router struct {
 	feedbackLimit *rateLimit[int64]
 	// keyActions: reissues and deletes of one user per minute.
 	keyActions *rateLimit[int64]
-	// configResends: "config again" presses of one user per minute.
+	// configResends: "config again" and other read presses of one user per
+	// minute.
 	configResends *rateLimit[int64]
+	// joins: invite links one user opened per minute.
+	joins *rateLimit[int64]
 	// adminRepeats: admin buttons that add something on every press, by
 	// button data: one press per repeatPressGap.
 	adminRepeats *rateLimit[string]
@@ -208,6 +215,10 @@ func New(
 		configsPerMinute,
 		time.Minute,
 	)
+	joins := newRateLimit[int64](
+		joinsPerMinute,
+		time.Minute,
+	)
 	adminRepeats := newRateLimit[string](
 		1,
 		repeatPressGap,
@@ -232,6 +243,7 @@ func New(
 		feedbackLimit: feedbackLimit,
 		keyActions:    keyActions,
 		configResends: configResends,
+		joins:         joins,
 		adminRepeats:  adminRepeats,
 		pause:         50 * time.Millisecond,
 	}
@@ -353,6 +365,8 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.companyRemoveAsk(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbCompanyRemove):
 		return s.companyRemove(ctx, cq)
+	case strings.HasPrefix(cq.Data, cbCompanyRotate):
+		return s.companyRotate(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbReissue):
 		return s.reissueKey(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbDelete):
@@ -406,7 +420,10 @@ func (s *router) overLimit(cq *tgbot.CallbackQuery) bool {
 	switch {
 	case strings.HasPrefix(cq.Data, cbReissue), strings.HasPrefix(cq.Data, cbDelete):
 		return !s.keyActions.allow(cq.SenderID())
-	case strings.HasPrefix(cq.Data, cbConfig):
+	case strings.HasPrefix(cq.Data, cbConfig),
+		cq.Data == cbMyAccess, cq.Data == cbBuy, cq.Data == cbMyCompany,
+		strings.HasPrefix(cq.Data, cbReissueAsk), strings.HasPrefix(cq.Data, cbDeleteAsk):
+		// each reads the server (awg show) or the DB for one user
 		return !s.configResends.allow(cq.SenderID())
 	}
 	return false
@@ -417,6 +434,13 @@ func (s *router) overLimit(cq *tgbot.CallbackQuery) bool {
 func (s *router) start(ctx context.Context, m *tgbot.Message) error {
 	s.dialogs.drop(m.Chat.ID)
 	code, invited := inviteCodeOf(m.Text)
+	if invited && !s.joins.allow(m.From.ID) {
+		outMessage := outMessage{
+			ChatID: m.Chat.ID,
+			Text:   tooOftenText,
+		}
+		return s.send.Send(ctx, outMessage)
+	}
 	if invited {
 		joinRequest := joinRequest{
 			Message: m,
@@ -564,6 +588,10 @@ func createKeyErrorText(err error) (text string, known bool) {
 		return keyLimitText, true
 	case errors.Is(err, service.ErrCompanyEnded):
 		return companyEndedKeyText, true
+	case errors.Is(err, service.ErrTrialBusy):
+		return trialBusyText, true
+	case errors.Is(err, service.ErrBlocked):
+		return blockedNewKeyText, true
 	}
 	return internalErrorText, false
 }

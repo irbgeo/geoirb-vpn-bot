@@ -30,6 +30,8 @@ type UserRepository interface {
 type CompanyRepository interface {
 	Add(ctx context.Context, c *Company) error
 	Get(ctx context.Context, id string) (*Company, error)
+	// ByInvite finds the company of an invite code; (nil, nil) when none.
+	ByInvite(ctx context.Context, invite string) (*Company, error)
 	Save(ctx context.Context, c *Company) error
 	List(ctx context.Context) ([]*Company, error)
 }
