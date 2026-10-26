@@ -1291,7 +1291,9 @@ func companyText(v companyView) string {
 		b.WriteString("⛔️ Срок закончился, ключи сотрудников отключены.\n")
 	}
 	fmt.Fprintf(&b, "Сотрудники: %d из %d, ключей на человека: %d\n\n", v.Info.Employees(), c.MaxMembers, c.KeysPerMember)
-	b.WriteString("Ссылка для сотрудников (перешлите её им):\n" + v.Link + "\n\n")
+	b.WriteString("Ссылка для сотрудников (перешлите её им):\n")
+	b.WriteString(v.Link)
+	b.WriteString("\n\n")
 	var staff []string
 	for _, u := range v.Info.Members {
 		if u.ID == c.LeaderID {
@@ -1304,7 +1306,8 @@ func companyText(v companyView) string {
 		b.WriteString("Сотрудников пока нет.")
 		return b.String()
 	}
-	b.WriteString("Сотрудники:\n" + strings.Join(staff, "\n"))
+	b.WriteString("Сотрудники:\n")
+	b.WriteString(strings.Join(staff, "\n"))
 	return b.String()
 }
 
