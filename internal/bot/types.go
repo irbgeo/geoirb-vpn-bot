@@ -46,6 +46,62 @@ type cardView struct {
 	UserID   int64
 	Keys     []service.KeyInfo
 	Payments []*service.Payment
+	// CompanyID: the user's company ("" = none: the card offers to make
+	// them the leader of a new one).
+	CompanyID string
+}
+
+// companyView is a company card: for its leader, or for an admin (Admin:
+// extend buttons and the way back to the list).
+type companyView struct {
+	Info  *service.CompanyInfo
+	Link  string // the invite link
+	Admin bool
+}
+
+// joinRequest is a /start with a company's invite code.
+type joinRequest struct {
+	Message *tgbot.Message
+	Code    string
+}
+
+// companyAccess is someone opening a company's card or acting on it: its
+// leader, or an admin.
+type companyAccess struct {
+	ActorID   int64
+	CompanyID string
+}
+
+// memberRef is one employee of a company, as a button names them.
+type memberRef struct {
+	CompanyID string
+	UserID    int64
+}
+
+// String is the button form "<company id>:<user id>".
+func (s memberRef) String() string {
+	return s.CompanyID + ":" + strconv.FormatInt(s.UserID, 10)
+}
+
+// companyCard is a company card to send: to its leader, or to an admin.
+type companyCard struct {
+	ChatID int64
+	Info   *service.CompanyInfo
+	Admin  bool
+}
+
+// removeAsk is the question before removing an employee.
+type removeAsk struct {
+	Info   *service.CompanyInfo
+	UserID int64
+}
+
+// companyNaming is the admin's text after "company for <user>, <months>":
+// the company's name. Arg is the prompt's "<leader id>:<months>".
+type companyNaming struct {
+	ChatID int64
+	Arg    string
+	Name   string
 }
 
 // paymentRef names one payment in a button: Telegram charge IDs are too
@@ -181,11 +237,12 @@ type keyNotice struct {
 type pendingKind int
 
 const (
-	pendingBroadcast pendingKind = iota + 1 // admin: text of a broadcast
-	readyBroadcast                          // admin: text given, waiting for "send"
-	pendingKeyName                          // user: the name of the key to create
-	pendingFeedback                         // user: a review or suggestion
-	readyConfigs                            // admin: "update configs" asked, waiting for "send"
+	pendingBroadcast   pendingKind = iota + 1 // admin: text of a broadcast
+	readyBroadcast                            // admin: text given, waiting for "send"
+	pendingKeyName                            // user: the name of the key to create
+	pendingFeedback                           // user: a review or suggestion
+	readyConfigs                              // admin: "update configs" asked, waiting for "send"
+	pendingCompanyName                        // admin: the name of a new company (Text: "<leader id>:<months>")
 )
 
 // takeResult says what dialogs.take found.
@@ -362,6 +419,10 @@ type Deps struct {
 	// empty = the guide is text only.
 	IPhoneVideo []byte
 	Notifier    *notifier
+	Companies   Companies
+	// BotUsername (without @) builds company invite links; "" = the card
+	// shows the /start command instead.
+	BotUsername string
 	// Config gives SupportContact (e.g. "@geoirb") and MaintenanceFlag (a
 	// file that exists while maintenance is on, so the state survives a
 	// restart; "" = kept in memory only).
@@ -393,6 +454,7 @@ type menuView struct {
 	Role        service.Role
 	Maintenance bool // admins see "end maintenance" instead of "maintenance"
 	SplitVideo  bool // there is a video on app split tunneling to offer
+	Leader      bool // a company's leader: «🏢 Моя компания»
 }
 
 // command is a /command a user sent (or a button standing in for one).

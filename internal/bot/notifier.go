@@ -104,9 +104,35 @@ func (s *notifier) DeliverMaintenance(ctx context.Context, m *service.Maintenanc
 			s.sendKeyNotice(ctx, keyNotice)
 		}
 	}
+	s.companyNotices(ctx, m)
 	s.subnetAlert(ctx, m)
 	s.stampAlerts(ctx)
 	s.onlineDropAlert(ctx, m)
+}
+
+// companyNotices tells employees their company's access ended (nothing to
+// buy: the company pays) and the leader and the admins that it ends soon.
+func (s *notifier) companyNotices(ctx context.Context, m *service.Maintenance) {
+	for _, ck := range m.CompanyExpired {
+		keyNotice := keyNotice{
+			Peer:    ck.Peer,
+			Text:    companyEndedText(ck),
+			NoOffer: true,
+		}
+		s.sendKeyNotice(ctx, keyNotice)
+	}
+	for _, r := range m.CompanyRemind {
+		text := companyRemindText(r)
+		outMessage := outMessage{
+			ChatID: r.Company.LeaderID,
+			Text:   text,
+		}
+		err := s.send.Send(ctx, outMessage)
+		if err != nil {
+			log.Printf("bot: company reminder to %d: %v", r.Company.LeaderID, err)
+		}
+		s.NotifyAdmins(ctx, text)
+	}
 }
 
 // WatchServerLoad runs CheckServerLoad every minute until ctx is done.

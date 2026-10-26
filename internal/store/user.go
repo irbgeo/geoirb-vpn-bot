@@ -90,6 +90,31 @@ func (s *userRepo) ByRole(ctx context.Context, role service.Role) ([]*service.Us
 	return usersToService(docs), nil
 }
 
+// SetMembership sets the role and the company (unset when "") and marks
+// the trial used; a user without a row is left alone.
+func (s *userRepo) SetMembership(ctx context.Context, m service.Membership) error {
+	update := setMembership(m)
+	_, err := s.coll.UpdateOne(ctx, byID(m.UserID), update)
+	if err != nil {
+		return fmt.Errorf("store: set membership of %d: %w", m.UserID, err)
+	}
+	return nil
+}
+
+// ByCompany returns every member of the company, oldest first.
+func (s *userRepo) ByCompany(ctx context.Context, companyID string) ([]*service.User, error) {
+	cur, err := s.coll.Find(ctx, byCompany(companyID), oldestFirst())
+	if err != nil {
+		return nil, fmt.Errorf("store: users of company %s: %w", companyID, err)
+	}
+	var docs []user
+	err = cur.All(ctx, &docs)
+	if err != nil {
+		return nil, fmt.Errorf("store: decode users: %w", err)
+	}
+	return usersToService(docs), nil
+}
+
 // List returns one page of users grouped by role (users, unlimited,
 // admins), newest first inside a role, and the total count.
 func (s *userRepo) List(ctx context.Context, p service.Page) ([]*service.User, int64, error) {

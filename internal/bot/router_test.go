@@ -183,6 +183,17 @@ type fakeService struct {
 	recipientsRoles []service.Role
 	configErr       error
 	enableErr       error
+	// companies
+	companyID   string               // User returns it as CompanyID
+	company     *service.CompanyInfo // MyCompany / Company return it
+	companyList []*service.Company
+	companyErr  error // MyCompany fails (ErrNotLeader for a plain member)
+	joinErr     error
+	joined      []service.JoinCompanyInput
+	createdCo   []service.CreateCompanyInput
+	extendedCo  []service.ExtendCompanyInput
+	removed     []service.RemoveMemberInput
+	removeErr   error
 }
 
 func (s *fakeService) Stats(context.Context) (*service.Stats, error) {
@@ -287,6 +298,7 @@ func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
 		Username:  "bob",
 		Role:      s.role,
 		KeysCount: len(s.access),
+		CompanyID: s.companyID,
 	}, nil
 }
 
@@ -390,9 +402,10 @@ func (s *fakeService) Reconcile(context.Context) (*service.ReconcileReport, erro
 func (s *fakeService) Register(_ context.Context, in service.RegisterInput) (*service.User, error) {
 	s.registered = append(s.registered, in)
 	return &service.User{
-		ID:       in.ID,
-		Username: in.Username,
-		Role:     s.role,
+		ID:        in.ID,
+		Username:  in.Username,
+		Role:      s.role,
+		CompanyID: s.companyID,
 	}, nil
 }
 
@@ -417,12 +430,14 @@ func newRouterWith(svc *fakeService, cfg *config.Config) (*router, *fakeSender) 
 	}
 	r := New(
 		&Deps{
-			Users:    svc,
-			Keys:     svc,
-			Billing:  svc,
-			Ops:      svc,
-			Feedback: svc,
-			Sender:   s,
+			Users:       svc,
+			Keys:        svc,
+			Billing:     svc,
+			Ops:         svc,
+			Feedback:    svc,
+			Companies:   svc,
+			BotUsername: "testbot",
+			Sender:      s,
 			Notifier: NewNotifier(
 				svc,
 				s,
@@ -1116,4 +1131,47 @@ func inGroup(u tgbot.Update) tgbot.Update {
 		u.CallbackQuery.Message.Chat.Type = "supergroup"
 	}
 	return u
+}
+
+func (s *fakeService) CreateCompany(_ context.Context, in service.CreateCompanyInput) (*service.Company, error) {
+	s.createdCo = append(s.createdCo, in)
+	if s.companyErr != nil {
+		return nil, s.companyErr
+	}
+	return s.company.Company, nil
+}
+
+func (s *fakeService) JoinCompany(_ context.Context, in service.JoinCompanyInput) (*service.Company, error) {
+	s.joined = append(s.joined, in)
+	if s.joinErr != nil {
+		return nil, s.joinErr
+	}
+	s.role = service.RoleMember
+	s.companyID = in.CompanyID
+	return s.company.Company, nil
+}
+
+func (s *fakeService) ExtendCompany(_ context.Context, in service.ExtendCompanyInput) (*service.Company, error) {
+	s.extendedCo = append(s.extendedCo, in)
+	return s.company.Company, nil
+}
+
+func (s *fakeService) RemoveMember(_ context.Context, in service.RemoveMemberInput) error {
+	s.removed = append(s.removed, in)
+	return s.removeErr
+}
+
+func (s *fakeService) MyCompany(context.Context, int64) (*service.CompanyInfo, error) {
+	if s.companyErr != nil {
+		return nil, s.companyErr
+	}
+	return s.company, nil
+}
+
+func (s *fakeService) Company(context.Context, string) (*service.CompanyInfo, error) {
+	return s.company, nil
+}
+
+func (s *fakeService) Companies(context.Context) ([]*service.Company, error) {
+	return s.companyList, nil
 }

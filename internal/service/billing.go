@@ -216,6 +216,9 @@ func (s *service) checkBuyer(ctx context.Context, in PurchaseInput) (*Peer, erro
 	if err != nil {
 		return nil, err
 	}
+	if u.Role == RoleMember {
+		return nil, ErrCompanyPaid
+	}
 	if u.Role != RoleUser {
 		return nil, ErrNotForSale
 	}

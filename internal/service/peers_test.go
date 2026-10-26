@@ -14,11 +14,12 @@ import (
 var now = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).Local()
 
 type env struct {
-	svc      *service
-	peers    *fakePeers
-	payments *fakePayments
-	feedback *fakeFeedback
-	vpn      *fakeVPN
+	svc       *service
+	peers     *fakePeers
+	payments  *fakePayments
+	feedback  *fakeFeedback
+	vpn       *fakeVPN
+	companies *fakeCompanies
 }
 
 func newEnv() *env {
@@ -27,6 +28,9 @@ func newEnv() *env {
 	}
 	vpn := newFakeVPN()
 	feedback := &fakeFeedback{}
+	companies := &fakeCompanies{
+		m: map[string]Company{},
+	}
 	payments := &fakePayments{
 		m: map[string]Payment{},
 	}
@@ -35,10 +39,11 @@ func newEnv() *env {
 			Users: &fakeUsers{
 				m: map[int64]User{},
 			},
-			Peers:    peers,
-			Payments: payments,
-			Feedback: feedback,
-			VPN:      vpn,
+			Peers:     peers,
+			Payments:  payments,
+			Feedback:  feedback,
+			Companies: companies,
+			VPN:       vpn,
 			Settings: Settings{
 				ServerID:     "srv",
 				EndpointHost: "vpn.example.com",
@@ -59,11 +64,12 @@ func newEnv() *env {
 		},
 	)
 	return &env{
-		svc:      svc,
-		peers:    peers,
-		payments: payments,
-		feedback: feedback,
-		vpn:      vpn,
+		svc:       svc,
+		peers:     peers,
+		payments:  payments,
+		feedback:  feedback,
+		vpn:       vpn,
+		companies: companies,
 	}
 }
 

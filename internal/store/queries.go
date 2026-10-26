@@ -32,6 +32,33 @@ func byRole(r service.Role) bson.M {
 	}
 }
 
+func byCompany(companyID string) bson.M {
+	return bson.M{
+		"company_id": companyID,
+	}
+}
+
+// setMembership sets the role and the company of a user and marks the
+// trial used; an empty company unsets the field.
+func setMembership(m service.Membership) bson.M {
+	set := bson.M{
+		"role":       string(m.Role),
+		"trial_used": true,
+	}
+	if m.CompanyID == "" {
+		return bson.M{
+			"$set": set,
+			"$unset": bson.M{
+				"company_id": "",
+			},
+		}
+	}
+	set["company_id"] = m.CompanyID
+	return bson.M{
+		"$set": set,
+	}
+}
+
 func byUserID(userID int64) bson.M {
 	return bson.M{
 		"user_id": userID,
@@ -201,6 +228,16 @@ func newestFirst() *options.FindOptions {
 	return options.Find().SetSort(
 		bson.D{
 			{Key: "created_at", Value: -1},
+		},
+	)
+}
+
+// oldestFirst sorts by creation time, then by _id for equal times.
+func oldestFirst() *options.FindOptions {
+	return options.Find().SetSort(
+		bson.D{
+			{Key: "created_at", Value: 1},
+			{Key: "_id", Value: 1},
 		},
 	)
 }

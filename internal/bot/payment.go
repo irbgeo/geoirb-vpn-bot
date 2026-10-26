@@ -267,6 +267,8 @@ func invoiceErrorText(err error) (text string, known bool) {
 		return keyNotFoundText, true
 	case errors.Is(err, service.ErrKeyLimit):
 		return userKeyLimitText, true
+	case errors.Is(err, service.ErrCompanyPaid):
+		return companyPaysText, true
 	}
 	return invoiceFailedText, false
 }
@@ -281,6 +283,8 @@ func preCheckoutErrorText(err error) string {
 		return unreadableKeyBuyText
 	case errors.Is(err, service.ErrKeyLimit):
 		return userKeyLimitText
+	case errors.Is(err, service.ErrCompanyPaid):
+		return companyPaysText
 	}
 	return staleInvoiceText
 }

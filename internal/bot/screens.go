@@ -201,6 +201,8 @@ func greeting(u *service.User) string {
 		return fmt.Sprintf("Привет! У вас безлимитный доступ: до %d ключей без срока. Нажмите кнопку, чтобы получить ключ.", service.MaxUnlimitedKeys)
 	case service.RoleVIP:
 		return fmt.Sprintf("Привет! У вас VIP-доступ: до %d ключей без срока. Нажмите кнопку, чтобы получить ключ.", u.KeyLimit())
+	case service.RoleMember:
+		return "Привет! Ваш доступ оплачивает компания, ключи бесплатные. Нажмите кнопку, чтобы получить ключ."
 	default:
 		return "Привет! Нажмите «🔑 Получить ключ»: первый ключ даётся с бесплатным пробным периодом."
 	}
@@ -217,6 +219,9 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 	if role == service.RoleUser {
 		rows = append(rows, tgbot.Row(tgbot.Button("💳 Купить / продлить", cbBuy)))
 	}
+	if v.Leader {
+		rows = append(rows, tgbot.Row(tgbot.Button("🏢 Моя компания", cbMyCompany)))
+	}
 	if v.SplitVideo {
 		rows = append(rows, tgbot.Row(tgbot.Button("📱 РФ приложения", cbSplitAsk)))
 	}
@@ -229,6 +234,7 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 		rows = append(
 			rows,
 			tgbot.Row(tgbot.Button("👥 Пользователи", cbAdminUsers+"0")),
+			tgbot.Row(tgbot.Button("🏢 Компании", cbAdminCos)),
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
 			tgbot.Row(tgbot.Button("💡 Отзывы", cbAdminFb+"0")),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
@@ -933,6 +939,11 @@ func userCardKeyboard(v cardView) *tgbot.InlineKeyboardMarkup {
 			rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminRef+ref.String())))
 		}
 	}
+	if v.CompanyID != "" {
+		rows = append(rows, tgbot.Row(tgbot.Button("🏢 Компания", cbAdminCo+v.CompanyID)))
+	} else {
+		rows = append(rows, tgbot.Row(tgbot.Button("🏢 Создать компанию", cbAdminCoNew+strconv.FormatInt(userID, 10))))
+	}
 	rows = append(
 		rows,
 		tgbot.Row(tgbot.Button("🔑 Выдать ключ", cbAdminIss+strconv.FormatInt(userID, 10))),
@@ -1158,6 +1169,14 @@ func adminErrorText(err error) (text string, known bool) {
 		return "⚠️ Данные ключа повреждены (не расшифровываются): вернуть его на сервер нельзя. Удалите ключ и выдайте новый.", true
 	case errors.Is(err, service.ErrBlocked):
 		return "⚠️ Ключ отключён администратором: сначала включите его.", true
+	case errors.Is(err, service.ErrCompanyRole):
+		return "⚠️ Админа нельзя сделать руководителем компании.", true
+	case errors.Is(err, service.ErrInCompany):
+		return "⚠️ Пользователь уже в компании.", true
+	case errors.Is(err, service.ErrBadCompany):
+		return "⚠️ Нужно название компании, до 64 символов.", true
+	case errors.Is(err, service.ErrNoCompany):
+		return "⚠️ Компания не найдена.", true
 	}
 	return "⚠️ Не получилось, подробности в журнале бота.", false
 }
@@ -1202,4 +1221,190 @@ func mskTime(t time.Time) string {
 
 func reconcileFailedText(err error) string {
 	return "⚠️ Сверка базы и сервера не удалась: " + err.Error()
+}
+
+// --- companies ---
+
+const (
+	companyLinkBadText   = "Ссылка-приглашение недействительна. Попросите у руководителя новую."
+	companyFullText      = "В компании нет свободных мест. Напишите руководителю."
+	companyEndedJoinText = "Доступ этой компании закончился. Напишите руководителю."
+	inOtherCompanyText   = "Вы уже подключены к другой компании. Чтобы перейти, попросите руководителя убрать вас из неё."
+	adminNoCompanyText   = "Админ не может быть сотрудником компании."
+	notLeaderText        = "Это может делать только руководитель компании."
+	isLeaderText         = "Руководителя убрать из компании нельзя."
+	memberGoneText       = "Этого сотрудника уже нет в компании."
+	companyPaysText      = "Ваш доступ оплачивает компания, платить не нужно."
+	companyEndedKeyText  = "Доступ компании закончился, новые ключи выдать нельзя. Напишите руководителю."
+	askCompanyNameText   = "✍️ Как называется компания? Это название увидят сотрудники."
+)
+
+// companyJoinErrorText explains why an invite link did not work.
+func companyJoinErrorText(err error) (text string, known bool) {
+	switch {
+	case errors.Is(err, service.ErrNoCompany):
+		return companyLinkBadText, true
+	case errors.Is(err, service.ErrCompanyFull):
+		return companyFullText, true
+	case errors.Is(err, service.ErrCompanyEnded):
+		return companyEndedJoinText, true
+	case errors.Is(err, service.ErrInCompany):
+		return inOtherCompanyText, true
+	case errors.Is(err, service.ErrCompanyRole):
+		return adminNoCompanyText, true
+	}
+	return internalErrorText, false
+}
+
+// companyErrorText explains a failed leader action.
+func companyErrorText(err error) (text string, known bool) {
+	switch {
+	case errors.Is(err, service.ErrNotLeader):
+		return notLeaderText, true
+	case errors.Is(err, service.ErrIsLeader):
+		return isLeaderText, true
+	case errors.Is(err, service.ErrNotFound):
+		return memberGoneText, true
+	case errors.Is(err, service.ErrNoCompany):
+		return companyLinkBadText, true
+	}
+	return ownKeyFailedText, false
+}
+
+func companyJoinedText(c *service.Company) string {
+	return fmt.Sprintf(
+		"🏢 Вы подключены к компании «%s». Доступ оплачен до %s, ключи бесплатные (до %d на человека). Нажмите «🔑 Получить ключ».",
+		c.Name,
+		mskTime(c.PaidUntil),
+		c.KeysPerMember,
+	)
+}
+
+// companyText is a company card: the paid date, seats, the invite link and
+// the people.
+func companyText(v companyView) string {
+	c := v.Info.Company
+	var b strings.Builder
+	fmt.Fprintf(&b, "🏢 Компания «%s»\n", c.Name)
+	fmt.Fprintf(&b, "Доступ оплачен до %s\n", mskTime(c.PaidUntil))
+	if !c.PaidUntil.After(time.Now()) {
+		b.WriteString("⛔️ Срок закончился, ключи сотрудников отключены.\n")
+	}
+	fmt.Fprintf(&b, "Сотрудники: %d из %d, ключей на человека: %d\n\n", v.Info.Employees(), c.MaxMembers, c.KeysPerMember)
+	b.WriteString("Ссылка для сотрудников (перешлите её им):\n" + v.Link + "\n\n")
+	var staff []string
+	for _, u := range v.Info.Members {
+		if u.ID == c.LeaderID {
+			fmt.Fprintf(&b, "Руководитель: %s\n", userLabel(u))
+			continue
+		}
+		staff = append(staff, "• "+userLabel(u))
+	}
+	if len(staff) == 0 {
+		b.WriteString("Сотрудников пока нет.")
+		return b.String()
+	}
+	b.WriteString("Сотрудники:\n" + strings.Join(staff, "\n"))
+	return b.String()
+}
+
+// companyKeyboard: "remove" per employee; for an admin also "+1 / +6
+// months" and the way back to the list.
+func companyKeyboard(v companyView) *tgbot.InlineKeyboardMarkup {
+	c := v.Info.Company
+	var rows [][]tgbot.InlineKeyboardButton
+	for _, u := range v.Info.Members {
+		if u.ID == c.LeaderID {
+			continue
+		}
+		ref := memberRef{
+			CompanyID: c.ID,
+			UserID:    u.ID,
+		}
+		rows = append(rows, tgbot.Row(tgbot.Button("🚫 Убрать: "+userLabel(u), cbCompanyRemoveAsk+ref.String())))
+	}
+	if !v.Admin {
+		rows = append(rows, menuRow())
+		return tgbot.InlineKeyboard(rows...)
+	}
+	rows = append(
+		rows,
+		tgbot.Row(
+			tgbot.Button("➕ 1 мес.", cbAdminCoExt+c.ID+":1"),
+			tgbot.Button("➕ 6 мес.", cbAdminCoExt+c.ID+":6"),
+		),
+		tgbot.Row(
+			tgbot.Button("◀️ К компаниям", cbAdminCos),
+			tgbot.Button("◀️ Меню", cbMenu),
+		),
+	)
+	return tgbot.InlineKeyboard(rows...)
+}
+
+func companiesText(list []*service.Company) string {
+	if len(list) == 0 {
+		return "🏢 Компаний пока нет. Создать — в карточке пользователя: «🏢 Создать компанию»."
+	}
+	return fmt.Sprintf("🏢 Компании: %d", len(list))
+}
+
+// companiesKeyboard: one button per company with its paid date.
+func companiesKeyboard(list []*service.Company) *tgbot.InlineKeyboardMarkup {
+	rows := make([][]tgbot.InlineKeyboardButton, 0, len(list)+1)
+	for _, c := range list {
+		label := c.Name + " · до " + c.PaidUntil.In(msk).Format("02.01.2006")
+		rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminCo+c.ID)))
+	}
+	rows = append(rows, menuRow())
+	return tgbot.InlineKeyboard(rows...)
+}
+
+func companyTermText(u *service.User) string {
+	return "🏢 Новая компания, руководитель — " + userLabel(u) + ". На какой срок оплачено?"
+}
+
+// companyTermKeyboard: 1 / 3 / 6 / 12 months, then back to the user card.
+func companyTermKeyboard(userID int64) *tgbot.InlineKeyboardMarkup {
+	prefix := cbAdminCoTerm + strconv.FormatInt(userID, 10) + ":"
+	return tgbot.InlineKeyboard(
+		tgbot.Row(
+			tgbot.Button("1 мес.", prefix+"1"),
+			tgbot.Button("3 мес.", prefix+"3"),
+			tgbot.Button("6 мес.", prefix+"6"),
+			tgbot.Button("12 мес.", prefix+"12"),
+		),
+		tgbot.Row(tgbot.Button("Отмена", cbAdminUser+strconv.FormatInt(userID, 10))),
+	)
+}
+
+// removeMemberAskText asks before removing an employee.
+func removeMemberAskText(in removeAsk) string {
+	who := "id " + strconv.FormatInt(in.UserID, 10)
+	for _, u := range in.Info.Members {
+		if u.ID == in.UserID {
+			who = userLabel(u)
+		}
+	}
+	return "🚫 Убрать " + who + " из компании «" + in.Info.Company.Name + "»?\n\n" +
+		"Его ключи сразу перестанут работать, место освободится."
+}
+
+// companyEndedText tells an employee their company's access ended.
+func companyEndedText(ck service.CompanyKey) string {
+	return "⛔️ Доступ компании «" + ck.Company + "» закончился, ключ " + ck.Peer.Name +
+		" отключён. Если компания продлит доступ, он заработает сам."
+}
+
+// companyRemindText tells the leader and the admins the paid date is near.
+func companyRemindText(r service.CompanyRemind) string {
+	left := "меньше 3 дней"
+	if r.Days == 1 {
+		left = "меньше суток"
+	}
+	return fmt.Sprintf(
+		"⏳ Доступ компании «%s» оплачен до %s, осталось %s. Потом ключи сотрудников отключатся.",
+		r.Company.Name,
+		mskTime(r.Company.PaidUntil),
+		left,
+	)
 }

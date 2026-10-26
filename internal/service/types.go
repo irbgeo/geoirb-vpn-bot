@@ -13,6 +13,7 @@ const (
 	RoleUser      Role = "user"      // trial + paid access
 	RoleUnlimited Role = "unlimited" // up to MaxUnlimitedKeys keys, never expire, free
 	RoleVIP       Role = "vip"       // like unlimited, but the key limit is users.max_keys
+	RoleMember    Role = "member"    // a company's leader or employee: free keys until the company's paid date
 	RoleAdmin     Role = "admin"     // admin panel; any number of forever keys
 )
 
@@ -25,8 +26,92 @@ type User struct {
 	KeysCount int // keys of this user in the peers collection, kept in step
 	// MaxKeys is a RoleVIP user's key limit, set by hand in the DB
 	// (users.max_keys); 0 = MaxUnlimitedKeys. Other roles ignore it.
-	MaxKeys   int
+	MaxKeys int
+	// CompanyID: the company of a RoleMember user ("" = none). Set by the bot
+	// (create, join, remove), unlike the role of other users.
+	CompanyID string
 	CreatedAt time.Time
+}
+
+// Company is a client that pays for its staff's access. Its members
+// (RoleMember) get free keys that end at PaidUntil.
+type Company struct {
+	ID            string // also the invite code: t.me/<bot>?start=c_<ID>
+	Name          string
+	LeaderID      int64 // a member too; sees the staff and removes them
+	PaidUntil     time.Time
+	MaxMembers    int // employees; the leader takes no seat
+	KeysPerMember int
+	// Reminded3d / Reminded1d: the leader and the admins were told the
+	// paid date is near. Reset on every extension.
+	Reminded3d bool
+	Reminded1d bool
+	CreatedAt  time.Time
+}
+
+// CompanyInfo is a company and its members, the leader among them.
+type CompanyInfo struct {
+	Company *Company
+	Members []*User
+}
+
+// Employees is how many seats are taken (the leader takes none).
+func (s *CompanyInfo) Employees() int {
+	n := 0
+	for _, u := range s.Members {
+		if u.ID != s.Company.LeaderID {
+			n++
+		}
+	}
+	return n
+}
+
+// CreateCompanyInput is an admin making a user the leader of a new company.
+type CreateCompanyInput struct {
+	LeaderID int64
+	Name     string
+	Months   int // paid term from now
+}
+
+// JoinCompanyInput is a user opening a company's invite link.
+type JoinCompanyInput struct {
+	UserID    int64
+	CompanyID string
+}
+
+// ExtendCompanyInput adds paid months to a company.
+type ExtendCompanyInput struct {
+	CompanyID string
+	Months    int
+}
+
+// RemoveMemberInput is the leader (or an admin, ActorID) removing an
+// employee from the company.
+type RemoveMemberInput struct {
+	ActorID   int64
+	CompanyID string
+	UserID    int64
+}
+
+// Membership is a user's role and company as the bot sets them; saving it
+// also marks the trial used (company staff never get one).
+type Membership struct {
+	UserID    int64
+	Role      Role
+	CompanyID string // "" = no company
+}
+
+// CompanyKey is a company key that just ended, with the company's name for
+// the notice.
+type CompanyKey struct {
+	Peer    *Peer
+	Company string
+}
+
+// CompanyRemind tells the leader and the admins that the paid date is near.
+type CompanyRemind struct {
+	Company *Company
+	Days    int // 3 or 1
 }
 
 // KeyLimit is how many keys the user may have; RoleAdmin has no limit
@@ -155,12 +240,13 @@ type Page struct {
 
 // Deps is everything New needs.
 type Deps struct {
-	Users    UserRepository
-	Peers    PeerRepository
-	Payments PaymentRepository
-	Feedback FeedbackRepository
-	VPN      VPN
-	Settings Settings
+	Users     UserRepository
+	Peers     PeerRepository
+	Payments  PaymentRepository
+	Feedback  FeedbackRepository
+	Companies CompanyRepository
+	VPN       VPN
+	Settings  Settings
 }
 
 // Settings are the per-server values the service needs.
@@ -220,6 +306,8 @@ type IssueInput struct {
 	UserID int64  // 0 = no Telegram user (admin-issued)
 	Name   string // shown in the Amnezia app, e.g. "tg:alice"
 	Days   int    // 0 = never expires
+	// Until, when set, is the end date (a company key); Days is ignored.
+	Until time.Time
 }
 
 // ExtendInput adds days to a key.
@@ -257,9 +345,13 @@ type Maintenance struct {
 	Expired     []*Peer // just disabled: their term ended
 	Remind3d    []*Peer // less than 3 days left
 	Remind1d    []*Peer // less than 1 day left
-	SubnetUsed  int     // client IPs taken (peers + reserved for disabled keys)
-	SubnetTotal int     // client IPs the subnet holds
-	Online      int     // peers with a handshake within onlineWindow; -1 = unknown
+	// CompanyExpired: company keys just disabled (the company's date
+	// passed); they get no per-key reminders.
+	CompanyExpired []CompanyKey
+	CompanyRemind  []CompanyRemind // a company's paid date is near
+	SubnetUsed     int             // client IPs taken (peers + reserved for disabled keys)
+	SubnetTotal    int             // client IPs the subnet holds
+	Online         int             // peers with a handshake within onlineWindow; -1 = unknown
 }
 
 // Stats is the admin overview of this server.
@@ -418,6 +510,33 @@ type logKey struct {
 type maintainStep struct {
 	Peer   *Peer
 	Report *Maintenance
+	// Company of the key's owner; nil = not a company key.
+	Company *Company
+}
+
+// companyReminders is Maintain's pass over the companies' paid dates.
+type companyReminders struct {
+	Companies []*Company
+	Report    *Maintenance
+}
+
+// companyEntry is a user entering a company (create or join).
+type companyEntry struct {
+	User    *User
+	Company *Company
+}
+
+// keysUntil is a user whose keys all get one end date (redateKeys).
+type keysUntil struct {
+	UserID int64
+	Until  time.Time
+}
+
+// memberKeyInput is a company member's request for a key.
+type memberKeyInput struct {
+	User *User
+	Name string
+	Have []*Peer // the keys they already have
 }
 
 // userKeys is a user and their keys, for numberedKeyName.

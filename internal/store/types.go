@@ -23,7 +23,48 @@ type user struct {
 	TrialUsed bool      `bson:"trial_used"`
 	KeysCount int       `bson:"keys_count"`
 	MaxKeys   int       `bson:"max_keys,omitempty"` // set by hand for vip users
+	CompanyID string    `bson:"company_id,omitempty"`
 	CreatedAt time.Time `bson:"created_at"`
+}
+
+type company struct {
+	ID            string    `bson:"_id"`
+	Name          string    `bson:"name"`
+	LeaderID      int64     `bson:"leader_id"`
+	PaidUntil     time.Time `bson:"paid_until"`
+	MaxMembers    int       `bson:"max_members"`
+	KeysPerMember int       `bson:"keys_per_member"`
+	Reminded3d    bool      `bson:"reminded_3d"`
+	Reminded1d    bool      `bson:"reminded_1d"`
+	CreatedAt     time.Time `bson:"created_at"`
+}
+
+func companyToStore(c *service.Company) *company {
+	return &company{
+		ID:            c.ID,
+		Name:          c.Name,
+		LeaderID:      c.LeaderID,
+		PaidUntil:     c.PaidUntil,
+		MaxMembers:    c.MaxMembers,
+		KeysPerMember: c.KeysPerMember,
+		Reminded3d:    c.Reminded3d,
+		Reminded1d:    c.Reminded1d,
+		CreatedAt:     c.CreatedAt,
+	}
+}
+
+func (s *company) toService() *service.Company {
+	return &service.Company{
+		ID:            s.ID,
+		Name:          s.Name,
+		LeaderID:      s.LeaderID,
+		PaidUntil:     s.PaidUntil.UTC(),
+		MaxMembers:    s.MaxMembers,
+		KeysPerMember: s.KeysPerMember,
+		Reminded3d:    s.Reminded3d,
+		Reminded1d:    s.Reminded1d,
+		CreatedAt:     s.CreatedAt.UTC(),
+	}
 }
 
 func userToStore(u *service.User) *user {
@@ -45,6 +86,7 @@ func (s *user) toService() *service.User {
 		TrialUsed: s.TrialUsed,
 		KeysCount: s.KeysCount,
 		MaxKeys:   s.MaxKeys,
+		CompanyID: s.CompanyID,
 		CreatedAt: s.CreatedAt,
 	}
 }

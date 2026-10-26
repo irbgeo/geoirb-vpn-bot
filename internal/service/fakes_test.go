@@ -444,3 +444,57 @@ func (s *fakeVPN) hasPeer(key string) bool {
 }
 
 var errBoom = errors.New("boom")
+
+func (s *fakeUsers) SetMembership(_ context.Context, m Membership) error {
+	u, ok := s.m[m.UserID]
+	if !ok {
+		return nil
+	}
+	u.Role = m.Role
+	u.CompanyID = m.CompanyID
+	u.TrialUsed = true
+	s.m[m.UserID] = u
+	return nil
+}
+
+func (s *fakeUsers) ByCompany(_ context.Context, companyID string) ([]*User, error) {
+	var out []*User
+	for _, u := range s.m {
+		if u.CompanyID == companyID {
+			out = append(out, &u)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+type fakeCompanies struct {
+	m map[string]Company
+}
+
+func (s *fakeCompanies) Add(_ context.Context, c *Company) error {
+	s.m[c.ID] = *c
+	return nil
+}
+
+func (s *fakeCompanies) Get(_ context.Context, id string) (*Company, error) {
+	c, ok := s.m[id]
+	if !ok {
+		return nil, nil
+	}
+	return &c, nil
+}
+
+func (s *fakeCompanies) Save(_ context.Context, c *Company) error {
+	s.m[c.ID] = *c
+	return nil
+}
+
+func (s *fakeCompanies) List(context.Context) ([]*Company, error) {
+	var out []*Company
+	for _, c := range s.m {
+		out = append(out, &c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}

@@ -40,6 +40,9 @@ func (s *service) Maintain(ctx context.Context) (*Maintenance, error) {
 	m.Expired = publicAll(m.Expired)
 	m.Remind3d = publicAll(m.Remind3d)
 	m.Remind1d = publicAll(m.Remind1d)
+	for i := range m.CompanyExpired {
+		m.CompanyExpired[i].Peer = m.CompanyExpired[i].Peer.public()
+	}
 	return m, nil
 }
 
@@ -56,23 +59,114 @@ func (s *service) maintainKeys(ctx context.Context) (*Maintenance, error) {
 	if err != nil {
 		return nil, err
 	}
+	companies, err := s.companies.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	members, err := s.memberCompanies(ctx, companies)
+	if err != nil {
+		return nil, err
+	}
 	m := &Maintenance{}
 	for _, p := range ps {
 		maintainStep := maintainStep{
-			Peer:   p,
-			Report: m,
+			Peer:    p,
+			Report:  m,
+			Company: members[p.UserID],
 		}
 		var stop bool
-		if forever[p.UserID] && !p.ExpiresAt.IsZero() {
+		switch {
+		case maintainStep.Company != nil:
+			stop = s.maintainCompanyKey(ctx, maintainStep)
+		case forever[p.UserID] && !p.ExpiresAt.IsZero():
 			stop = s.maintainForever(ctx, maintainStep)
-		} else {
+		default:
 			stop = s.maintainTerm(ctx, maintainStep)
 		}
 		if stop {
 			break // the server is likely down: the next run retries
 		}
 	}
+	companyReminders := companyReminders{
+		Companies: companies,
+		Report:    m,
+	}
+	s.remindCompanies(ctx, companyReminders)
 	return m, nil
+}
+
+// memberCompanies maps each company member to their company.
+func (s *service) memberCompanies(ctx context.Context, companies []*Company) (map[int64]*Company, error) {
+	byID := make(map[string]*Company, len(companies))
+	for _, c := range companies {
+		byID[c.ID] = c
+	}
+	us, err := s.users.ByRole(ctx, RoleMember)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]*Company, len(us))
+	for _, u := range us {
+		c, ok := byID[u.CompanyID]
+		if ok {
+			out[u.ID] = c
+		}
+	}
+	return out, nil
+}
+
+// maintainCompanyKey disables a company key whose end date passed and
+// reports it with the company's name. Company keys get no per-key
+// reminders: the leader and the admins get one per company. It reports
+// true when the run must stop.
+func (s *service) maintainCompanyKey(ctx context.Context, in maintainStep) bool {
+	p := in.Peer
+	if !p.Enabled || p.ExpiresAt.IsZero() || time.Until(p.ExpiresAt) > 0 {
+		return false
+	}
+	err := s.disablePeer(ctx, p)
+	if err != nil {
+		log.Printf("service: expire %s: %v", p.IP, err)
+		return true
+	}
+	companyKey := CompanyKey{
+		Peer:    p,
+		Company: in.Company.Name,
+	}
+	in.Report.CompanyExpired = append(in.Report.CompanyExpired, companyKey)
+	return false
+}
+
+// remindCompanies marks and reports the companies whose paid date is
+// within 3 days, or within 1 day, once each; marked before reporting, like
+// the key reminders.
+func (s *service) remindCompanies(ctx context.Context, in companyReminders) {
+	for _, c := range in.Companies {
+		left := time.Until(c.PaidUntil)
+		days := 0
+		switch {
+		case left <= 0:
+		case left <= remind1d && !c.Reminded1d:
+			c.Reminded1d, c.Reminded3d = true, true
+			days = 1
+		case left <= remind3d && !c.Reminded3d:
+			c.Reminded3d = true
+			days = 3
+		}
+		if days == 0 {
+			continue
+		}
+		err := s.companies.Save(ctx, c)
+		if err != nil {
+			log.Printf("service: maintain: save company %s: %v", c.ID, err)
+			continue
+		}
+		companyRemind := CompanyRemind{
+			Company: c,
+			Days:    days,
+		}
+		in.Report.CompanyRemind = append(in.Report.CompanyRemind, companyRemind)
+	}
 }
 
 // foreverOwners are the users whose keys never expire: unlimited, vip

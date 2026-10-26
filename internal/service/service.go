@@ -29,12 +29,13 @@ var ErrNoPrivateKey = errors.New("service: key has no private key (imported)")
 
 // service is the bot's business logic. It knows nothing about Telegram.
 type service struct {
-	users    UserRepository
-	peers    PeerRepository
-	payments PaymentRepository
-	feedback FeedbackRepository
-	vpn      VPN
-	cfg      Settings
+	users     UserRepository
+	peers     PeerRepository
+	payments  PaymentRepository
+	feedback  FeedbackRepository
+	companies CompanyRepository
+	vpn       VPN
+	cfg       Settings
 	// ponytail: one lock for every key change (issue, extend, disable…), so a
 	// payment and an admin action on the same key can't overwrite each other.
 	// Per-key locks if this ever becomes a bottleneck.
@@ -48,11 +49,12 @@ func New(
 	d *Deps,
 ) *service {
 	return &service{
-		users:    d.Users,
-		peers:    d.Peers,
-		payments: d.Payments,
-		feedback: d.Feedback,
-		vpn:      d.VPN,
-		cfg:      d.Settings,
+		users:     d.Users,
+		peers:     d.Peers,
+		payments:  d.Payments,
+		feedback:  d.Feedback,
+		companies: d.Companies,
+		vpn:       d.VPN,
+		cfg:       d.Settings,
 	}
 }

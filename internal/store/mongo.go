@@ -13,11 +13,12 @@ import (
 
 // store wraps a MongoDB connection and exposes repositories.
 type store struct {
-	client   *mongo.Client
-	Users    *userRepo
-	Peers    *peerRepo
-	Payments *paymentRepo
-	Feedback *feedbackRepo
+	client    *mongo.Client
+	Users     *userRepo
+	Peers     *peerRepo
+	Payments  *paymentRepo
+	Feedback  *feedbackRepo
+	Companies *companyRepo
 }
 
 // Compile-time checks that the repos satisfy the service ports.
@@ -26,6 +27,7 @@ var (
 	_ service.PeerRepository     = (*peerRepo)(nil)
 	_ service.PaymentRepository  = (*paymentRepo)(nil)
 	_ service.FeedbackRepository = (*feedbackRepo)(nil)
+	_ service.CompanyRepository  = (*companyRepo)(nil)
 )
 
 // Connect dials MongoDB (MongoURI, database MongoDB), verifies the
@@ -61,12 +63,15 @@ func Connect(
 	payments := newPaymentRepo(paymentsColl)
 	feedbackColl := db.Collection("feedback")
 	feedbacks := newFeedbackRepo(feedbackColl)
+	companiesColl := db.Collection("companies")
+	companies := newCompanyRepo(companiesColl)
 	s := &store{
-		client:   client,
-		Users:    users,
-		Peers:    peers,
-		Payments: payments,
-		Feedback: feedbacks,
+		client:    client,
+		Users:     users,
+		Peers:     peers,
+		Payments:  payments,
+		Feedback:  feedbacks,
+		Companies: companies,
 	}
 	err = s.ensureIndexes(ctx)
 	if err != nil {

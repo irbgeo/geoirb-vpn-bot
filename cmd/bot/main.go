@@ -57,11 +57,12 @@ func main() {
 	slices.SortFunc(tariffs, func(a, b service.Tariff) int { return a.Days - b.Days })
 
 	serviceDeps := service.Deps{
-		Users:    st.Users,
-		Peers:    st.Peers,
-		Payments: st.Payments,
-		Feedback: st.Feedback,
-		VPN:      vpn,
+		Users:     st.Users,
+		Peers:     st.Peers,
+		Payments:  st.Payments,
+		Feedback:  st.Feedback,
+		Companies: st.Companies,
+		VPN:       vpn,
 		Settings: service.Settings{
 			ServerID:     cfg.ServerID,
 			EndpointHost: cfg.EndpointHost,
@@ -82,6 +83,12 @@ func main() {
 		log.Fatalf("fatal: %v", err)
 	}
 	sender := bot.NewTelegramSender(client, uploads)
+	// The bot's username builds company invite links; without it the
+	// company card shows the /start command instead.
+	me, err := client.GetMe(ctx)
+	if err != nil {
+		log.Printf("telegram: get me: %v", err)
+	}
 
 	// Server load alerts watch this machine's limits. Off Linux (the bot run
 	// on a laptop) there is no /proc and the monitor checks nothing.
@@ -107,6 +114,8 @@ func main() {
 		SplitVideo:  splitVideo,
 		IPhoneVideo: iphoneVideo,
 		Notifier:    notifier,
+		Companies:   svc,
+		BotUsername: me.Username,
 		Config:      cfg,
 	}
 	router := bot.New(&deps)

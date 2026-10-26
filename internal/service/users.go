@@ -65,6 +65,7 @@ func (s *service) Admins(ctx context.Context) ([]*User, error) {
 //     keys count too (they keep their slot and IP).
 //   - RoleVIP: the same, up to User.KeyLimit (users.max_keys).
 //   - RoleAdmin: never-expiring keys, no limit.
+//   - RoleMember: up to the company's KeysPerMember keys, ending with it.
 //
 // Counting and issuing run under one lock, so two quick taps can't create
 // an extra key.
@@ -87,6 +88,15 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	have, err := s.peers.ByUser(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	if u.Role == RoleMember {
+		memberKeyInput := memberKeyInput{
+			User: u,
+			Name: name,
+			Have: have,
+		}
+		p, err := s.issueMemberKey(ctx, memberKeyInput)
+		return p.public(), err
 	}
 	keyQuota := keyQuota{
 		User: u,
@@ -134,6 +144,10 @@ func (s *service) CheckCreateKey(ctx context.Context, userID int64) error {
 	keyQuota := keyQuota{
 		User: u,
 		Keys: len(have),
+	}
+	if u.Role == RoleMember {
+		_, err = s.checkMemberKey(ctx, keyQuota)
+		return err
 	}
 	return canCreate(keyQuota)
 }

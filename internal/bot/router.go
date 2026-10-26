@@ -69,6 +69,18 @@ type Feedback interface {
 	Feedbacks(ctx context.Context, p service.Page) ([]*service.Feedback, int64, error)
 }
 
+// Companies are clients that pay for their staff: invite links, the
+// leader's view, the admin's list.
+type Companies interface {
+	CreateCompany(ctx context.Context, in service.CreateCompanyInput) (*service.Company, error)
+	JoinCompany(ctx context.Context, in service.JoinCompanyInput) (*service.Company, error)
+	ExtendCompany(ctx context.Context, in service.ExtendCompanyInput) (*service.Company, error)
+	RemoveMember(ctx context.Context, in service.RemoveMemberInput) error
+	MyCompany(ctx context.Context, userID int64) (*service.CompanyInfo, error)
+	Company(ctx context.Context, id string) (*service.CompanyInfo, error)
+	Companies(ctx context.Context) ([]*service.Company, error)
+}
+
 // ServerLoad says which server limits were just passed or are back to
 // normal (the sysload monitor).
 type ServerLoad interface {
@@ -104,6 +116,13 @@ const (
 	// cbSplitIPhone: iPhone and iPad. Messages sent before this guide carry
 	// one button for iPhone, iPad, Mac and Linux with cbSplitNone.
 	cbSplitIPhone = "split:iphone"
+	// Company leader: the card, and removing an employee
+	// ("<company id>:<user id>"; an admin's card uses the same buttons).
+	cbMyCompany        = "co"
+	cbCompanyRemoveAsk = "cor?:"
+	cbCompanyRemove    = "cor:"
+	// companyStartPrefix starts the /start parameter of an invite link.
+	companyStartPrefix = "c_"
 )
 
 // keyActionsPerMinute: how many reissues and deletes one user may ask for in
@@ -119,14 +138,17 @@ const (
 // router turns Telegram updates into service calls and replies. Its own
 // state is kept in small types with their own locks (state.go).
 type router struct {
-	users    Users
-	keys     Keys
-	billing  Billing
-	ops      Ops
-	feedback Feedback
-	send     Sender
-	notify   *notifier
-	support  string // support contact
+	users     Users
+	keys      Keys
+	billing   Billing
+	ops       Ops
+	feedback  Feedback
+	companies Companies
+	send      Sender
+	// botUsername builds invite links (t.me/<bot>?start=c_<id>).
+	botUsername string
+	notify      *notifier
+	support     string // support contact
 	// splitVideo: the guide on app split tunneling (Android, Windows); no
 	// video = no such step.
 	splitVideo *videoGuide
@@ -196,6 +218,8 @@ func New(
 		billing:       d.Billing,
 		ops:           d.Ops,
 		feedback:      d.Feedback,
+		companies:     d.Companies,
+		botUsername:   d.BotUsername,
 		send:          d.Sender,
 		support:       d.Config.SupportContact,
 		splitVideo:    splitVideo,
@@ -323,6 +347,12 @@ func (s *router) callback(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.askFeedback(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbReissueAsk), strings.HasPrefix(cq.Data, cbDeleteAsk):
 		return s.askOwnKeyAction(ctx, cq)
+	case cq.Data == cbMyCompany:
+		return s.myCompany(ctx, cq)
+	case strings.HasPrefix(cq.Data, cbCompanyRemoveAsk):
+		return s.companyRemoveAsk(ctx, cq)
+	case strings.HasPrefix(cq.Data, cbCompanyRemove):
+		return s.companyRemove(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbReissue):
 		return s.reissueKey(ctx, cq)
 	case strings.HasPrefix(cq.Data, cbDelete):
@@ -386,6 +416,14 @@ func (s *router) overLimit(cq *tgbot.CallbackQuery) bool {
 // the main menu. /start and /menu are a way out of any prompt.
 func (s *router) start(ctx context.Context, m *tgbot.Message) error {
 	s.dialogs.drop(m.Chat.ID)
+	code, invited := inviteCodeOf(m.Text)
+	if invited {
+		joinRequest := joinRequest{
+			Message: m,
+			Code:    code,
+		}
+		return s.joinCompany(ctx, joinRequest)
+	}
 	menu, err := s.mainMenu(ctx, m.From)
 	if err != nil {
 		return err
@@ -472,15 +510,23 @@ func (s *router) mainMenu(ctx context.Context, from *tgbot.User) (*menuScreen, e
 	if err != nil {
 		return nil, err
 	}
+	menu := s.menuFor(ctx, u)
+	return menu, nil
+}
+
+// menuFor builds the main menu for the user's role.
+func (s *router) menuFor(ctx context.Context, u *service.User) *menuScreen {
 	menuView := menuView{
 		Role:        u.Role,
 		Maintenance: u.Role == service.RoleAdmin && s.maint.on(),
 		SplitVideo:  !s.splitVideo.file.empty(),
+		Leader:      s.isLeader(ctx, u),
 	}
-	return &menuScreen{
+	menu := &menuScreen{
 		Text:     greeting(u),
 		Keyboard: mainKeyboard(menuView),
-	}, nil
+	}
+	return menu
 }
 
 // keyStepApps is step 1 of getting a key: which app to install, with
@@ -516,6 +562,8 @@ func createKeyErrorText(err error) (text string, known bool) {
 		return trialUsedText, true
 	case errors.Is(err, service.ErrKeyLimit):
 		return keyLimitText, true
+	case errors.Is(err, service.ErrCompanyEnded):
+		return companyEndedKeyText, true
 	}
 	return internalErrorText, false
 }

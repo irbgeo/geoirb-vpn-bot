@@ -20,6 +20,18 @@ type UserRepository interface {
 	SetKeyCounts(ctx context.Context, counts map[int64]int) error
 	List(ctx context.Context, p Page) ([]*User, int64, error)
 	ByRole(ctx context.Context, r Role) ([]*User, error)
+	// SetMembership sets the role and company (unset when "") and marks
+	// the trial used; a user without a row is left alone.
+	SetMembership(ctx context.Context, m Membership) error
+	ByCompany(ctx context.Context, companyID string) ([]*User, error)
+}
+
+// CompanyRepository stores companies. Get returns (nil, nil) when not found.
+type CompanyRepository interface {
+	Add(ctx context.Context, c *Company) error
+	Get(ctx context.Context, id string) (*Company, error)
+	Save(ctx context.Context, c *Company) error
+	List(ctx context.Context) ([]*Company, error)
 }
 
 // PeerRepository stores issued keys. Get returns (nil, nil) when not found.

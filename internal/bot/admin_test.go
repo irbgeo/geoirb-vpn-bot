@@ -159,6 +159,7 @@ func TestAdminUserCard(t *testing.T) {
 			"a:ext:PUB1=",
 			"a:cfg:PUB1=",
 			"a:del:PUB1=",
+			"a:cnew:7",
 			"a:iss:7",
 			"a:users:0",
 			cbMenu,

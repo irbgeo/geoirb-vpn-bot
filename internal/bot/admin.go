@@ -40,31 +40,41 @@ const (
 	actMaint       = "mnt"    // previews "maintenance started" or, while on, "over"
 	actRefund      = "ref"    // + user ID + ":" + payRef: asks to confirm
 	actRefundOK    = "refok"  // confirmed: return the Stars
+	actCompanies   = "cos"    // the list of companies
+	actCompany     = "co"     // + company ID: its card
+	actCompanyNew  = "cnew"   // + user ID: a new company led by them, pick the term
+	actCompanyTerm = "cnewm"  // + user ID + ":" + months: ask the company's name
+	actCompanyExt  = "coext"  // + company ID + ":" + months: extend it
 )
 
 const (
-	cbAdmin      = "a:"
-	cbAdminUsers = cbAdmin + actUsers + ":"
-	cbAdminUser  = cbAdmin + actUser + ":"
-	cbAdminDis   = cbAdmin + actDisable + ":"
-	cbAdminEn    = cbAdmin + actEnable + ":"
-	cbAdminExt   = cbAdmin + actExtend + ":"
-	cbAdminCfg   = cbAdmin + actConfig + ":"
-	cbAdminDel   = cbAdmin + actDelete + ":"
-	cbAdminDelOK = cbAdmin + actDeleteOK + ":"
-	cbAdminIss   = cbAdmin + actIssue + ":"
-	cbAdminIssD  = cbAdmin + actIssueDays + ":"
-	cbAdminStats = cbAdmin + actStats
-	cbAdminBc    = cbAdmin + actBroadcast
-	cbAdminBcU   = cbAdmin + actBroadcastU
-	cbAdminBcOK  = cbAdmin + actBroadcastOK
-	cbAdminCanc  = cbAdmin + actCancel
-	cbAdminFb    = cbAdmin + actFeedback + ":"
-	cbAdminCfgs  = cbAdmin + actConfigs
-	cbAdminCfgOK = cbAdmin + actConfigsOK
-	cbAdminMnt   = cbAdmin + actMaint
-	cbAdminRef   = cbAdmin + actRefund + ":"
-	cbAdminRefOK = cbAdmin + actRefundOK + ":"
+	cbAdmin       = "a:"
+	cbAdminUsers  = cbAdmin + actUsers + ":"
+	cbAdminUser   = cbAdmin + actUser + ":"
+	cbAdminDis    = cbAdmin + actDisable + ":"
+	cbAdminEn     = cbAdmin + actEnable + ":"
+	cbAdminExt    = cbAdmin + actExtend + ":"
+	cbAdminCfg    = cbAdmin + actConfig + ":"
+	cbAdminDel    = cbAdmin + actDelete + ":"
+	cbAdminDelOK  = cbAdmin + actDeleteOK + ":"
+	cbAdminIss    = cbAdmin + actIssue + ":"
+	cbAdminIssD   = cbAdmin + actIssueDays + ":"
+	cbAdminStats  = cbAdmin + actStats
+	cbAdminBc     = cbAdmin + actBroadcast
+	cbAdminBcU    = cbAdmin + actBroadcastU
+	cbAdminBcOK   = cbAdmin + actBroadcastOK
+	cbAdminCanc   = cbAdmin + actCancel
+	cbAdminFb     = cbAdmin + actFeedback + ":"
+	cbAdminCfgs   = cbAdmin + actConfigs
+	cbAdminCfgOK  = cbAdmin + actConfigsOK
+	cbAdminMnt    = cbAdmin + actMaint
+	cbAdminRef    = cbAdmin + actRefund + ":"
+	cbAdminRefOK  = cbAdmin + actRefundOK + ":"
+	cbAdminCos    = cbAdmin + actCompanies
+	cbAdminCo     = cbAdmin + actCompany + ":"
+	cbAdminCoNew  = cbAdmin + actCompanyNew + ":"
+	cbAdminCoTerm = cbAdmin + actCompanyTerm + ":"
+	cbAdminCoExt  = cbAdmin + actCompanyExt + ":"
 
 	adminPageSize   = 10
 	adminExtendDays = 30
@@ -96,7 +106,7 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		Name:      name,
 		Arg:       arg,
 	}
-	if (name == actExtend || name == actIssueDays) && !s.adminRepeats.allow(cq.Data) {
+	if (name == actExtend || name == actIssueDays || name == actCompanyExt) && !s.adminRepeats.allow(cq.Data) {
 		outMessage := outMessage{
 			ChatID: a.ChatID,
 			Text:   repeatedPressText,
@@ -140,6 +150,8 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.adminRefundAsk(ctx, a)
 	case actRefundOK:
 		return s.adminRefund(ctx, a)
+	case actCompanies, actCompany, actCompanyNew, actCompanyTerm, actCompanyExt:
+		return s.adminCompany(ctx, a)
 	}
 	log.Printf("bot: unknown admin action %q", name)
 	return nil
@@ -171,6 +183,14 @@ func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 			Text:   needTextText,
 		}
 		return s.send.Send(ctx, outMessage)
+	}
+	if p.Kind == pendingCompanyName {
+		companyNaming := companyNaming{
+			ChatID: m.Chat.ID,
+			Arg:    p.Text,
+			Name:   text,
+		}
+		return s.adminCompanyNamed(ctx, companyNaming)
 	}
 	pendingInput := pendingInput{
 		ChatID:    m.Chat.ID,
@@ -233,9 +253,10 @@ func (s *router) adminUser(ctx context.Context, a adminAction) error {
 		return s.reportError(ctx, a.failed(err))
 	}
 	cardView := cardView{
-		UserID:   id,
-		Keys:     keys,
-		Payments: payments,
+		UserID:    id,
+		Keys:      keys,
+		Payments:  payments,
+		CompanyID: u.CompanyID,
 	}
 	editMessage := editMessage{
 		ChatID:    a.ChatID,

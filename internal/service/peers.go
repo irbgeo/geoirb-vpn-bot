@@ -126,7 +126,10 @@ func (s *service) issue(ctx context.Context, in IssueInput) (*Peer, error) {
 		Enabled:    true,
 		CreatedAt:  now,
 	}
-	if in.Days > 0 {
+	switch {
+	case !in.Until.IsZero():
+		p.ExpiresAt = in.Until
+	case in.Days > 0:
 		p.ExpiresAt = now.AddDate(0, 0, in.Days)
 	}
 	p.resetReminders()
