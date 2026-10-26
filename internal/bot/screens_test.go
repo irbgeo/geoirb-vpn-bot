@@ -174,3 +174,19 @@ func TestVIPCardShowsTheLimit(t *testing.T) {
 	)
 	require.NotContains(t, plain, "Лимит ключей")
 }
+
+// The release page lists many files: step 1 says which one to take.
+func TestAppsTextSaysWhichFileToDownload(t *testing.T) {
+	for _, file := range []string{
+		"android11+_arm64-v8a.apk",
+		"android9-10_arm64-v8a.apk",
+		"windows_x64.exe",
+		"macos_x64.pkg",
+		"linux_x64.run",
+		"Assets",
+	} {
+		require.Contains(t, appsText, file)
+	}
+	require.NotContains(t, appsText, "5.0.3.0", "no version: the text outlives the release")
+	require.Less(t, len([]rune(appsText)), 4096, "one Telegram message")
+}

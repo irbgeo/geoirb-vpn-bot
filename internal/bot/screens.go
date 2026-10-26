@@ -24,6 +24,13 @@ const (
 		"• DefaultVPN — iPhone, iPad (iOS 16+), тоже от Amnezia.\n" +
 		"• WG Tunnel — Android, Windows, Linux (сайт wgtunnel.com).\n" +
 		"• Роутер Keenetic — AWG Manager (ставится через Entware); другой роутер — напишите в /support.\n\n" +
+		"Кнопки «Android» и «Компьютер» ведут на страницу AmneziaVPN с файлами. Пролистайте её вниз до раздела «Assets» и скачайте один файл, его имя заканчивается так:\n" +
+		"• Android 11 и новее: android11+_arm64-v8a.apk\n" +
+		"• Android 9 или 10: android9-10_arm64-v8a.apk\n" +
+		"• Windows: windows_x64.exe\n" +
+		"• macOS: macos_x64.pkg\n" +
+		"• Linux: linux_x64.run\n" +
+		"На Android откройте скачанный файл и разрешите установку из этого источника, если телефон спросит.\n\n" +
 		"Установите приложение и нажмите «Дальше»."
 	importText = "🔑 Шаг 2. Подключитесь\n\n" +
 		"1. Откройте приложение и нажмите «+».\n" +
@@ -76,11 +83,12 @@ func ReconcileText(r *service.ReconcileReport) string {
 }
 
 // Download links for step 1. Android and computers get the AmneziaVPN
-// release on GitHub (APKs and installers in one place): pin the newest
-// stable tag, not a pre-release (checked 2026-10-26: 5.0.3.0).
+// release on GitHub (APKs and installers in one place). releases/latest
+// always opens the newest stable release (GitHub skips pre-releases), so
+// a new release needs no change here.
 const (
 	urlAppStore = "https://apps.apple.com/app/id1600529900"
-	urlRelease  = "https://github.com/amnezia-vpn/amnezia-client/releases/tag/5.0.3.0"
+	urlRelease  = "https://github.com/amnezia-vpn/amnezia-client/releases/latest"
 )
 
 func appsKeyboard() *tgbot.InlineKeyboardMarkup {
