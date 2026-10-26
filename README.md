@@ -134,8 +134,10 @@ db.users.updateOne({ _id: 123456789 }, { $set: { role: "vip", max_keys: 10 } })
    make add-user DB=geoirb_vpn     # пользователь geoirb_vpn_bot
    ```
    Пароль пользователя окажется в `server-infra/secret/database.yaml` — `deploy` возьмёт его оттуда.
-2. **Модуль ядра.** `sudo add-apt-repository ppa:amnezia/ppa && sudo apt install amneziawg-dkms`
-   и `sudo modprobe amneziawg`. Утилиты `awg`/`awg-quick` деплой соберёт сам.
+2. **Модуль ядра** деплой ставит сам (`deploy/awg-module.sh`): если `modprobe amneziawg`
+   не проходит — `amneziawg-dkms` из `ppa:amnezia/ppa` с заголовками текущего ядра. Утилиты
+   `awg`/`awg-quick` он тоже соберёт сам. После обновления ядра проверьте `modprobe amneziawg`
+   до перезагрузки: на GCP ядро 7.0.0-1014 модуль не собирало.
 3. **Swap.** На сервере с 1 ГБ памяти добавьте 1 ГБ swap:
    `sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`
    и строку `/swapfile none swap sw 0 0` в `/etc/fstab`.
@@ -158,6 +160,11 @@ db.users.updateOne({ _id: 123456789 }, { $set: { role: "vip", max_keys: 10 } })
    затрагиваются (другой порт, другой интерфейс). Откат: `systemctl disable --now geoirb-awg-exit`.
    - `secret/tunnel.yaml` (ключи, PSK, порт, параметры обфускации туннеля) создаёт
      `scripts/tunnel-keys.sh` при первом запуске; существующий файл не меняется.
+   - **Firewall exit-а** — из `../server-infra`: `make install`, сервер exit, компоненты
+     `firewall fail2ban`, в `firewall_ports` — `<port>/udp` (`port` из `secret/tunnel.yaml`).
+     Открытыми останутся только SSH и порт туннеля, Docker не ставится. Запускайте после
+     `make deploy-exit` и проверьте, что на RU-сервере `sudo awg show awg-exit` показывает
+     свежий handshake.
      **Не удаляйте и сохраните резервную копию** — ключи не ротируются.
      `make deploy` (RU) этот файл не создаёт: без него он останавливается с ошибкой,
      иначе RU-сервер получил бы ключи, которых выходной сервер не знает.

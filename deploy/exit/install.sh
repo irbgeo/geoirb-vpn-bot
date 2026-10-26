@@ -7,7 +7,7 @@ set -euo pipefail
 S="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${ROOT:-}"
 
-modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
+bash "$S/awg-module.sh"
 bash "$S/awg-tools.sh"
 
 # The conf's PostUp/PostDown call it; in place before the tunnel starts.

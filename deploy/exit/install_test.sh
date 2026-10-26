@@ -54,6 +54,7 @@ check "no live hash size file: not created" "0" "$([[ -e "$HS" ]] && echo 1 || e
 check "start called" "1" "$(grep -c '^systemctl start geoirb-awg-exit' "$TMP/calls")"
 check "stop before start" "1" "$([[ "$(grep -n '^systemctl stop geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" -lt "$(grep -n '^systemctl start geoirb-awg-exit' "$TMP/calls" | cut -d: -f1)" ]] && echo 1)"
 check "stop saw the old conf" "1" "$(grep -c '^systemctl stop geoirb-awg-exit.service conf=OLD' "$TMP/calls")"
+check "module script ran (it loads the module)" "1" "$(grep -c '^modprobe amneziawg' "$TMP/calls")"
 check "awg-tools skipped on pinned tag" "0" "$(grep -c '^\(make\|git\|apt-get\)' "$TMP/calls")"
 
 mkdir -p "$(dirname "$HS")"; echo 7680 >"$HS"

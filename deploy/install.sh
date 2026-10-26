@@ -41,8 +41,7 @@ if [[ "$first" == 0 ]]; then
   systemctl start geoirb-vpn-bot-backup.service
 fi
 
-# The module comes from ppa:amnezia/ppa (amneziawg-dkms), installed by hand.
-modprobe amneziawg || { echo "error: kernel module amneziawg is missing" >&2; exit 1; }
+bash "$S/awg-module.sh"
 if ! dpkg -s unbound nftables >/dev/null 2>&1; then
   apt-get update -qq
   apt-get install -y -qq unbound nftables
