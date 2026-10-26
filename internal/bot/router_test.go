@@ -714,7 +714,7 @@ func TestCreateKeyErrorsExplained(t *testing.T) {
 	for err, want := range map[error]string{
 		service.ErrHasKey:    "уже есть ключ",
 		service.ErrTrialUsed: "Пробный период вы уже использовали",
-		service.ErrKeyLimit:  "максимум — 3",
+		service.ErrKeyLimit:  "лимит исчерпан",
 	} {
 		r, s := newRouter(
 			&fakeService{

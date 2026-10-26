@@ -230,7 +230,7 @@ func usersByRolePage(p service.Page) mongo.Pipeline {
 	}
 }
 
-// roleRank: unlimited 1, admin 2, anything else (user, no role) 0.
+// roleRank: unlimited 1, vip 2, admin 3, anything else (user, no role) 0.
 func roleRank() bson.M {
 	return bson.M{
 		"$switch": bson.M{
@@ -248,10 +248,19 @@ func roleRank() bson.M {
 					"case": bson.M{
 						"$eq": bson.A{
 							"$role",
-							string(service.RoleAdmin),
+							string(service.RoleVIP),
 						},
 					},
 					"then": 2,
+				},
+				bson.M{
+					"case": bson.M{
+						"$eq": bson.A{
+							"$role",
+							string(service.RoleAdmin),
+						},
+					},
+					"then": 3,
 				},
 			},
 			"default": 0,

@@ -134,7 +134,7 @@ func TestKeyTextsPointToTheMenu(t *testing.T) {
 
 func TestKeyLimitTextsFollowTheConstant(t *testing.T) {
 	n := fmt.Sprint(service.MaxUnlimitedKeys)
-	require.Contains(t, keyLimitText, n)
+	require.NotContains(t, keyLimitText, n, "vip users have their own limit")
 	require.Contains(
 		t,
 		greeting(
@@ -144,4 +144,33 @@ func TestKeyLimitTextsFollowTheConstant(t *testing.T) {
 		),
 		n,
 	)
+}
+
+func TestVIPGreetingShowsTheirLimit(t *testing.T) {
+	text := greeting(
+		&service.User{
+			Role:    service.RoleVIP,
+			MaxKeys: 7,
+		},
+	)
+	require.Contains(t, text, "VIP")
+	require.Contains(t, text, "до 7 ключей")
+}
+
+func TestVIPCardShowsTheLimit(t *testing.T) {
+	vip := userCardText(
+		&service.User{
+			ID:      1,
+			Role:    service.RoleVIP,
+			MaxKeys: 7,
+		},
+	)
+	require.Contains(t, vip, "Лимит ключей: 7")
+	plain := userCardText(
+		&service.User{
+			ID:   1,
+			Role: service.RoleUser,
+		},
+	)
+	require.NotContains(t, plain, "Лимит ключей")
 }

@@ -12,6 +12,7 @@ type Role string
 const (
 	RoleUser      Role = "user"      // trial + paid access
 	RoleUnlimited Role = "unlimited" // up to MaxUnlimitedKeys keys, never expire, free
+	RoleVIP       Role = "vip"       // like unlimited, but the key limit is users.max_keys
 	RoleAdmin     Role = "admin"     // admin panel; any number of forever keys
 )
 
@@ -22,7 +23,22 @@ type User struct {
 	Role      Role
 	TrialUsed bool
 	KeysCount int // keys of this user in the peers collection, kept in step
+	// MaxKeys is a RoleVIP user's key limit, set by hand in the DB
+	// (users.max_keys); 0 = MaxUnlimitedKeys. Other roles ignore it.
+	MaxKeys   int
 	CreatedAt time.Time
+}
+
+// KeyLimit is how many keys the user may have; RoleAdmin has no limit
+// (canCreate never asks).
+func (s *User) KeyLimit() int {
+	switch {
+	case s.Role == RoleVIP && s.MaxKeys > 0:
+		return s.MaxKeys
+	case s.Role == RoleVIP, s.Role == RoleUnlimited:
+		return MaxUnlimitedKeys
+	}
+	return MaxUserKeys
 }
 
 // CreateKeyInput is a user's request for their own key. Name is what the

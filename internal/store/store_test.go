@@ -541,6 +541,38 @@ func TestRegisterKeepsHandSetFields(t *testing.T) {
 	require.Equal(t, "new", raw["username"])
 }
 
+func TestVIPMaxKeysSetByHand(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.Users.coll.InsertOne(
+		ctx,
+		bson.M{
+			"_id":      int64(8),
+			"role":     "vip",
+			"max_keys": 7,
+		},
+	)
+	require.NoError(t, err)
+
+	u, err := s.Users.Register(
+		ctx,
+		&service.User{
+			ID:       8,
+			Username: "vip",
+			Role:     service.RoleUser,
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, service.RoleVIP, u.Role)
+	require.Equal(t, 7, u.MaxKeys, "register keeps the limit set by hand")
+	require.Equal(t, 7, u.KeyLimit())
+
+	vips, err := s.Users.ByRole(ctx, service.RoleVIP)
+	require.NoError(t, err)
+	require.Len(t, vips, 1)
+	require.Equal(t, 7, vips[0].MaxKeys)
+}
+
 func TestSetTrialUsed(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()

@@ -75,13 +75,14 @@ func (s *service) maintainKeys(ctx context.Context) (*Maintenance, error) {
 	return m, nil
 }
 
-// foreverOwners are the users whose keys never expire: unlimited and
-// admin. The role is set by hand in the DB, so a key issued with an end
+// foreverOwners are the users whose keys never expire: unlimited, vip
+// and admin. The role is set by hand in the DB, so a key issued with an end
 // date (e.g. a trial) is fixed here, within a minute of the change.
 func (s *service) foreverOwners(ctx context.Context) (map[int64]bool, error) {
 	ids := map[int64]bool{}
 	for _, r := range []Role{
 		RoleUnlimited,
+		RoleVIP,
 		RoleAdmin,
 	} {
 		us, err := s.users.ByRole(ctx, r)

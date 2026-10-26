@@ -22,6 +22,7 @@ type user struct {
 	Role      string    `bson:"role"`
 	TrialUsed bool      `bson:"trial_used"`
 	KeysCount int       `bson:"keys_count"`
+	MaxKeys   int       `bson:"max_keys,omitempty"` // set by hand for vip users
 	CreatedAt time.Time `bson:"created_at"`
 }
 
@@ -43,6 +44,7 @@ func (s *user) toService() *service.User {
 		Role:      roleOrUser(s.Role),
 		TrialUsed: s.TrialUsed,
 		KeysCount: s.KeysCount,
+		MaxKeys:   s.MaxKeys,
 		CreatedAt: s.CreatedAt,
 	}
 }

@@ -199,6 +199,8 @@ func greeting(u *service.User) string {
 		return "Привет! Вы админ. Нажмите кнопку, чтобы получить свой ключ (сколько угодно, без срока)."
 	case service.RoleUnlimited:
 		return fmt.Sprintf("Привет! У вас безлимитный доступ: до %d ключей без срока. Нажмите кнопку, чтобы получить ключ.", service.MaxUnlimitedKeys)
+	case service.RoleVIP:
+		return fmt.Sprintf("Привет! У вас VIP-доступ: до %d ключей без срока. Нажмите кнопку, чтобы получить ключ.", u.KeyLimit())
 	default:
 		return "Привет! Нажмите «🔑 Получить ключ»: первый ключ даётся с бесплатным пробным периодом."
 	}
@@ -555,7 +557,7 @@ var badFeedbackText = fmt.Sprintf(
 )
 
 var (
-	keyLimitText     = fmt.Sprintf("Больше ключей создать нельзя: максимум — %d.", service.MaxUnlimitedKeys)
+	keyLimitText     = "Больше ключей создать нельзя: лимит исчерпан. Ненужный ключ можно удалить в «📋 Мой доступ»."
 	userKeyLimitText = fmt.Sprintf("Больше ключей купить нельзя: максимум — %d. Продлите или удалите один из своих в «📋 Мой доступ».", service.MaxUserKeys)
 	askKeyNameText   = "✍️ Как назвать ключ? Например, «iPhone» или «Ноутбук», " +
 		"чтобы потом не путать ключи. Или нажмите «Пропустить»."
@@ -871,12 +873,17 @@ func userCardText(u *service.User) string {
 	if u.TrialUsed {
 		trial = "использован"
 	}
+	limit := ""
+	if u.Role == service.RoleVIP {
+		limit = fmt.Sprintf("Лимит ключей: %d\n", u.KeyLimit())
+	}
 	return fmt.Sprintf(
-		"👤 %s (id %d)\nРоль: %s\nКлючей: %d\nПробный период: %s\nВ боте с: %s\n",
+		"👤 %s (id %d)\nРоль: %s\nКлючей: %d\n%sПробный период: %s\nВ боте с: %s\n",
 		userLabel(u),
 		u.ID,
 		u.Role,
 		u.KeysCount,
+		limit,
 		trial,
 		mskTime(u.CreatedAt),
 	)

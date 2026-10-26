@@ -23,8 +23,7 @@ const MaxUserKeys = 3
 const MaxKeyNameLen = 32
 
 var (
-	// ErrKeyLimit: an unlimited user already has MaxUnlimitedKeys keys, or a
-	// plain user MaxUserKeys.
+	// ErrKeyLimit: the user already has User.KeyLimit keys.
 	ErrKeyLimit = errors.New("service: key limit reached")
 	// ErrHasKey: a plain user already has a key; more keys are bought.
 	ErrHasKey = errors.New("service: user already has a key")
@@ -64,6 +63,7 @@ func (s *service) Admins(ctx context.Context) ([]*User, error) {
 //     more keys are bought (Invoice with BuyNewKey).
 //   - RoleUnlimited: up to MaxUnlimitedKeys never-expiring keys; disabled
 //     keys count too (they keep their slot and IP).
+//   - RoleVIP: the same, up to User.KeyLimit (users.max_keys).
 //   - RoleAdmin: never-expiring keys, no limit.
 //
 // Counting and issuing run under one lock, so two quick taps can't create
@@ -96,7 +96,7 @@ func (s *service) CreateKey(ctx context.Context, in CreateKeyInput) (*Peer, erro
 	if err != nil {
 		return nil, err
 	}
-	if u.Role == RoleUnlimited || u.Role == RoleAdmin {
+	if u.Role == RoleUnlimited || u.Role == RoleVIP || u.Role == RoleAdmin {
 		if name == "" {
 			userKeys := userKeys{
 				User: u,
@@ -164,14 +164,14 @@ func cleanKeyName(name string) (string, error) {
 	return name, nil
 }
 
-// canCreate holds CreateKey's rules: admin without a limit, unlimited up
-// to MaxUnlimitedKeys; a plain user one key, and the trial only once.
+// canCreate holds CreateKey's rules: admin without a limit, unlimited and
+// vip up to User.KeyLimit; a plain user one key, and the trial only once.
 func canCreate(q keyQuota) error {
 	if q.User.Role == RoleAdmin {
 		return nil
 	}
-	if q.User.Role == RoleUnlimited {
-		if q.Keys >= MaxUnlimitedKeys {
+	if q.User.Role == RoleUnlimited || q.User.Role == RoleVIP {
+		if q.Keys >= q.User.KeyLimit() {
 			return ErrKeyLimit
 		}
 		return nil
