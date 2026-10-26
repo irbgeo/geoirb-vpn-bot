@@ -83,13 +83,6 @@ func main() {
 		log.Fatalf("fatal: %v", err)
 	}
 	sender := bot.NewTelegramSender(client, uploads)
-	// The bot's username builds company invite links; without it the
-	// company card shows the /start command instead.
-	me, err := client.GetMe(ctx)
-	if err != nil {
-		log.Printf("telegram: get me: %v", err)
-	}
-
 	// Server load alerts watch this machine's limits. Off Linux (the bot run
 	// on a laptop) there is no /proc and the monitor checks nothing.
 	load := sysload.New(
@@ -102,23 +95,6 @@ func main() {
 		cfg,
 		load,
 	)
-	splitVideo := data.AndroidSplitTunnel()
-	iphoneVideo := data.IPhoneSplitTunnel()
-	deps := bot.Deps{
-		Users:       svc,
-		Keys:        svc,
-		Billing:     svc,
-		Ops:         svc,
-		Feedback:    svc,
-		Sender:      sender,
-		SplitVideo:  splitVideo,
-		IPhoneVideo: iphoneVideo,
-		Notifier:    notifier,
-		Companies:   svc,
-		BotUsername: me.Username,
-		Config:      cfg,
-	}
-	router := bot.New(&deps)
 
 	// Run: startup checks, the worker, the load monitor and long polling;
 	// then stop them in order.
@@ -145,6 +121,32 @@ func main() {
 		}()
 		notifier.WatchTunnel(ctx, watcher)
 	}
+	// Telegram calls only after the watcher's first check: a connection
+	// opened before the bot's routing rules would go direct, and HTTP/2
+	// keeps reusing it after the rules close that path.
+	// The bot's username builds company invite links; without it the
+	// company card shows the /start command instead.
+	me, err := client.GetMe(ctx)
+	if err != nil {
+		log.Printf("telegram: get me: %v", err)
+	}
+	splitVideo := data.AndroidSplitTunnel()
+	iphoneVideo := data.IPhoneSplitTunnel()
+	deps := bot.Deps{
+		Users:       svc,
+		Keys:        svc,
+		Billing:     svc,
+		Ops:         svc,
+		Feedback:    svc,
+		Sender:      sender,
+		SplitVideo:  splitVideo,
+		IPhoneVideo: iphoneVideo,
+		Notifier:    notifier,
+		Companies:   svc,
+		BotUsername: me.Username,
+		Config:      cfg,
+	}
+	router := bot.New(&deps)
 	_, err = client.SetMyCommands(ctx, bot.Commands())
 	if err != nil {
 		log.Printf("telegram: set commands: %v", err)

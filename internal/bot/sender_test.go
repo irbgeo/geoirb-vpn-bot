@@ -365,3 +365,18 @@ func TestSenderFilesAndAnswers(t *testing.T) {
 	require.Equal(t, false, api.calls[3].Fields["ok"])
 	require.Equal(t, "stale", api.calls[3].Fields["error_message"])
 }
+
+// A dead HTTP/2 connection (e.g. one opened before the bot's routing rules
+// closed its path) must be dropped by pings, not reused forever.
+func TestTelegramHTTPClientPingsHTTP2(t *testing.T) {
+	c := telegramHTTPClient(requestTimeout)
+
+	require.Equal(t, requestTimeout, c.Timeout)
+	tr, ok := c.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.True(t, tr.ForceAttemptHTTP2)
+	require.NotNil(t, tr.Proxy, "a clone of the default transport")
+	require.NotNil(t, tr.HTTP2)
+	require.Equal(t, h2PingAfter, tr.HTTP2.SendPingTimeout)
+	require.Equal(t, h2PingWait, tr.HTTP2.PingTimeout)
+}

@@ -34,6 +34,19 @@ type Sender interface {
 // is several megabytes and does not fit the usual 15 seconds on a slow link.
 const uploadTimeout = 5 * time.Minute
 
+// requestTimeout: go-tgbot's own timeout of one request, kept for the
+// main client.
+const requestTimeout = 15 * time.Second
+
+// HTTP/2 pings: after h2PingAfter without frames the client pings and
+// drops the connection if no answer comes in h2PingWait. Without them a
+// connection whose path died (the bot's routing rules changed under it)
+// is reused forever and every request times out.
+const (
+	h2PingAfter = 15 * time.Second
+	h2PingWait  = 10 * time.Second
+)
+
 // telegramSender adapts *tgbot.Client to Sender. uploads is a second
 // client with a long timeout, used only to upload the video; everything
 // else keeps the short one, so a hung call fails fast.
@@ -51,7 +64,9 @@ func NewTelegramClient(
 	if cfg.TelegramTestEnv {
 		log.Println("telegram: TEST environment")
 	}
-	return tgbot.NewClient(cfg.BotToken, clientOptions(cfg.TelegramTestEnv)...)
+	httpClient := telegramHTTPClient(requestTimeout)
+	opts := append(clientOptions(cfg.TelegramTestEnv), tgbot.WithHTTPClient(httpClient))
+	return tgbot.NewClient(cfg.BotToken, opts...)
 }
 
 // NewUploadClient is NewTelegramClient with uploadTimeout instead of
@@ -59,10 +74,8 @@ func NewTelegramClient(
 func NewUploadClient(
 	cfg *config.Config,
 ) (*tgbot.Client, error) {
-	httpClient := http.Client{
-		Timeout: uploadTimeout,
-	}
-	opts := append(clientOptions(cfg.TelegramTestEnv), tgbot.WithHTTPClient(&httpClient))
+	httpClient := telegramHTTPClient(uploadTimeout)
+	opts := append(clientOptions(cfg.TelegramTestEnv), tgbot.WithHTTPClient(httpClient))
 	return tgbot.NewClient(cfg.BotToken, opts...)
 }
 
@@ -220,6 +233,21 @@ func (s *telegramSender) Refund(ctx context.Context, in refundInput) (already bo
 // clientOptions are the options of both Bot API clients. RetryAfter: a 429
 // "too many requests" waits (≤10 s) and retries once instead of losing the
 // message.
+// telegramHTTPClient is an HTTP client for the Bot API with this request
+// timeout and HTTP/2 pings (see h2PingAfter).
+func telegramHTTPClient(timeout time.Duration) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.HTTP2 = &http.HTTP2Config{
+		SendPingTimeout: h2PingAfter,
+		PingTimeout:     h2PingWait,
+	}
+	c := &http.Client{
+		Timeout:   timeout,
+		Transport: tr,
+	}
+	return c
+}
+
 func clientOptions(testEnv bool) []tgbot.Option {
 	opts := []tgbot.Option{
 		tgbot.WithRetryAfter(10 * time.Second),
