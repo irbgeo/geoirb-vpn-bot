@@ -116,13 +116,16 @@ func (s *userRepo) ByCompany(ctx context.Context, companyID string) ([]*service.
 }
 
 // List returns one page of users grouped by role (users, unlimited,
-// admins), newest first inside a role, and the total count.
-func (s *userRepo) List(ctx context.Context, p service.Page) ([]*service.User, int64, error) {
-	total, err := s.coll.CountDocuments(ctx, matchAll())
+// admins), newest first inside a role, and the total count; q.Role keeps
+// only one role.
+func (s *userRepo) List(ctx context.Context, q service.UsersQuery) ([]*service.User, int64, error) {
+	filter := usersOfRole(q.Role)
+	total, err := s.coll.CountDocuments(ctx, filter)
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: count users: %w", err)
 	}
-	cur, err := s.coll.Aggregate(ctx, usersByRolePage(p))
+	pipeline := usersByRolePage(q)
+	cur, err := s.coll.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, 0, fmt.Errorf("store: list users: %w", err)
 	}

@@ -247,6 +247,19 @@ type Page struct {
 	Limit int64
 }
 
+// UsersQuery selects a page of users, only of Role ("" = every role).
+type UsersQuery struct {
+	Role Role
+	Page Page
+}
+
+// Audience is who a broadcast goes to: the members of CompanyID, else
+// every user of Role, else (both empty) every user with an enabled key.
+type Audience struct {
+	Role      Role
+	CompanyID string
+}
+
 // Deps is everything New needs.
 type Deps struct {
 	Users     UserRepository

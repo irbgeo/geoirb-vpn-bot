@@ -55,9 +55,10 @@ func (s *service) Register(ctx context.Context, in RegisterInput) (*User, error)
 }
 
 // Users returns one page of users grouped by role (users, unlimited,
-// admins), newest first inside a role, and the total count.
-func (s *service) Users(ctx context.Context, p Page) ([]*User, int64, error) {
-	return s.users.List(ctx, p)
+// admins), newest first inside a role, and the total count; q.Role keeps
+// only one role.
+func (s *service) Users(ctx context.Context, q UsersQuery) ([]*User, int64, error) {
+	return s.users.List(ctx, q)
 }
 
 // Admins returns every user with RoleAdmin (they get service alerts).

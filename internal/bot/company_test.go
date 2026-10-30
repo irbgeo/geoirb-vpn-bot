@@ -126,6 +126,7 @@ func TestLeaderCardShowsTheLinkAndTheStaff(t *testing.T) {
 	require.Contains(t, got, cbCompanyRemoveAsk+"abcd2345:7")
 	require.NotContains(t, got, cbCompanyRemoveAsk+"abcd2345:42", "the leader can't remove themselves")
 	require.NotContains(t, got, cbAdminCoExt+"abcd2345:6", "extending is the admin's")
+	require.NotContains(t, got, "a:bc:c:abcd2345", "writing to the staff is the admin's")
 }
 
 func TestLeaderRemovesAnEmployee(t *testing.T) {
@@ -307,4 +308,33 @@ func TestEndedCompanyCardAndEmptyList(t *testing.T) {
 	require.Contains(t, companiesText(nil), "Компаний пока нет")
 	remind := companyRemindText(service.CompanyRemind{Company: info.Company, Days: 1})
 	require.Contains(t, remind, "меньше суток")
+}
+
+// An admin writes to every member of one company from its card.
+func TestAdminBroadcastToOneCompany(t *testing.T) {
+	svc := adminService()
+	svc.company = romashka()
+	svc.recipients = []int64{
+		7,
+		42,
+	}
+	r, s := newRouter(svc)
+	r.pause = 0
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press(cbAdminCo+"abcd2345")))
+	require.Contains(t, buttons(s.edits[0]), "a:bc:c:abcd2345")
+
+	require.NoError(t, r.Handle(ctx, press("a:bc:c:abcd2345")))
+	require.Contains(t, s.sent[0].Text, "сотрудникам компании")
+	require.NoError(t, r.Handle(ctx, startUpdate("Завтра техработы")))
+	require.Contains(t, s.sent[1].Text, "2 сотрудникам компании")
+
+	require.NoError(t, r.Handle(ctx, pressSend(s)))
+	r.Wait()
+	want := []service.Audience{
+		{CompanyID: "abcd2345"},
+		{CompanyID: "abcd2345"},
+	}
+	require.Equal(t, want, svc.audiences)
 }

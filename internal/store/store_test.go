@@ -174,9 +174,11 @@ func TestUserList(t *testing.T) {
 
 	page, total, err := s.Users.List(
 		ctx,
-		service.Page{
-			Skip:  1,
-			Limit: 1,
+		service.UsersQuery{
+			Page: service.Page{
+				Skip:  1,
+				Limit: 1,
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -208,8 +210,10 @@ func TestUserListPlainUsersFirstThenUnlimitedThenAdmins(t *testing.T) {
 
 	page, total, err := s.Users.List(
 		ctx,
-		service.Page{
-			Limit: 10,
+		service.UsersQuery{
+			Page: service.Page{
+				Limit: 10,
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -233,9 +237,11 @@ func TestUserListPlainUsersFirstThenUnlimitedThenAdmins(t *testing.T) {
 
 	second, _, err := s.Users.List(
 		ctx,
-		service.Page{
-			Skip:  2,
-			Limit: 2,
+		service.UsersQuery{
+			Page: service.Page{
+				Skip:  2,
+				Limit: 2,
+			},
 		},
 	)
 	require.NoError(t, err)
@@ -828,4 +834,53 @@ func TestFeedbackListNewestFirst(t *testing.T) {
 	require.Len(t, page, 1)
 	require.Equal(t, "отзыв 2", page[0].Text, "newest first: 3, 2, 1")
 	require.Equal(t, int64(2), page[0].UserID)
+}
+
+func TestUserListOfOneRole(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for i, role := range []service.Role{
+		service.RoleAdmin, // id 1
+		service.RoleUser,  // id 2
+		"",                // id 3: no role counts as a plain user
+		service.RoleVIP,   // id 4
+	} {
+		_, err := s.Users.Register(
+			ctx,
+			&service.User{
+				ID:        int64(i + 1),
+				Role:      role,
+				CreatedAt: ts("2026-09-27T10:00:00Z").Add(time.Duration(i) * time.Hour),
+			},
+		)
+		require.NoError(t, err)
+	}
+
+	page, total, err := s.Users.List(
+		ctx,
+		service.UsersQuery{
+			Role: service.RoleUser,
+			Page: service.Page{
+				Limit: 10,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total, "the total counts only the chosen role")
+	require.Len(t, page, 2)
+	require.Equal(t, int64(3), page[0].ID, "newest first")
+	require.Equal(t, int64(2), page[1].ID)
+
+	page, total, err = s.Users.List(
+		ctx,
+		service.UsersQuery{
+			Role: service.RoleVIP,
+			Page: service.Page{
+				Limit: 10,
+			},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Equal(t, int64(4), page[0].ID)
 }

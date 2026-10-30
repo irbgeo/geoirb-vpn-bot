@@ -70,7 +70,7 @@ func TestAdminSeesAdminMenu(t *testing.T) {
 		t,
 		data,
 		[]string{
-			"a:users:0",
+			"a:uf",
 			"a:stats",
 			"a:bc",
 			"a:cfgs",
@@ -381,7 +381,7 @@ func TestAdminBroadcast(t *testing.T) {
 	s.fail[8] = true
 	ctx := context.Background()
 
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.Contains(t, s.sent[0].Text, "Напишите текст")
 
 	require.NoError(t, r.Handle(ctx, startUpdate("Сервер переедет в субботу")))
@@ -416,9 +416,9 @@ func TestAdminBroadcastToPlainUsersOnly(t *testing.T) {
 	r.pause = 0
 	ctx := context.Background()
 
-	require.NoError(t, r.Handle(ctx, press("a:bcu")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:user")))
 	require.Contains(t, s.sent[0].Text, "Напишите текст")
-	require.Contains(t, s.sent[0].Text, "даже без ключа")
+	require.Contains(t, s.sent[0].Text, "обычным пользователям")
 
 	require.NoError(t, r.Handle(ctx, startUpdate("Скидка на продление")))
 	require.Contains(t, s.sent[1].Text, "1 обычным пользователям")
@@ -427,14 +427,75 @@ func TestAdminBroadcastToPlainUsersOnly(t *testing.T) {
 	r.Wait()
 	require.Equal(t, int64(7), s.sent[3].ChatID)
 	require.Equal(t, "Скидка на продление", s.sent[3].Text)
-	require.Equal(t, []service.Role{service.RoleUser, service.RoleUser}, svc.recipientsRoles, "the preview and the send count the same users")
+	want := []service.Audience{
+		{Role: service.RoleUser},
+		{Role: service.RoleUser},
+	}
+	require.Equal(t, want, svc.audiences, "the preview and the send count the same users")
 }
 
-func TestAdminMenuHasPlainUsersBroadcast(t *testing.T) {
+// One "📣 Рассылка" button: it asks whom to send to.
+func TestAdminBroadcastAsksWhom(t *testing.T) {
 	r, s := newRouter(adminService())
+	ctx := context.Background()
 
-	require.NoError(t, r.Handle(context.Background(), startUpdate("/start")))
-	require.Contains(t, buttons(editMessage{Keyboard: s.sent[0].Keyboard}), "a:bcu")
+	require.NoError(t, r.Handle(ctx, startUpdate("/start")))
+	menu := buttons(editMessage{Keyboard: s.sent[0].Keyboard})
+	require.Contains(t, menu, "a:bc")
+	require.NotContains(t, menu, "a:bcu", "the two broadcast buttons are one now")
+
+	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.Equal(
+		t,
+		[]string{
+			"a:bc:all",
+			"a:bc:user",
+			"a:bc:unlimited",
+			"a:bc:vip",
+			"a:bc:member",
+			"a:bc:admin",
+			cbMenu,
+		},
+		buttons(s.edits[0]),
+	)
+}
+
+func TestAdminBroadcastUnknownAudienceIgnored(t *testing.T) {
+	svc := adminService()
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("a:bc:nobody")))
+	require.Empty(t, s.sent)
+	require.NoError(t, r.Handle(ctx, startUpdate("Привет")))
+	require.Empty(t, s.sent, "no broadcast text is awaited")
+}
+
+// "👥 Пользователи" asks which users to show; the pages keep the choice.
+func TestAdminUsersOfOneRole(t *testing.T) {
+	svc := adminService()
+	r, s := newRouter(svc)
+	ctx := context.Background()
+
+	require.NoError(t, r.Handle(ctx, press("a:uf")))
+	require.Equal(
+		t,
+		[]string{
+			"a:users:0",
+			"a:users:user:0",
+			"a:users:unlimited:0",
+			"a:users:vip:0",
+			"a:users:member:0",
+			"a:users:admin:0",
+			cbMenu,
+		},
+		buttons(s.edits[0]),
+	)
+
+	require.NoError(t, r.Handle(ctx, press("a:users:vip:0")))
+	require.Equal(t, service.RoleVIP, svc.usersRole)
+	require.Contains(t, s.edits[1].Text, "VIP")
+	require.Contains(t, buttons(s.edits[1]), "a:users:vip:1", "the next page keeps the role")
 }
 
 func TestAdminBroadcastCancel(t *testing.T) {
@@ -445,7 +506,7 @@ func TestAdminBroadcastCancel(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("oops")))
 	require.NoError(t, r.Handle(ctx, pressCancel(s)))
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
@@ -467,7 +528,7 @@ func TestAdminBroadcastStopsOnShutdownAndReports(t *testing.T) {
 	r.pause = time.Hour // would hang without a ctx-aware pause
 	ctx, cancel := context.WithCancel(context.Background())
 
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
 	require.NoError(t, r.Handle(ctx, pressSend(s)))
 	time.Sleep(50 * time.Millisecond)
@@ -508,7 +569,7 @@ func TestAdminPendingKeepsWaitingOnNonText(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate(""))) // a photo: no text
 	require.Contains(t, s.sent[len(s.sent)-1].Text, "Нужен текст")
 
@@ -551,7 +612,7 @@ func TestAdminBroadcastOutlivesTheHandlerContext(t *testing.T) {
 	}
 	r, s := newRouter(svc)
 	r.pause = 10 * time.Millisecond
-	require.NoError(t, r.Handle(context.Background(), press("a:bc")))
+	require.NoError(t, r.Handle(context.Background(), press("a:bc:all")))
 	require.NoError(t, r.Handle(context.Background(), startUpdate("hello")))
 
 	// go-tgbot's Dispatcher cancels the handler's ctx as soon as Handle returns.
@@ -930,7 +991,7 @@ func TestSendOfAPreviewOfAnotherKindIsExplained(t *testing.T) {
 	r, s := newRouter(svc)
 	r.pause = 0
 	ctx := context.Background()
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("broadcast text")))
 	require.NoError(t, r.Handle(ctx, press("a:cfgs")))
 	old := confirmButtons(s)[0]
@@ -956,7 +1017,7 @@ func TestCancelUnderAnOlderPreviewKeepsTheNewest(t *testing.T) {
 	r, s := newRouter(svc)
 	r.pause = 0
 	ctx := context.Background()
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	prompt := s.sent[0].Keyboard.InlineKeyboard[0][0].CallbackData
 	require.NoError(t, r.Handle(ctx, startUpdate("first draft")))
 	require.NoError(t, r.Handle(ctx, startUpdate("final text")))
@@ -982,7 +1043,7 @@ func TestSendUnderAnOlderPreviewSendsNothing(t *testing.T) {
 	r, s := newRouter(svc)
 	r.pause = 0
 	ctx := context.Background()
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("first draft")))
 	require.NoError(t, r.Handle(ctx, startUpdate("final text")))
 	old := confirmButtons(s)[0]
@@ -1059,7 +1120,7 @@ func TestAdminTextReturnsADatabaseError(t *testing.T) {
 	svc := adminService()
 	r, _ := newRouter(svc)
 	ctx := context.Background()
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 
 	svc.userErr = errors.New("mongo down")
 	require.ErrorContains(t, r.Handle(ctx, startUpdate("hello")), "mongo down", "not dropped without a word")
@@ -1207,13 +1268,13 @@ func TestPendingBroadcastExpiresAndCanBeCancelled(t *testing.T) {
 	require.NoError(t, r.Handle(ctx, startUpdate("hello days later")))
 	require.Zero(t, previews(), "an old prompt doesn't turn a later text into a broadcast")
 
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.Contains(t, buttons(editMessage{Keyboard: s.sent[len(s.sent)-1].Keyboard}), "a:cancel", "the prompt can be cancelled")
 	require.NoError(t, r.Handle(ctx, press("a:cancel")))
 	require.NoError(t, r.Handle(ctx, startUpdate("text")))
 	require.Zero(t, previews(), "cancelled")
 
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("/start")))
 	require.NoError(t, r.Handle(ctx, startUpdate("text")))
 	require.Zero(t, previews(), "/start drops the prompt too")
@@ -1265,7 +1326,7 @@ func TestBroadcastKeptWhenRecipientsFail(t *testing.T) {
 	r, s := newRouter(svc)
 	r.pause = 0
 	ctx := context.Background()
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
 
 	svc.recipientsErr = errors.New("mongo down")
@@ -1326,7 +1387,7 @@ func TestOnlyOneMassSendAtATime(t *testing.T) {
 	r, s := newRouter(svc)
 	ctx := context.Background()
 	require.True(t, r.jobs.reserve()) // "Обновить конфиги" is running
-	require.NoError(t, r.Handle(ctx, press("a:bc")))
+	require.NoError(t, r.Handle(ctx, press("a:bc:all")))
 	require.NoError(t, r.Handle(ctx, startUpdate("hello")))
 
 	require.NoError(t, r.Handle(ctx, pressSend(s)))

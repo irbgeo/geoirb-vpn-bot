@@ -126,9 +126,11 @@ func TestUsersPage(t *testing.T) {
 
 		page, total, err := e.svc.Users(
 			ctx,
-			Page{
-				Skip:  2,
-				Limit: 10,
+			UsersQuery{
+				Page: Page{
+					Skip:  2,
+					Limit: 10,
+				},
 			},
 		)
 		require.NoError(t, err)

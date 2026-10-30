@@ -22,7 +22,7 @@ import (
 type Users interface {
 	Register(ctx context.Context, in service.RegisterInput) (*service.User, error)
 	User(ctx context.Context, id int64) (*service.User, error)
-	Users(ctx context.Context, p service.Page) ([]*service.User, int64, error)
+	Users(ctx context.Context, q service.UsersQuery) ([]*service.User, int64, error)
 	Admins(ctx context.Context) ([]*service.User, error)
 }
 
@@ -60,7 +60,7 @@ type Billing interface {
 type Ops interface {
 	Reconcile(ctx context.Context) (*service.ReconcileReport, error)
 	Stats(ctx context.Context) (*service.Stats, error)
-	BroadcastRecipients(ctx context.Context, role service.Role) ([]int64, error)
+	BroadcastRecipients(ctx context.Context, a service.Audience) ([]int64, error)
 }
 
 // Feedback is users' reviews and suggestions.

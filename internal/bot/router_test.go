@@ -142,47 +142,48 @@ func (s *fakeSender) setFail(chatID int64, fail bool) {
 type fakeService struct {
 	// askedUsers / askedAccess / askedPayments: the user IDs User, Access
 	// and Payments were called with, in order.
-	askedUsers      []int64
-	askedAccess     []int64
-	askedPayments   []int64
-	userErr         error // User fails
-	usersErr        error // Users fails
-	reissued        *service.Peer
-	reissuedFor     []service.UserKey
-	deletedOwn      []service.UserKey
-	ownKeyErr       error
-	feedbackList    []*service.Feedback
-	feedback        []service.FeedbackInput
-	feedbackErr     error
-	recipientsErr   error
-	refundMarkErr   error
-	createdWith     []service.CreateKeyInput
-	registered      []service.RegisterInput
-	role            service.Role
-	admins          []*service.User
-	report          *service.ReconcileReport
-	reportErr       error
-	created         *service.Peer
-	createErr       error
-	access          []service.KeyInfo
-	askedKey        service.UserKey
-	users           []*service.User
-	calls           []string
-	issued          []service.IssueInput
-	invoiceIn       service.PurchaseInput
-	invoiceErr      error
-	checkErr        error
-	payRes          *service.PayResult
-	payErr          error
-	refunded        []string
-	refundedAs      []service.RefundInput // what MarkRefunded got, also when it fails
-	payments        []*service.Payment
-	unfinished      []*service.Payment
-	stats           *service.Stats
-	recipients      []int64
-	recipientsRoles []service.Role
-	configErr       error
-	enableErr       error
+	askedUsers    []int64
+	askedAccess   []int64
+	askedPayments []int64
+	userErr       error        // User fails
+	usersErr      error        // Users fails
+	usersRole     service.Role // the role Users was last asked for
+	reissued      *service.Peer
+	reissuedFor   []service.UserKey
+	deletedOwn    []service.UserKey
+	ownKeyErr     error
+	feedbackList  []*service.Feedback
+	feedback      []service.FeedbackInput
+	feedbackErr   error
+	recipientsErr error
+	refundMarkErr error
+	createdWith   []service.CreateKeyInput
+	registered    []service.RegisterInput
+	role          service.Role
+	admins        []*service.User
+	report        *service.ReconcileReport
+	reportErr     error
+	created       *service.Peer
+	createErr     error
+	access        []service.KeyInfo
+	askedKey      service.UserKey
+	users         []*service.User
+	calls         []string
+	issued        []service.IssueInput
+	invoiceIn     service.PurchaseInput
+	invoiceErr    error
+	checkErr      error
+	payRes        *service.PayResult
+	payErr        error
+	refunded      []string
+	refundedAs    []service.RefundInput // what MarkRefunded got, also when it fails
+	payments      []*service.Payment
+	unfinished    []*service.Payment
+	stats         *service.Stats
+	recipients    []int64
+	audiences     []service.Audience
+	configErr     error
+	enableErr     error
 	// companies
 	companyID   string               // User returns it as CompanyID
 	company     *service.CompanyInfo // MyCompany / Company return it
@@ -214,8 +215,8 @@ func (s *fakeService) Feedbacks(_ context.Context, p service.Page) ([]*service.F
 	return s.feedbackList[min(p.Skip, end):end], int64(len(s.feedbackList)), nil
 }
 
-func (s *fakeService) BroadcastRecipients(_ context.Context, r service.Role) ([]int64, error) {
-	s.recipientsRoles = append(s.recipientsRoles, r)
+func (s *fakeService) BroadcastRecipients(_ context.Context, a service.Audience) ([]int64, error) {
+	s.audiences = append(s.audiences, a)
 	return s.recipients, s.recipientsErr
 }
 
@@ -303,7 +304,9 @@ func (s *fakeService) User(_ context.Context, id int64) (*service.User, error) {
 	}, nil
 }
 
-func (s *fakeService) Users(_ context.Context, p service.Page) ([]*service.User, int64, error) {
+func (s *fakeService) Users(_ context.Context, q service.UsersQuery) ([]*service.User, int64, error) {
+	s.usersRole = q.Role
+	p := q.Page
 	if s.usersErr != nil {
 		return nil, 0, s.usersErr
 	}

@@ -18,7 +18,7 @@ type UserRepository interface {
 	// SetKeyCounts sets every user's KeysCount from counts (a user not in
 	// counts has no keys).
 	SetKeyCounts(ctx context.Context, counts map[int64]int) error
-	List(ctx context.Context, p Page) ([]*User, int64, error)
+	List(ctx context.Context, q UsersQuery) ([]*User, int64, error)
 	ByRole(ctx context.Context, r Role) ([]*User, error)
 	// SetMembership sets the role and company (unset when "") and marks
 	// the trial used; a user without a row is left alone.

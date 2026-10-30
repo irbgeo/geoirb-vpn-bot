@@ -38,7 +38,15 @@ type adminAction struct {
 type usersView struct {
 	Users []*service.User
 	Total int64
-	Page  int64 // from 0
+	Page  int64        // from 0
+	Role  service.Role // only this role; "" = every user
+}
+
+// roleChoice is one role button of the broadcast and user-list pickers.
+type roleChoice struct {
+	Role  service.Role
+	Label string // the button
+	Who   string // to whom, in the broadcast texts
 }
 
 // cardView is what the user card keyboard needs.
@@ -234,7 +242,7 @@ type keyNotice struct {
 }
 
 // pendingKind is what a chat's next input will be.
-type pendingKind int
+type pendingKind uint8
 
 const (
 	pendingBroadcast   pendingKind = iota + 1 // admin: text of a broadcast
@@ -272,12 +280,12 @@ type previewButtons struct {
 	Token    string
 }
 
-// massSend is one background send to every user with an enabled key:
+// massSend is one background send to every user of Audience:
 // Before runs once the slot is taken (e.g. flips maintenance), Started is
 // told to the admin, Deliver runs per user and Report words the result.
 type massSend struct {
 	AdminChat int64
-	Role      service.Role // only users of this role; "" = everyone
+	Audience  service.Audience
 	Started   string
 	Before    func() error
 	Deliver   func(ctx context.Context, userID int64) error
@@ -289,27 +297,20 @@ type massSend struct {
 const pendingTTL = 10 * time.Minute
 
 // pendingInput is what the bot waits for in one chat.
+// The small fields sit together at the end, so it stays small enough to
+// pass by value.
 type pendingInput struct {
 	ChatID int64
-	Kind   pendingKind
 	Text   string    // readyBroadcast: the text to send
 	At     time.Time // when the prompt was sent (pendingTTL)
-	Maint  maintChange
-	// PlainOnly: the broadcast goes to RoleUser only (a bool, not a Role,
-	// keeps this struct small enough to pass by value).
-	PlainOnly bool
+	// To: who a broadcast goes to, as the buttons carry it (audienceOf).
+	To    string
+	Kind  pendingKind
+	Maint maintChange
 	// Token ties a preview (readyBroadcast, readyConfigs) to the "send" and
 	// "cancel" buttons under it: a button of an older preview does not
 	// match. 0 = not a preview.
 	Token uint32
-}
-
-// role is who a broadcast goes to: RoleUser, or "" = everyone.
-func (s pendingInput) role() service.Role {
-	if s.PlainOnly {
-		return service.RoleUser
-	}
-	return ""
 }
 
 // token is Token as the buttons carry it; "" when there is none.
@@ -321,7 +322,7 @@ func (s pendingInput) token() string {
 }
 
 // maintChange: what sending a ready broadcast does to the maintenance state.
-type maintChange int
+type maintChange uint8
 
 const (
 	maintKeep  maintChange = iota // a plain broadcast
@@ -333,7 +334,7 @@ const (
 type broadcastView struct {
 	Recipients int
 	Text       string
-	Role       service.Role
+	Who        string // to whom, e.g. "обычным пользователям"
 }
 
 // broadcastJob is confirmed work to do for many users in the background

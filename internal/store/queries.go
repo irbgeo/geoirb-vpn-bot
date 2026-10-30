@@ -260,10 +260,35 @@ func oldestFirst() *options.FindOptions {
 	)
 }
 
-// usersByRolePage is one page of users: plain users (and those with no
-// role) first, then unlimited, then admins; newest first inside a role.
-func usersByRolePage(p service.Page) mongo.Pipeline {
+// usersOfRole matches the users of role r; a user with no role (empty or
+// missing) is a plain user. An empty r matches everyone.
+func usersOfRole(r service.Role) bson.M {
+	if r == "" {
+		return matchAll()
+	}
+	if r != service.RoleUser {
+		return byRole(r)
+	}
+	return bson.M{
+		"role": bson.M{
+			"$in": bson.A{
+				string(service.RoleUser),
+				"",
+				nil,
+			},
+		},
+	}
+}
+
+// usersByRolePage is one page of the users of q.Role: plain users (and
+// those with no role) first, then unlimited, then admins; newest first
+// inside a role.
+func usersByRolePage(q service.UsersQuery) mongo.Pipeline {
+	p := q.Page
 	return mongo.Pipeline{
+		{
+			{Key: "$match", Value: usersOfRole(q.Role)},
+		},
 		{
 			{Key: "$addFields", Value: bson.D{
 				{Key: "_role_rank", Value: roleRank()},

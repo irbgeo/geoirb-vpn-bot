@@ -20,7 +20,8 @@ import (
 // Admin actions: buttons are "a:<action>:<arg>". Each action name is
 // written once here; the buttons and the dispatch both use it.
 const (
-	actUsers       = "users"  // + page (from 0)
+	actUsers       = "users"  // + [role + ":"] + page (from 0)
+	actUserFilter  = "uf"     // which users to list: all or one role
 	actUser        = "user"   // + user ID
 	actDisable     = "dis"    // + public key
 	actEnable      = "en"     // + public key
@@ -31,8 +32,7 @@ const (
 	actIssue       = "iss"    // + user ID: pick a term
 	actIssueDays   = "issd"   // + user ID + ":" + days (0 = never expires)
 	actStats       = "stats"  //
-	actBroadcast   = "bc"     // asks for the broadcast text
-	actBroadcastU  = "bcu"    // asks for the text of a broadcast to plain users only
+	actBroadcast   = "bc"     // asks whom to send to; + audience: asks for the text
 	actBroadcastOK = "bcok"   // + preview token: sends the previewed broadcast
 	actCancel      = "cancel" // drops what the bot waits for (broadcast text)
 	actFeedback    = "fb"     // + page (from 0): reviews and suggestions
@@ -51,6 +51,7 @@ const (
 const (
 	cbAdmin       = "a:"
 	cbAdminUsers  = cbAdmin + actUsers + ":"
+	cbAdminUf     = cbAdmin + actUserFilter
 	cbAdminUser   = cbAdmin + actUser + ":"
 	cbAdminDis    = cbAdmin + actDisable + ":"
 	cbAdminEn     = cbAdmin + actEnable + ":"
@@ -62,7 +63,6 @@ const (
 	cbAdminIssD   = cbAdmin + actIssueDays + ":"
 	cbAdminStats  = cbAdmin + actStats
 	cbAdminBc     = cbAdmin + actBroadcast
-	cbAdminBcU    = cbAdmin + actBroadcastU
 	cbAdminBcOK   = cbAdmin + actBroadcastOK
 	cbAdminCanc   = cbAdmin + actCancel
 	cbAdminFb     = cbAdmin + actFeedback + ":"
@@ -117,6 +117,8 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 	switch name {
 	case actUsers:
 		return s.adminUsers(ctx, a)
+	case actUserFilter:
+		return s.adminUserFilter(ctx, a)
 	case actUser:
 		return s.adminUser(ctx, a)
 	case actDisable, actEnable, actExtend:
@@ -135,7 +137,10 @@ func (s *router) admin(ctx context.Context, cq *tgbot.CallbackQuery) error {
 		return s.adminFeedback(ctx, a)
 	case actStats:
 		return s.adminStats(ctx, a)
-	case actBroadcast, actBroadcastU:
+	case actBroadcast:
+		if a.Arg == "" {
+			return s.adminBroadcastWhom(ctx, a)
+		}
 		return s.adminBroadcastAsk(ctx, a)
 	case actBroadcastOK:
 		return s.adminBroadcast(ctx, a)
@@ -194,19 +199,39 @@ func (s *router) adminText(ctx context.Context, m *tgbot.Message) error {
 		return s.adminCompanyNamed(ctx, companyNaming)
 	}
 	pendingInput := pendingInput{
-		ChatID:    m.Chat.ID,
-		Text:      text,
-		Maint:     p.Maint,
-		PlainOnly: p.PlainOnly,
+		ChatID: m.Chat.ID,
+		Text:   text,
+		Maint:  p.Maint,
+		To:     p.To,
 	}
 	return s.adminBroadcastPreview(ctx, pendingInput)
 }
 
+// adminUserFilter asks which users to list: all or one role.
+func (s *router) adminUserFilter(ctx context.Context, a adminAction) error {
+	editMessage := editMessage{
+		ChatID:    a.ChatID,
+		MessageID: a.MessageID,
+		Text:      usersFilterText,
+		Keyboard:  usersFilterKeyboard(),
+	}
+	return s.send.Edit(ctx, editMessage)
+}
+
 // adminUsers shows one page of users: plain users, then unlimited, then
-// admins; newest first inside a role.
+// admins; newest first inside a role. The button is "<page>" for every
+// user or "<role>:<page>" for one role.
 func (s *router) adminUsers(ctx context.Context, a adminAction) error {
-	page, servicePage := adminPage(a.Arg)
-	users, total, err := s.users.Users(ctx, servicePage)
+	role, pageArg, oneRole := strings.Cut(a.Arg, ":")
+	if !oneRole {
+		role, pageArg = "", role
+	}
+	page, servicePage := adminPage(pageArg)
+	usersQuery := service.UsersQuery{
+		Role: service.Role(role),
+		Page: servicePage,
+	}
+	users, total, err := s.users.Users(ctx, usersQuery)
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
 	}
@@ -214,6 +239,7 @@ func (s *router) adminUsers(ctx context.Context, a adminAction) error {
 		Users: users,
 		Total: total,
 		Page:  page,
+		Role:  usersQuery.Role,
 	}
 	editMessage := editMessage{
 		ChatID:    a.ChatID,

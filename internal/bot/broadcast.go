@@ -4,28 +4,66 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
-// adminBroadcastAsk waits for the broadcast text; "bcu" sends it to plain
-// users only.
+// adminBroadcastWhom asks whom the broadcast goes to: everyone with a key
+// or one role.
+func (s *router) adminBroadcastWhom(ctx context.Context, a adminAction) error {
+	editMessage := editMessage{
+		ChatID:    a.ChatID,
+		MessageID: a.MessageID,
+		Text:      broadcastWhomText,
+		Keyboard:  broadcastWhomKeyboard(),
+	}
+	return s.send.Edit(ctx, editMessage)
+}
+
+// adminBroadcastAsk waits for the text of a broadcast to the audience in
+// the button (audienceOf); an unknown one is ignored.
 func (s *router) adminBroadcastAsk(ctx context.Context, a adminAction) error {
+	_, who, ok := audienceOf(a.Arg)
+	if !ok {
+		log.Printf("bot: unknown broadcast audience %q", a.Arg)
+		return nil
+	}
 	pendingInput := pendingInput{
 		ChatID: a.ChatID,
 		Kind:   pendingBroadcast,
-	}
-	text := askBroadcastText
-	if a.Name == actBroadcastU {
-		pendingInput.PlainOnly = true
-		text = askBroadcastPlainText
+		To:     a.Arg,
 	}
 	s.dialogs.set(pendingInput)
 	outMessage := outMessage{
 		ChatID:   a.ChatID,
-		Text:     text,
+		Text:     askBroadcastText(who),
 		Keyboard: cancelKeyboard(),
 	}
 	return s.send.Send(ctx, outMessage)
+}
+
+// audienceOf reads a broadcast audience as the buttons carry it: "" or
+// audienceAll (everyone with an enabled key), a role of roleChoices, or
+// audienceCompany + a company ID. who words it for the texts; ok is false
+// for anything else.
+func audienceOf(to string) (a service.Audience, who string, ok bool) {
+	if to == "" || to == audienceAll {
+		return a, allWho, true
+	}
+	id, company := strings.CutPrefix(to, audienceCompany)
+	if company && id != "" {
+		a.CompanyID = id
+		return a, companyWho, true
+	}
+	for _, c := range roleChoices {
+		if string(c.Role) == to {
+			a.Role = c.Role
+			return a, c.Who, true
+		}
+	}
+	return a, "", false
 }
 
 // adminMaintenance is one toggle button: it previews "maintenance
@@ -47,7 +85,8 @@ func (s *router) adminMaintenance(ctx context.Context, a adminAction) error {
 // waits for "send" or "cancel". p is the admin chat, the text and what
 // sending does to the maintenance state.
 func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) error {
-	ids, err := s.ops.BroadcastRecipients(ctx, p.role())
+	audience, who, _ := audienceOf(p.To)
+	ids, err := s.ops.BroadcastRecipients(ctx, audience)
 	if err != nil {
 		errorReport := errorReport{
 			ChatID: p.ChatID,
@@ -65,7 +104,7 @@ func (s *router) adminBroadcastPreview(ctx context.Context, p pendingInput) erro
 	preview := broadcastView{
 		Recipients: len(ids),
 		Text:       p.Text,
-		Role:       p.role(),
+		Who:        who,
 	}
 	outMessage := outMessage{
 		ChatID:   p.ChatID,
@@ -98,9 +137,10 @@ func (s *router) adminBroadcast(ctx context.Context, a adminAction) error {
 		}
 		return s.send.Send(ctx, outMessage)
 	}
+	audience, _, _ := audienceOf(p.To)
 	massSend := massSend{
 		AdminChat: a.ChatID,
-		Role:      p.role(),
+		Audience:  audience,
 		Started:   broadcastStartedText,
 		Before: func() error {
 			if p.Maint == maintKeep {
@@ -122,7 +162,7 @@ func (s *router) adminBroadcast(ctx context.Context, a adminAction) error {
 		},
 		Report: broadcastReportText,
 	}
-	started, err := s.startMassSend(ctx, massSend)
+	started, err := s.startMassSend(ctx, &massSend)
 	if !started {
 		s.dialogs.set(p) // keep the preview: "send" works again later
 	}
@@ -155,7 +195,7 @@ func (s *router) takePreview(ctx context.Context, in dialogTake) (p pendingInput
 // runs m.Before and starts m.Deliver for each recipient. started is false
 // when it did not start: another mass send is running (the admin is told)
 // or a step failed (the error is reported in the admin chat and returned).
-func (s *router) startMassSend(ctx context.Context, m massSend) (started bool, err error) {
+func (s *router) startMassSend(ctx context.Context, m *massSend) (started bool, err error) {
 	if !s.jobs.reserve() {
 		outMessage := outMessage{
 			ChatID: m.AdminChat,
@@ -163,7 +203,7 @@ func (s *router) startMassSend(ctx context.Context, m massSend) (started bool, e
 		}
 		return false, s.send.Send(ctx, outMessage)
 	}
-	ids, err := s.ops.BroadcastRecipients(ctx, m.Role)
+	ids, err := s.ops.BroadcastRecipients(ctx, m.Audience)
 	if err == nil && m.Before != nil {
 		err = m.Before()
 	}

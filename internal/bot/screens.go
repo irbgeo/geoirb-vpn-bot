@@ -242,12 +242,11 @@ func mainKeyboard(v menuView) *tgbot.InlineKeyboardMarkup {
 	if role == service.RoleAdmin {
 		rows = append(
 			rows,
-			tgbot.Row(tgbot.Button("👥 Пользователи", cbAdminUsers+"0")),
+			tgbot.Row(tgbot.Button("👥 Пользователи", cbAdminUf)),
 			tgbot.Row(tgbot.Button("🏢 Компании", cbAdminCos)),
 			tgbot.Row(tgbot.Button("📊 Статистика", cbAdminStats)),
 			tgbot.Row(tgbot.Button("💡 Отзывы", cbAdminFb+"0")),
 			tgbot.Row(tgbot.Button("📣 Рассылка", cbAdminBc)),
-			tgbot.Row(tgbot.Button("📣 Рассылка обычным", cbAdminBcU)),
 			tgbot.Row(tgbot.Button("🔄 Обновить конфиги", cbAdminCfgs)),
 			tgbot.Row(tgbot.Button(maintButtonText(v.Maintenance), cbAdminMnt)),
 		)
@@ -482,19 +481,80 @@ func extendKeyboard(p *service.Peer) *tgbot.InlineKeyboardMarkup {
 }
 
 const (
-	askBroadcastText      = "✍️ Напишите текст рассылки одним сообщением. Его получат все, у кого есть включённый ключ."
-	askBroadcastPlainText = "✍️ Напишите текст рассылки одним сообщением. Его получат все обычные пользователи, даже без ключа."
-	cancelledText         = "Отменено."
-	needTextText          = "Нужен текст — пришлите его одним сообщением."
-	broadcastStartedText  = "📣 Рассылка началась. Пришлю отчёт, когда закончу."
+	cancelledText        = "Отменено."
+	needTextText         = "Нужен текст — пришлите его одним сообщением."
+	broadcastStartedText = "📣 Рассылка началась. Пришлю отчёт, когда закончу."
+	broadcastWhomText    = "📣 Кому отправить рассылку?"
+	usersFilterText      = "👥 Каких пользователей показать?"
 )
 
+// Broadcast audiences as the buttons carry them (audienceOf), besides a
+// role name.
+const (
+	audienceAll     = "all"
+	audienceCompany = "c:" // + company ID: its members
+	allWho          = "пользователям с включённым ключом"
+	companyWho      = "сотрудникам компании"
+)
+
+// roleChoices are the roles an admin can pick for a broadcast or the user
+// list, in button order. A role broadcast reaches users without a key too.
+var roleChoices = []roleChoice{
+	{
+		Role:  service.RoleUser,
+		Label: "🙂 Обычные",
+		Who:   "обычным пользователям",
+	},
+	{
+		Role:  service.RoleUnlimited,
+		Label: "♾ Безлимитные",
+		Who:   "безлимитным пользователям",
+	},
+	{
+		Role:  service.RoleVIP,
+		Label: "⭐ VIP",
+		Who:   "VIP-пользователям",
+	},
+	{
+		Role:  service.RoleMember,
+		Label: "🏢 Сотрудники компаний",
+		Who:   "сотрудникам компаний",
+	},
+	{
+		Role:  service.RoleAdmin,
+		Label: "🛠 Админы",
+		Who:   "админам",
+	},
+}
+
+func askBroadcastText(who string) string {
+	return "✍️ Напишите текст рассылки одним сообщением. Его получат: " + who + "."
+}
+
 func broadcastPreviewText(v broadcastView) string {
-	who := "пользователям"
-	if v.Role == service.RoleUser {
-		who = "обычным пользователям"
+	return fmt.Sprintf("📣 Отправить это %d %s?\n\n%s", v.Recipients, v.Who, v.Text)
+}
+
+// broadcastWhomKeyboard: everyone with a key, or one role.
+func broadcastWhomKeyboard() *tgbot.InlineKeyboardMarkup {
+	rows := make([][]tgbot.InlineKeyboardButton, 0, len(roleChoices)+2)
+	rows = append(rows, tgbot.Row(tgbot.Button("🔑 Всем с ключом", cbAdminBc+":"+audienceAll)))
+	for _, c := range roleChoices {
+		rows = append(rows, tgbot.Row(tgbot.Button(c.Label, cbAdminBc+":"+string(c.Role))))
 	}
-	return fmt.Sprintf("📣 Отправить это %d %s?\n\n%s", v.Recipients, who, v.Text)
+	rows = append(rows, menuRow())
+	return tgbot.InlineKeyboard(rows...)
+}
+
+// usersFilterKeyboard: every user, or one role.
+func usersFilterKeyboard() *tgbot.InlineKeyboardMarkup {
+	rows := make([][]tgbot.InlineKeyboardButton, 0, len(roleChoices)+2)
+	rows = append(rows, tgbot.Row(tgbot.Button("👥 Все", cbAdminUsers+"0")))
+	for _, c := range roleChoices {
+		rows = append(rows, tgbot.Row(tgbot.Button(c.Label, cbAdminUsers+string(c.Role)+":0")))
+	}
+	rows = append(rows, menuRow())
+	return tgbot.InlineKeyboard(rows...)
 }
 
 // sendCancelKeyboard is a preview's keyboard: its "send" button and
@@ -786,7 +846,13 @@ func peersSection(g peersGroup) string {
 }
 
 func usersText(v usersView) string {
-	return fmt.Sprintf("👥 Пользователи: всего %d, страница %d/%d", v.Total, v.Page+1, pages(v.Total))
+	title := "👥 Пользователи"
+	for _, c := range roleChoices {
+		if c.Role == v.Role {
+			title += " · " + c.Label
+		}
+	}
+	return fmt.Sprintf("%s: всего %d, страница %d/%d", title, v.Total, v.Page+1, pages(v.Total))
 }
 
 // usersKeyboard: one button per user, then ◀️ / ▶️ when there are more pages.
@@ -796,8 +862,12 @@ func usersKeyboard(v usersView) *tgbot.InlineKeyboardMarkup {
 		label := fmt.Sprintf("%s · %s", userLabel(u), u.Role)
 		rows = append(rows, tgbot.Row(tgbot.Button(label, cbAdminUser+strconv.FormatInt(u.ID, 10))))
 	}
+	prefix := cbAdminUsers
+	if v.Role != "" {
+		prefix += string(v.Role) + ":"
+	}
 	navView := navView{
-		Prefix: cbAdminUsers,
+		Prefix: prefix,
 		Page:   v.Page,
 		Total:  v.Total,
 	}
@@ -1355,6 +1425,7 @@ func companyKeyboard(v companyView) *tgbot.InlineKeyboardMarkup {
 			tgbot.Button("➕ 1 мес.", cbAdminCoExt+c.ID+":1"),
 			tgbot.Button("➕ 6 мес.", cbAdminCoExt+c.ID+":6"),
 		),
+		tgbot.Row(tgbot.Button("📣 Написать сотрудникам", cbAdminBc+":"+audienceCompany+c.ID)),
 		tgbot.Row(
 			tgbot.Button("◀️ К компаниям", cbAdminCos),
 			tgbot.Button("◀️ Меню", cbMenu),

@@ -78,11 +78,14 @@ func (s *fakeUsers) ByRole(_ context.Context, r Role) ([]*User, error) {
 	return out, nil
 }
 
-func (s *fakeUsers) List(_ context.Context, p Page) ([]*User, int64, error) {
+func (s *fakeUsers) List(_ context.Context, q UsersQuery) ([]*User, int64, error) {
 	all := make([]*User, 0, len(s.m))
 	for _, u := range s.m {
-		all = append(all, &u)
+		if q.Role == "" || u.Role == q.Role {
+			all = append(all, &u)
+		}
 	}
+	p := q.Page
 	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
 	end := min(p.Skip+p.Limit, int64(len(all)))
 	return all[min(p.Skip, end):end], int64(len(all)), nil

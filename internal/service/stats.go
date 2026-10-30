@@ -16,10 +16,12 @@ const (
 // subnet use, 30-day revenue and the heaviest keys by traffic. Traffic
 // counters restart when the VPN server restarts.
 func (s *service) Stats(ctx context.Context) (*Stats, error) {
-	page := Page{
-		Limit: 1,
+	usersQuery := UsersQuery{
+		Page: Page{
+			Limit: 1,
+		},
 	}
-	_, users, err := s.users.List(ctx, page)
+	_, users, err := s.users.List(ctx, usersQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +65,21 @@ func (s *service) Stats(ctx context.Context) (*Stats, error) {
 	return st, nil
 }
 
-// BroadcastRecipients returns, once each, every Telegram user with an
-// enabled key (role ""), or every user of the role, with a key or not:
-// news for plain users also reaches those whose access ended.
-func (s *service) BroadcastRecipients(ctx context.Context, role Role) ([]int64, error) {
-	if role != "" {
-		return s.roleIDs(ctx, role)
+// BroadcastRecipients returns, once each, the members of a company, or
+// every user of a role, with a key or not (news for plain users also
+// reaches those whose access ended), or else every Telegram user with an
+// enabled key.
+func (s *service) BroadcastRecipients(ctx context.Context, a Audience) ([]int64, error) {
+	if a.CompanyID != "" {
+		us, err := s.users.ByCompany(ctx, a.CompanyID)
+		if err != nil {
+			return nil, err
+		}
+		ids := userIDs(us)
+		return ids, nil
+	}
+	if a.Role != "" {
+		return s.roleIDs(ctx, a.Role)
 	}
 	ps, err := s.peers.ByServer(ctx, s.cfg.ServerID)
 	if err != nil {
@@ -90,12 +101,18 @@ func (s *service) roleIDs(ctx context.Context, r Role) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
+	ids := userIDs(us)
+	return ids, nil
+}
+
+// userIDs is the sorted IDs of us.
+func userIDs(us []*User) []int64 {
 	ids := make([]int64, 0, len(us))
 	for _, u := range us {
 		ids = append(ids, u.ID)
 	}
 	slices.Sort(ids)
-	return ids, nil
+	return ids
 }
 
 // addRevenue sums applied, not refunded payments of the last 30 days.

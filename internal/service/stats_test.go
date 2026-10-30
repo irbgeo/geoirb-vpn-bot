@@ -101,7 +101,7 @@ func TestBroadcastRecipients(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		ids, err := e.svc.BroadcastRecipients(ctx, "")
+		ids, err := e.svc.BroadcastRecipients(ctx, Audience{})
 		require.NoError(t, err)
 		require.Equal(t, []int64{a.UserID}, ids, "one per user, enabled keys only, no keys without Telegram")
 	})
@@ -126,12 +126,38 @@ func TestBroadcastRecipientsOfOneRole(t *testing.T) {
 			Role: RoleUser,
 		}
 
-		ids, err := e.svc.BroadcastRecipients(ctx, RoleUser)
+		ids, err := e.svc.BroadcastRecipients(ctx, Audience{Role: RoleUser})
 		require.NoError(t, err)
 		require.Equal(t, []int64{5, plain.UserID}, ids, "every plain user, with a key or not")
 
-		ids, err = e.svc.BroadcastRecipients(ctx, "")
+		ids, err = e.svc.BroadcastRecipients(ctx, Audience{})
 		require.NoError(t, err)
 		require.Equal(t, []int64{7, 42}, ids, "no role = everyone")
+	})
+}
+
+func TestBroadcastRecipientsOfOneCompany(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newEnv()
+		ctx := context.Background()
+		e.users().m[5] = User{
+			ID:        5,
+			Role:      RoleMember,
+			CompanyID: "acme",
+		}
+		e.users().m[3] = User{
+			ID:        3,
+			Role:      RoleMember,
+			CompanyID: "acme",
+		}
+		e.users().m[9] = User{
+			ID:        9,
+			Role:      RoleMember,
+			CompanyID: "other",
+		}
+
+		ids, err := e.svc.BroadcastRecipients(ctx, Audience{CompanyID: "acme"})
+		require.NoError(t, err)
+		require.Equal(t, []int64{3, 5}, ids, "every member of the company, keys or not")
 	})
 }

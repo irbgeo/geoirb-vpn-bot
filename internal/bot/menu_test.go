@@ -24,7 +24,7 @@ func TestMenuButtonTurnsTheSameMessageIntoTheMenu(t *testing.T) {
 	require.Equal(t, int64(77), e.MessageID)
 	require.Contains(t, e.Text, "Привет")
 	require.Equal(t, cbCreateKey, e.Keyboard.InlineKeyboard[0][0].CallbackData)
-	require.Contains(t, buttons(e), "a:users:0", "the admin gets the admin menu")
+	require.Contains(t, buttons(e), "a:uf", "the admin gets the admin menu")
 }
 
 func TestMenuButtonEndsAWaitingQuestion(t *testing.T) {

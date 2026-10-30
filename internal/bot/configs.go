@@ -2,12 +2,14 @@ package bot
 
 import (
 	"context"
+
+	"github.com/irbgeo/geoirb-vpn-bot/internal/service"
 )
 
 // adminConfigsAsk shows how many users get the "update your config"
 // notice and waits for "send" or "cancel", like a broadcast preview.
 func (s *router) adminConfigsAsk(ctx context.Context, a adminAction) error {
-	ids, err := s.ops.BroadcastRecipients(ctx, "")
+	ids, err := s.ops.BroadcastRecipients(ctx, service.Audience{})
 	if err != nil {
 		return s.reportError(ctx, a.failed(err))
 	}
@@ -49,7 +51,7 @@ func (s *router) adminConfigs(ctx context.Context, a adminAction) error {
 		Deliver:   s.sendConfigsNotice,
 		Report:    configsReportText,
 	}
-	started, err := s.startMassSend(ctx, massSend)
+	started, err := s.startMassSend(ctx, &massSend)
 	if !started {
 		s.dialogs.set(p)
 	}
